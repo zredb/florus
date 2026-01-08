@@ -1,0 +1,37 @@
+[package]
+name = "florus"
+version = "0.1.0"
+edition = "2021"
+authors = ["FLORIS Rust Translation"]
+description = "Rust implementation of FLORIS - A controls-oriented wind farm wake modeling software"
+license = "BSD-3-Clause"
+
+[dependencies]
+ndarray = { version = "0.16", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+anyhow = "1.0"
+thiserror = "1.0"
+rayon = "1.10"
+nalgebra = "0.33"
+approx = "0.5"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[example]]
+name = "wake_effects"
+path = "examples/wake_effects.rs"
+
+[[example]]
+name = "multi_turbine"
+path = "examples/multi_turbine.rs"
+
+[[example]]
+name = "optimization_example"
+path = "examples/optimization_example.rs"
+
+[[bin]]
+name = "florus"
+path = "src/main.rs"

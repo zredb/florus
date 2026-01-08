@@ -1,0 +1,38 @@
+# Example FLORIS configuration file
+
+name: "example_2_turbine"
+description: "Two turbine wind farm example"
+floris_version: "4.6"
+
+logging:
+  console:
+    enable: true
+    level: "WARNING"
+  file:
+    enable: false
+    level: "WARNING"
+
+solver:
+  type: "turbine_grid"
+  turbine_grid_points: 3
+
+flow_field:
+  wind_speeds: [8.0, 10.0, 12.0]
+  wind_directions: [270.0, 280.0, 290.0]
+  turbulence_intensities: [0.06, 0.06, 0.06]
+  air_density: 1.225
+  wind_shear: 0.14
+  wind_veer: 0.0
+  reference_wind_height: 90.0
+
+farm:
+  layout_x: [0.0, 630.0]
+  layout_y: [0.0, 0.0]
+  turbine_type: ["nrel_5MW", "nrel_5MW"]
+
+wake:
+  model_strings:
+    velocity_model: "gauss"
+    deflection_model: "jimenez"
+    turbulence_model: "crespo_hernandez"
+    combination_model: "sosfs"

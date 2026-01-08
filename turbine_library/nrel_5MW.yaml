@@ -1,0 +1,21 @@
+# NREL 5MW reference wind turbine
+# Simplified for Rust implementation
+# Based on https://github.com/NREL/turbine-models
+
+turbine_type: nrel_5MW
+hub_height: 90.0
+rotor_diameter: 126.0
+TSR: 8.0
+rated_power: 5000000.0
+cut_in_wind_speed: 3.0
+cut_out_wind_speed: 25.0
+rated_wind_speed: 11.4
+operation_model: cosine-loss
+ref_tilt: 5.0
+correct_cp_ct_for_tilt: false
+
+power_curve_wind_speeds: [0.0, 3.0, 5.0, 7.0, 9.0, 11.0, 11.4, 12.0, 14.0, 25.0]
+power_curve_powers: [0.0, 0.0, 400000.0, 1500000.0, 4500000.0, 5000000.0, 5000000.0, 5000000.0, 5000000.0, 0.0]
+
+thrust_coefficient_wind_speeds: [0.0, 3.0, 5.0, 7.0, 9.0, 11.0, 12.0, 14.0, 25.0]
+thrust_coefficient_values: [0.0, 1.0, 0.9, 0.8, 0.65, 0.4, 0.35, 0.25, 0.0]
