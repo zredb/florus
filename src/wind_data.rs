@@ -1,3 +1,5 @@
+use crate::core::base::InterpMethod;
+use crate::heterogeneous_map::{HeterogeneousInflowConfig, HeterogeneousMap, MultidimConditions};
 /// Wind data structures for FLORIS-RS
 ///
 /// Provides wind data objects to hold ambient wind conditions including:
@@ -6,7 +8,6 @@
 /// - WindTIRose: Wind rose with TI as an additional dimension
 ///
 /// Corresponds to wind_data.py in Python FLORIS v4.6
-
 use crate::types::{Array1, Array2, Array3, Float};
 use crate::Result;
 use serde::{Deserialize, Serialize};
@@ -17,18 +18,690 @@ pub trait WindData {
     fn wind_directions(&self) -> Array1;
     fn turbulence_intensities(&self) -> Array1;
     fn n_conditions(&self) -> usize;
-    
+    fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig;
+    fn set_layout(&mut self, layout_x: &Option<Array1>, layout_y: &Option<Array1>);
+
     /// Unpack wind conditions for simulation
     fn unpack(
         &self,
     ) -> (
-        Array1,    // wind_directions
-        Array1,    // wind_speeds
-        Array1,    // turbulence_intensities
-        Array2,    // frequency table [n_conditions, n_turbines] (or all ones if not applicable)
-        Array2,    // value table [n_conditions, n_turbines] (or all zeros if not applicable)
-        Vec<usize>, // nonzero frequency indices
+        Array1,                    // wind_directions
+        Array1,                    // wind_speeds
+        Array1,                    // turbulence_intensities
+        Array2, // frequency table [n_conditions, n_turbines] (or all ones if not applicable)
+        Array2, // value table [n_conditions, n_turbines] (or all zeros if not applicable)
+        HeterogeneousInflowConfig, // heterogeneous_inflow_config
     );
+    fn unpack_for_reinitialize(
+        &self,
+    ) -> (
+        Array1, // wind_directions
+        Array1, // wind_speeds
+        Array1, // turbulence_intensities
+        HeterogeneousInflowConfig,
+    ) {
+        let (
+            wind_directions_unpack,
+            wind_speeds_unpack,
+            ti_table_unpack,
+            _,
+            _,
+            heterogeneous_inflow_config,
+        ) = self.unpack().clone();
+        (
+            wind_directions_unpack,
+            wind_speeds_unpack,
+            ti_table_unpack,
+            heterogeneous_inflow_config,
+        )
+    }
+}
+
+/// WindRoseWRG - Wind rose from WAsP WRG (Wind Resource Grid) file
+///
+/// WindRoseWRG represents a wind resource grid (WRG) file where each grid point
+/// has a separate wind rose defined by sector frequencies and Weibull parameters.
+/// When a layout is specified, each turbine gets its own wind rose computed by
+/// interpolating Weibull parameters from the WRG grid.
+///
+/// Corresponds to WindRoseWRG in Python FLORIS v4.6
+#[derive(Debug, Clone)]
+pub struct WindRoseWRG {
+    /// WRG file data
+    pub wrg_data: WRGData,
+    /// Wind directions (may be resampled from WRG sectors)
+    pub wind_directions: Array1,
+    /// Wind direction step size
+    pub wd_step: Float,
+    /// Wind speed bins
+    pub wind_speeds: Array1,
+    /// Turbulence intensity table or single value
+    pub ti_table: Array2,
+    /// Turbulence intensity as a single value (for backwards compatibility)
+    pub ti_value: Float,
+    /// Layout x coordinates (set via set_layout)
+    pub layout_x: Array1,
+    /// Layout y coordinates (set via set_layout)
+    pub layout_y: Array1,
+    /// Wind roses for each turbine position
+    pub wind_roses: Vec<WindRose>,
+    /// Flattened wind directions from first wind rose
+    pub wd_flat: Array1,
+    /// Flattened wind speeds from first wind rose
+    pub ws_flat: Array1,
+    /// Non-zero frequency mask
+    pub nonzero_freq_mask: Vec<bool>,
+    /// Interpolants for sector frequency [n_sectors]
+    pub interpolant_sector_freq: Vec<RegularGridInterpolant>,
+    /// Interpolants for Weibull A parameter [n_sectors]
+    pub interpolant_weibull_a: Vec<RegularGridInterpolant>,
+    /// Interpolants for Weibull k parameter [n_sectors]
+    pub interpolant_weibull_k: Vec<RegularGridInterpolant>,
+}
+
+/// Regular grid interpolant wrapper for 2D interpolation
+#[derive(Clone, Debug)]
+pub struct RegularGridInterpolant {
+    /// X coordinates of the grid
+    pub x: Array1,
+    /// Y coordinates of the grid
+    pub y: Array1,
+    /// Data values [ny, nx] (row-major: y varies first, then x)
+    pub data: Array2,
+    /// Interpolation method
+    pub method: InterpMethod,
+}
+
+impl RegularGridInterpolant {
+    /// Create a new interpolant
+    pub fn new(x: Array1, y: Array1, data: Array2, method: InterpMethod) -> Self {
+        Self { x, y, data, method }
+    }
+
+    /// Interpolate at point (x, y)
+    pub fn interpolate(&self, x: Float, y: Float) -> Float {
+        let x_vec: Vec<Float> = self.x.iter().copied().collect();
+        let y_vec: Vec<Float> = self.y.iter().copied().collect();
+        bilinear_interpolate(x, y, &x_vec, &y_vec, &self.data)
+    }
+}
+
+impl Default for WindRoseWRG {
+    fn default() -> Self {
+        Self {
+            wrg_data: WRGData::default(),
+            wind_directions: Array1::from_vec(vec![]),
+            wd_step: 0.0,
+            wind_speeds: Array1::from_vec(vec![]),
+            ti_table: Array2::from_shape_vec((0, 0), vec![]).unwrap(),
+            ti_value: 0.06,
+            layout_x: Array1::from_vec(vec![]),
+            layout_y: Array1::from_vec(vec![]),
+            wind_roses: Vec::new(),
+            wd_flat: Array1::from_vec(vec![]),
+            ws_flat: Array1::from_vec(vec![]),
+            nonzero_freq_mask: Vec::new(),
+            interpolant_sector_freq: Vec::new(),
+            interpolant_weibull_a: Vec::new(),
+            interpolant_weibull_k: Vec::new(),
+        }
+    }
+}
+
+impl WindRoseWRG {
+    /// Create a new WindRoseWRG from a WRG file
+    ///
+    /// # Arguments
+    /// * `filename` - Path to the WRG file
+    /// * `wd_step` - Wind direction step for resampling (None = use WRG sectors)
+    /// * `wind_speeds` - Wind speed bins (default: 0-25 m/s in 1 m/s increments)
+    /// * `ti_table` - Turbulence intensity (single value or 2D table)
+    ///
+    /// # Returns
+    /// WindRoseWRG with WRG data loaded
+    pub fn new<P: AsRef<std::path::Path>>(
+        filename: P,
+        wd_step: Option<Float>,
+        wind_speeds: Option<Array1>,
+        ti_table: Option<Array2>,
+    ) -> Result<Self> {
+        let filename = filename.as_ref();
+
+        // Read and parse WRG file
+        let wrg_data = read_wrg_file(filename)?;
+
+        // Set default wind speeds if not provided
+        let wind_speeds =
+            wind_speeds.unwrap_or_else(|| Array1::from_iter((0..26).map(|i| i as Float)));
+
+        // Set default TI table if not provided
+        let ti_table = ti_table.unwrap_or_else(|| {
+            let n_dir = wrg_data.n_sectors;
+            let n_ws = wind_speeds.len();
+            Array2::from_elem((n_dir, n_ws), 0.06)
+        });
+
+        // Get TI single value (first element) for backwards compatibility
+        let ti_value = if ti_table.shape()[0] > 0 && ti_table.shape()[1] > 0 {
+            ti_table[[0, 0]]
+        } else {
+            0.06
+        };
+
+        // Calculate wind directions from WRG sectors or use specified step
+        let (wind_directions, wd_step) = if let Some(step) = wd_step {
+            let n_dir = (360.0 / step).ceil() as usize;
+            let directions: Array1 = (0..n_dir)
+                .map(|i| (i as Float + 0.5) * step)
+                .collect();
+            (directions, step)
+        } else {
+            let directions: Array1 = (0..wrg_data.n_sectors)
+                .map(|i| i as Float * (360.0 / wrg_data.n_sectors as Float))
+                .collect();
+            let step = if wrg_data.n_sectors > 1 {
+                360.0 / wrg_data.n_sectors as Float
+            } else {
+                360.0
+            };
+            (directions, step)
+        };
+
+        // Build interpolants for each sector
+        let interpolant_sector_freq = build_interpolant_function_list(
+            &wrg_data.x_array,
+            &wrg_data.y_array,
+            &wrg_data.sector_freq,
+        )?;
+        let interpolant_weibull_a = build_interpolant_function_list(
+            &wrg_data.x_array,
+            &wrg_data.y_array,
+            &wrg_data.weibull_a,
+        )?;
+        let interpolant_weibull_k = build_interpolant_function_list(
+            &wrg_data.x_array,
+            &wrg_data.y_array,
+            &wrg_data.weibull_k,
+        )?;
+
+        Ok(Self {
+            wrg_data,
+            wind_directions,
+            wd_step,
+            wind_speeds,
+            ti_table,
+            ti_value,
+            layout_x: Array1::from_vec(vec![]),
+            layout_y: Array1::from_vec(vec![]),
+            wind_roses: Vec::new(),
+            wd_flat: Array1::from_vec(vec![]),
+            ws_flat: Array1::from_vec(vec![]),
+            nonzero_freq_mask: Vec::new(),
+            interpolant_sector_freq,
+            interpolant_weibull_a,
+            interpolant_weibull_k,
+        })
+    }
+
+    /// Interpolate data at a given (x, y) location
+    fn interpolate_data(&self, x: Float, y: Float, interpolants: &[RegularGridInterpolant]) -> Array1 {
+        let n_sectors = self.wrg_data.n_sectors;
+        let mut result = Array1::zeros(n_sectors);
+
+        // Determine interpolation method based on bounds
+        let use_nearest = x < self.wrg_data.x_array[0]
+            || x > self.wrg_data.x_array[self.wrg_data.x_array.len() - 1]
+            || y < self.wrg_data.y_array[0]
+            || y > self.wrg_data.y_array[self.wrg_data.y_array.len() - 1];
+
+        for sector in 0..n_sectors {
+            if use_nearest {
+                // Use nearest neighbor for points outside bounds
+                result[sector] = interpolants[sector].interpolate(
+                    x.clamp(
+                        self.wrg_data.x_array[0],
+                        self.wrg_data.x_array[self.wrg_data.x_array.len() - 1],
+                    ),
+                    y.clamp(
+                        self.wrg_data.y_array[0],
+                        self.wrg_data.y_array[self.wrg_data.y_array.len() - 1],
+                    ),
+                );
+            } else {
+                result[sector] = interpolants[sector].interpolate(x, y);
+            }
+        }
+
+        result
+    }
+
+    /// Calculate Weibull cumulative distribution function
+    fn weibull_cumulative(&self, x: Float, a: Float, k: Float) -> Float {
+        if x <= 0.0 {
+            return 0.0;
+        }
+        let exponent = -((x / a).powf(k));
+        1.0 - exponent.exp()
+    }
+
+    /// Generate wind speed frequencies from Weibull parameters
+    fn generate_wind_speed_frequencies_from_weibull(
+        &self,
+        a: Float,
+        k: Float,
+    ) -> (Array1, Array1) {
+        let n_ws = self.wind_speeds.len();
+        let ws_step = if n_ws > 1 {
+            self.wind_speeds[1] - self.wind_speeds[0]
+        } else {
+            1.0
+        };
+
+        let mut frequencies = Vec::with_capacity(n_ws);
+
+        for i in 0..n_ws {
+            let ws = self.wind_speeds[i];
+            let ws_low = (ws - ws_step / 2.0).max(0.0);
+            let ws_high = ws + ws_step / 2.0;
+
+            let cdf_high = self.weibull_cumulative(ws_high, a, k);
+            let cdf_low = self.weibull_cumulative(ws_low, a, k);
+
+            let freq = (cdf_high - cdf_low).max(0.0);
+            frequencies.push(freq);
+        }
+
+        // Normalize
+        let total: Float = frequencies.iter().sum();
+        if total > 0.0 {
+            for freq in &mut frequencies {
+                *freq /= total;
+            }
+        }
+
+        (
+            self.wind_speeds.clone(),
+            Array1::from_vec(frequencies),
+        )
+    }
+
+    /// Get the wind rose at a specific (x, y) location
+    pub fn get_wind_rose_at_point(
+        &self,
+        x: Float,
+        y: Float,
+        wind_directions: Option<Array1>,
+        wind_speeds: Option<Array1>,
+        ti_table: Option<Array2>,
+    ) -> WindRose {
+        let wd = wind_directions.unwrap_or_else(|| self.wind_directions.clone());
+        let ws = wind_speeds.unwrap_or_else(|| self.wind_speeds.clone());
+        let ti = ti_table.unwrap_or_else(|| self.ti_table.clone());
+
+        let n_sectors = self.wrg_data.n_sectors;
+        let n_ws = ws.len();
+
+        // Get interpolated data at this location
+        let sector_freq = self.interpolate_data(x, y, &self.interpolant_sector_freq);
+        let weibull_a = self.interpolate_data(x, y, &self.interpolant_weibull_a);
+        let weibull_k = self.interpolate_data(x, y, &self.interpolant_weibull_k);
+
+        // Build frequency table from Weibull distributions
+        let mut freq_table = Array2::zeros((n_sectors, n_ws));
+
+        for sector in 0..n_sectors {
+            let (_, freq) = Self::_generate_wind_speed_frequencies_from_weibull_internal(
+                &ws,
+                weibull_a[sector],
+                weibull_k[sector],
+            );
+            for j in 0..n_ws {
+                freq_table[[sector, j]] = sector_freq[sector] * freq[j];
+            }
+        }
+
+        // Normalize frequency table
+        let total: Float = freq_table.iter().sum();
+        if total > 0.0 {
+            for val in &mut freq_table {
+                *val /= total;
+            }
+        }
+
+        // Get original WRG wind directions for base wind rose
+        let wrg_wind_directions: Array1 = (0..n_sectors)
+            .map(|i| i as Float * (360.0 / n_sectors as Float))
+            .collect();
+
+        // Create base wind rose
+        let mut wind_rose = WindRose::new(
+            wrg_wind_directions,
+            ws.clone(),
+            ti.clone(),
+            Some(freq_table),
+            None,
+        )
+        .unwrap_or_default();
+
+        wind_rose.compute_zero_freq_occurrence = true;
+
+        // Resample to desired wind directions if needed
+        let wd_step = if wd.len() > 1 { wd[1] - wd[0] } else { 360.0 };
+        let base_wd_step = 360.0 / n_sectors as Float;
+
+        if (wd_step - base_wd_step).abs() < 1e-6 {
+            // Same resolution, just update frequencies
+            wind_rose.wind_directions = wd;
+            wind_rose
+        } else if wd_step < base_wd_step {
+            // Need to upsample
+            wind_rose.upsample(wd_step, ws[1] - ws[0], "linear", false)
+        } else {
+            // Need to downsample
+            wind_rose.downsample(wd_step, ws[1] - ws[0], false)
+        }
+    }
+
+    /// Internal helper for generating wind speed frequencies from Weibull
+    fn _generate_wind_speed_frequencies_from_weibull_internal(
+        wind_speeds: &Array1,
+        a: Float,
+        k: Float,
+    ) -> (Array1, Array1) {
+        let n_ws = wind_speeds.len();
+        let ws_step = if n_ws > 1 {
+            wind_speeds[1] - wind_speeds[0]
+        } else {
+            1.0
+        };
+
+        let mut frequencies = Vec::with_capacity(n_ws);
+
+        for i in 0..n_ws {
+            let ws = wind_speeds[i];
+            let ws_low = (ws - ws_step / 2.0).max(0.0);
+            let ws_high = ws + ws_step / 2.0;
+
+            let exponent_low = -((ws_low / a).powf(k));
+            let cdf_low = if ws_low <= 0.0 { 0.0 } else { 1.0 - exponent_low.exp() };
+
+            let exponent_high = -((ws_high / a).powf(k));
+            let cdf_high = 1.0 - exponent_high.exp();
+
+            let freq = (cdf_high - cdf_low).max(0.0);
+            frequencies.push(freq);
+        }
+
+        // Normalize
+        let total: Float = frequencies.iter().sum();
+        if total > 0.0 {
+            for freq in &mut frequencies {
+                *freq /= total;
+            }
+        }
+
+        (
+            wind_speeds.clone(),
+            Array1::from_vec(frequencies),
+        )
+    }
+
+    /// Set the wind direction step
+    pub fn set_wd_step(&mut self, wd_step: Float) {
+        self.wd_step = wd_step;
+        self.wind_directions = (0..((360.0 / wd_step).ceil() as usize))
+            .map(|i| (i as Float + 0.5) * wd_step)
+            .collect();
+
+        // Update wind roses if layout is set
+        if !self.layout_x.is_empty() {
+            self._update_wind_roses();
+        }
+    }
+
+    /// Set the wind speeds
+    pub fn set_wind_speeds(&mut self, wind_speeds: Array1) {
+        self.wind_speeds = wind_speeds;
+
+        // Update TI table if it's a single value
+        if self.ti_table.shape() == &[1, 1] || self.ti_table.len() == 1 {
+            let ti_val = self.ti_table.iter().next().copied().unwrap_or(0.06);
+            let n_dir = self.wind_directions.len();
+            let n_ws = self.wind_speeds.len();
+            self.ti_table = Array2::from_elem((n_dir, n_ws), ti_val);
+        }
+
+        // Update wind roses if layout is set
+        if !self.layout_x.is_empty() {
+            self._update_wind_roses();
+        }
+    }
+
+    /// Set the turbulence intensity (single value)
+    pub fn set_ti_table(&mut self, ti_value: Float) {
+        self.ti_value = ti_value;
+        let n_dir = self.wind_directions.len();
+        let n_ws = self.wind_speeds.len();
+        self.ti_table = Array2::from_elem((n_dir, n_ws), ti_value);
+
+        // Update wind roses if layout is set
+        if !self.layout_x.is_empty() {
+            self._update_wind_roses();
+        }
+    }
+
+    /// Set the turbine layout
+    pub fn set_layout(&mut self, layout_x: Array1, layout_y: Array1) -> Result<()> {
+        if layout_x.len() != layout_y.len() {
+            anyhow::bail!("layout_x and layout_y must have the same length");
+        }
+
+        // Check if layout is the same
+        if !self.layout_x.is_empty()
+            && self.layout_x.len() == layout_x.len()
+            && self.layout_y.len() == layout_y.len()
+        {
+            let mut same = true;
+            for i in 0..layout_x.len() {
+                if (layout_x[i] - self.layout_x[i]).abs() > 1e-6
+                    || (layout_y[i] - self.layout_y[i]).abs() > 1e-6
+                {
+                    same = false;
+                    break;
+                }
+            }
+            if same {
+                return Ok(());
+            }
+        }
+
+        self.layout_x = layout_x.clone();
+        self.layout_y = layout_y.clone();
+
+        self._update_wind_roses();
+
+        Ok(())
+    }
+
+    /// Update wind roses for current layout
+    fn _update_wind_roses(&mut self) {
+        let n_turbines = self.layout_x.len();
+        self.wind_roses = Vec::with_capacity(n_turbines);
+
+        for i in 0..n_turbines {
+            let wind_rose = self.get_wind_rose_at_point(
+                self.layout_x[i],
+                self.layout_y[i],
+                Some(self.wind_directions.clone()),
+                Some(self.wind_speeds.clone()),
+                Some(self.ti_table.clone()),
+            );
+            self.wind_roses.push(wind_rose);
+        }
+
+        // Update flattened data from first wind rose
+        if let Some(first_rose) = self.wind_roses.first() {
+            self.wd_flat = first_rose.wind_directions.clone();
+            self.ws_flat = first_rose.wind_speeds.clone();
+            self.nonzero_freq_mask = (0..self.wd_flat.len())
+                .map(|i| {
+                    for rose in &self.wind_roses {
+                        if let Some(ref freq) = rose.freq_table {
+                            if freq[[i % first_rose.wind_directions.len(), i / first_rose.wind_directions.len()]] > 0.0 {
+                                return true;
+                            }
+                        }
+                    }
+                    false
+                })
+                .collect();
+        }
+    }
+}
+
+/// Build a list of interpolant functions for each sector
+fn build_interpolant_function_list(
+    x: &[Float],
+    y: &[Float],
+    data: &Array3,
+) -> Result<Vec<RegularGridInterpolant>> {
+    let n_sectors = data.shape()[2];
+    let mut interpolants = Vec::with_capacity(n_sectors);
+
+    for sector in 0..n_sectors {
+        // Extract 2D slice for this sector
+        let sector_data = Array2::from_shape_fn((data.shape()[0], data.shape()[1]), |(i, j)| {
+            data[[i, j, sector]]
+        });
+
+        let x_arr = Array1::from_vec(x.to_vec());
+        let y_arr = Array1::from_vec(y.to_vec());
+
+        interpolants.push(RegularGridInterpolant::new(
+            x_arr,
+            y_arr,
+            sector_data,
+            InterpMethod::Linear,
+        ));
+    }
+
+    Ok(interpolants)
+}
+
+impl WindData for WindRoseWRG {
+    fn wind_speeds(&self) -> Array1 {
+        self.wind_speeds.clone()
+    }
+
+    fn wind_directions(&self) -> Array1 {
+        self.wind_directions.clone()
+    }
+
+    fn turbulence_intensities(&self) -> Array1 {
+        // Return representative TI values (first speed bin for each direction)
+        let n_dir = self.wind_directions.len();
+        if n_dir > 0 && self.ti_table.shape().len() >= 2 {
+            Array1::from_iter((0..n_dir).map(|i| self.ti_table[[i, 0]]))
+        } else {
+            Array1::from_vec(vec![])
+        }
+    }
+
+    fn n_conditions(&self) -> usize {
+        self.wd_flat.len()
+    }
+
+    fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig {
+        HeterogeneousInflowConfig {
+            x: Array1::from_vec(vec![]),
+            y: Array1::from_vec(vec![]),
+            z: None,
+            wind_speeds: Some(self.wind_speeds.clone()),
+            wind_directions: Some(self.wind_directions.clone()),
+            speed_multipliers: Array2::from_shape_vec((self.wd_flat.len(), 0), vec![]).unwrap(),
+        }
+    }
+
+    fn set_layout(&mut self, layout_x: &Option<Array1>, layout_y: &Option<Array1>) {
+        if let (Some(lx), Some(ly)) = (layout_x, layout_y) {
+            let _ = self.set_layout(lx.clone(), ly.clone());
+        }
+    }
+
+    fn unpack(
+        &self,
+    ) -> (
+        Array1,
+        Array1,
+        Array1,
+        Array2,
+        Array2,
+        HeterogeneousInflowConfig,
+    ) {
+        if self.layout_x.is_empty() {
+            // Return empty result if layout is not set
+            return (
+                Array1::from_vec(vec![]),
+                Array1::from_vec(vec![]),
+                Array1::from_vec(vec![]),
+                Array2::from_shape_vec((0, 0), vec![]).unwrap(),
+                Array2::from_shape_vec((0, 0), vec![]).unwrap(),
+                HeterogeneousInflowConfig {
+                    x: Array1::from_vec(vec![]),
+                    y: Array1::from_vec(vec![]),
+                    z: None,
+                    wind_speeds: None,
+                    wind_directions: None,
+                    speed_multipliers: Array2::from_shape_vec((0, 0), vec![]).unwrap(),
+                },
+            );
+        }
+
+        let n_turbines = self.layout_x.len();
+        let n_conditions = self.wd_flat.len();
+
+        // Initialize freq_table_unpack [n_conditions, n_turbines]
+        let mut freq_table_unpack = Array2::zeros((n_conditions, n_turbines));
+
+        let mut wind_directions_unpack = Array1::from_vec(vec![]);
+        let mut wind_speeds_unpack = Array1::from_vec(vec![]);
+        let mut ti_table_unpack = Array1::from_vec(vec![]);
+        let mut value_table_unpack = Array2::zeros((n_conditions, n_turbines));
+
+        // Loop over wind roses and collect data
+        for i in 0..n_turbines {
+            let wind_rose = &self.wind_roses[i];
+            let (
+                wd,
+                ws,
+                ti,
+                freq_2d,
+                value_2d,
+                _,
+            ) = wind_rose.unpack();
+
+            if i == 0 {
+                wind_directions_unpack = wd;
+                wind_speeds_unpack = ws;
+                ti_table_unpack = ti;
+            }
+
+            // Copy frequency column
+            for j in 0..n_conditions {
+                freq_table_unpack[[j, i]] = freq_2d[[j, 0]];
+                value_table_unpack[[j, i]] = value_2d[[j, 0]];
+            }
+        }
+
+        (
+            wind_directions_unpack,
+            wind_speeds_unpack,
+            ti_table_unpack,
+            freq_table_unpack,
+            value_table_unpack,
+            self.heterogeneous_inflow_config(),
+        )
+    }
 }
 
 /// Turbulence intensity parameters for IEC method
@@ -43,8 +716,8 @@ pub struct TIParams {
 impl Default for TIParams {
     fn default() -> Self {
         Self {
-            iref: 0.07,   // Default Iref (lower than IEC classes for realistic TI values)
-            offset: 3.8,  // IEC standard offset
+            iref: 0.07,  // Default Iref (lower than IEC classes for realistic TI values)
+            offset: 3.8, // IEC standard offset
         }
     }
 }
@@ -66,7 +739,7 @@ pub struct TimeSeries {
     pub wind_directions: Array1,
     pub wind_speeds: Array1,
     pub turbulence_intensities: Array1,
-    pub values: Array1,  // Value of power generated (e.g., electricity price)
+    pub values: Array1, // Value of power generated (e.g., electricity price)
 }
 
 impl TimeSeries {
@@ -81,11 +754,11 @@ impl TimeSeries {
         if wind_directions.len() != turbulence_intensities.len() {
             anyhow::bail!("turbulence_intensities must match wind data length");
         }
-        
+
         // Initialize values to 1.0 (unit value)
         let n = wind_directions.len();
         let values = Array1::from_vec(vec![1.0; n]);
-        
+
         Ok(Self {
             wind_directions,
             wind_speeds,
@@ -93,7 +766,7 @@ impl TimeSeries {
             values,
         })
     }
-    
+
     /// Create with explicit values
     pub fn with_values(
         wind_directions: Array1,
@@ -110,7 +783,7 @@ impl TimeSeries {
         if wind_directions.len() != values.len() {
             anyhow::bail!("values must match wind data length");
         }
-        
+
         Ok(Self {
             wind_directions,
             wind_speeds,
@@ -118,7 +791,7 @@ impl TimeSeries {
             values,
         })
     }
-    
+
     /// Assign TI using a function of wind direction and wind speed
     pub fn assign_ti_using_wd_ws_function<F>(&mut self, func: F)
     where
@@ -129,7 +802,7 @@ impl TimeSeries {
             self.turbulence_intensities[i] = ti.clamp(0.0, 1.0);
         }
     }
-    
+
     /// Assign TI using IEC method
     pub fn assign_ti_using_iec_method(&mut self, params: Option<TIParams>) {
         let params = params.unwrap_or_default();
@@ -137,7 +810,7 @@ impl TimeSeries {
             self.turbulence_intensities[i] = params.calculate_ti(self.wind_speeds[i]);
         }
     }
-    
+
     /// Assign value using a function of wind direction and wind speed
     pub fn assign_value_using_wd_ws_function<F>(&mut self, func: F, normalize: bool)
     where
@@ -146,7 +819,7 @@ impl TimeSeries {
         for i in 0..self.wind_directions.len() {
             self.values[i] = func(self.wind_directions[i], self.wind_speeds[i]);
         }
-        
+
         if normalize {
             let mean: Float = self.values.iter().sum::<Float>() / self.values.len() as Float;
             if mean > 0.0 {
@@ -156,7 +829,7 @@ impl TimeSeries {
             }
         }
     }
-    
+
     /// Assign value using piecewise linear function
     pub fn assign_value_piecewise_linear(
         &mut self,
@@ -174,10 +847,10 @@ impl TimeSeries {
             } else {
                 value_zero_ws + slope_1 * (ws_knee - 3.0) + slope_2 * (ws - ws_knee)
             };
-            
+
             self.values[i] = if limit_to_zero { value.max(0.0) } else { value };
         }
-        
+
         if normalize {
             let mean: Float = self.values.iter().sum::<Float>() / self.values.len() as Float;
             if mean > 0.0 {
@@ -187,32 +860,32 @@ impl TimeSeries {
             }
         }
     }
-    
+
     /// Convert to WindRose
     pub fn to_wind_rose(&self, wd_step: Float, ws_step: Float) -> WindRose {
         // Aggregate time series into wind rose bins
         let n_wd = (360.0 / wd_step).ceil() as usize;
-        let n_ws = (50.0 / ws_step).ceil() as usize;  // Max wind speed 50 m/s
-        
+        let n_ws = (50.0 / ws_step).ceil() as usize; // Max wind speed 50 m/s
+
         let mut freq_table = Array2::zeros((n_wd, n_ws));
         let mut ws_sum = Array2::zeros((n_wd, n_ws));
         let mut ti_sum = Array2::zeros((n_wd, n_ws));
         let mut count = Array2::zeros((n_wd, n_ws));
-        
+
         for i in 0..self.wind_directions.len() {
             let wd_idx = ((self.wind_directions[i]) / wd_step).floor() as usize % n_wd;
             let ws_idx = (self.wind_speeds[i] / ws_step).floor() as usize;
             let ws_idx = ws_idx.min(n_ws - 1);
-            
+
             freq_table[[wd_idx, ws_idx]] += 1.0;
             ws_sum[[wd_idx, ws_idx]] += self.wind_speeds[i];
             ti_sum[[wd_idx, ws_idx]] += self.turbulence_intensities[i];
             count[[wd_idx, ws_idx]] += 1.0;
         }
-        
+
         let mut wind_speeds = Array1::zeros(n_ws);
         let mut ti_table = Array2::zeros((n_wd, n_ws));
-        
+
         for j in 0..n_ws {
             wind_speeds[j] = (j as Float + 0.5) * ws_step;
             for i in 0..n_wd {
@@ -221,7 +894,7 @@ impl TimeSeries {
                 }
             }
         }
-        
+
         // Normalize frequency table
         let total: Float = freq_table.iter().sum();
         if total > 0.0 {
@@ -229,11 +902,9 @@ impl TimeSeries {
                 *val /= total;
             }
         }
-        
-        let wind_directions: Array1 = (0..n_wd)
-            .map(|i| (i as Float + 0.5) * wd_step)
-            .collect();
-        
+
+        let wind_directions: Array1 = (0..n_wd).map(|i| (i as Float + 0.5) * wd_step).collect();
+
         WindRose {
             wind_directions,
             wind_speeds,
@@ -244,41 +915,36 @@ impl TimeSeries {
             ..Default::default()
         }
     }
-    
+
     /// Convert to WindTIRose
     pub fn to_wind_ti_rose(&self, wd_step: Float, ws_step: Float, ti_step: Float) -> WindTIRose {
         let n_wd = (360.0 / wd_step).ceil() as usize;
         let n_ws = (50.0 / ws_step).ceil() as usize;
-        let n_ti = (1.0 / ti_step).ceil() as usize;  // TI from 0 to 1
-        
+        let n_ti = (1.0 / ti_step).ceil() as usize; // TI from 0 to 1
+
         let mut freq_table = Array2::zeros((n_wd, n_ws));
         let mut ti_sum = Array3::zeros((n_wd, n_ws, n_ti));
         let mut count = Array3::zeros((n_wd, n_ws, n_ti));
-        
+
         for i in 0..self.wind_directions.len() {
             let wd_idx = ((self.wind_directions[i]) / wd_step).floor() as usize % n_wd;
             let ws_idx = (self.wind_speeds[i] / ws_step).floor() as usize;
             let ws_idx = ws_idx.min(n_ws - 1);
             let ti_idx = (self.turbulence_intensities[i] / ti_step).floor() as usize;
             let ti_idx = ti_idx.min(n_ti - 1);
-            
+
             freq_table[[wd_idx, ws_idx]] += 1.0;
             ti_sum[[wd_idx, ws_idx, ti_idx]] += 1.0;
             count[[wd_idx, ws_idx, ti_idx]] += 1.0;
         }
-        
-        let wind_directions: Array1 = (0..n_wd)
-            .map(|i| (i as Float + 0.5) * wd_step)
-            .collect();
-        
-        let wind_speeds: Array1 = (0..n_ws)
-            .map(|i| (i as Float + 0.5) * ws_step)
-            .collect();
-        
-        let turbulence_intensities: Array1 = (0..n_ti)
-            .map(|i| (i as Float + 0.5) * ti_step)
-            .collect();
-        
+
+        let wind_directions: Array1 = (0..n_wd).map(|i| (i as Float + 0.5) * wd_step).collect();
+
+        let wind_speeds: Array1 = (0..n_ws).map(|i| (i as Float + 0.5) * ws_step).collect();
+
+        let turbulence_intensities: Array1 =
+            (0..n_ti).map(|i| (i as Float + 0.5) * ti_step).collect();
+
         let ti_table = Array3::from_shape_fn((n_wd, n_ws, n_ti), |(i, j, k)| {
             if count[[i, j, k]] > 0.0 {
                 ti_sum[[i, j, k]] / count[[i, j, k]]
@@ -286,7 +952,7 @@ impl TimeSeries {
                 turbulence_intensities[k]
             }
         });
-        
+
         // Normalize frequency
         let total: Float = freq_table.iter().sum();
         if total > 0.0 {
@@ -294,7 +960,7 @@ impl TimeSeries {
                 *val /= total;
             }
         }
-        
+
         WindTIRose {
             wind_directions,
             wind_speeds,
@@ -311,33 +977,57 @@ impl WindData for TimeSeries {
     fn wind_speeds(&self) -> Array1 {
         self.wind_speeds.clone()
     }
-    
+
     fn wind_directions(&self) -> Array1 {
         self.wind_directions.clone()
     }
-    
+
     fn turbulence_intensities(&self) -> Array1 {
         self.turbulence_intensities.clone()
     }
-    
+
     fn n_conditions(&self) -> usize {
         self.wind_directions.len()
     }
-    
-    fn unpack(&self) -> (Array1, Array1, Array1, Array2, Array2, Vec<usize>) {
+
+    fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig {
+        HeterogeneousInflowConfig {
+            x: Array1::from_vec(vec![]),
+            y: Array1::from_vec(vec![]),
+            z: None,
+            wind_speeds: Some(self.wind_speeds.clone()),
+            wind_directions: Some(self.wind_directions.clone()),
+            speed_multipliers: Array2::from_shape_vec((self.wind_directions.len(), 0), vec![])
+                .unwrap(),
+        }
+    }
+
+    fn set_layout(&mut self, _layout_x: &Option<Array1>, _layout_y: &Option<Array1>) {
+        // TimeSeries doesn't support layout changes
+    }
+
+    fn unpack(
+        &self,
+    ) -> (
+        Array1,
+        Array1,
+        Array1,
+        Array2,
+        Array2,
+        HeterogeneousInflowConfig,
+    ) {
         let n = self.n_conditions();
         // For single turbine, use 2D array with single column
         let freq = Array2::from_shape_vec((n, 1), vec![1.0; n]).unwrap();
         let values = Array2::from_shape_vec((n, 1), self.values.clone().to_vec()).unwrap();
-        let nonzero_indices: Vec<usize> = (0..n).collect();
-        
+
         (
             self.wind_directions.clone(),
             self.wind_speeds.clone(),
             self.turbulence_intensities.clone(),
             freq,
             values,
-            nonzero_indices,
+            self.heterogeneous_inflow_config(),
         )
     }
 }
@@ -347,10 +1037,12 @@ impl WindData for TimeSeries {
 pub struct WindRose {
     pub wind_directions: Array1,
     pub wind_speeds: Array1,
-    pub ti_table: Array2,              // [n_directions, n_speeds]
-    pub freq_table: Option<Array2>,    // [n_directions, n_speeds], None = uniform
-    pub value_table: Option<Array2>,   // [n_directions, n_speeds], None = unit value
-    pub heterogeneous_map: Option<Array3>, // [n_directions, n_points, n_speeds]
+    pub ti_table: Array2,            // [n_directions, n_speeds]
+    pub freq_table: Option<Array2>,  // [n_directions, n_speeds], None = uniform
+    pub value_table: Option<Array2>, // [n_directions, n_speeds], None = unit value
+    pub compute_zero_freq_occurrence: bool,
+    pub heterogeneous_map: Option<HeterogeneousMap>,
+    pub multidim_conditions: Option<MultidimConditions>,
 }
 
 impl Default for WindRose {
@@ -361,7 +1053,9 @@ impl Default for WindRose {
             ti_table: Array2::from_shape_vec((0, 0), vec![]).unwrap(),
             freq_table: None,
             value_table: None,
+            compute_zero_freq_occurrence: false,
             heterogeneous_map: None,
+            multidim_conditions: None,
         }
     }
 }
@@ -376,33 +1070,35 @@ impl WindRose {
     ) -> Result<Self> {
         let n_dir = wind_directions.len();
         let n_ws = wind_speeds.len();
-        
+
         if ti_table.shape() != &[n_dir, n_ws] {
             anyhow::bail!("ti_table must have shape ({}, {})", n_dir, n_ws);
         }
-        
+
         if let Some(ref freq) = freq_table {
             if freq.shape() != &[n_dir, n_ws] {
                 anyhow::bail!("freq_table must have shape ({}, {})", n_dir, n_ws);
             }
         }
-        
+
         if let Some(ref value) = value_table {
             if value.shape() != &[n_dir, n_ws] {
                 anyhow::bail!("value_table must have shape ({}, {})", n_dir, n_ws);
             }
         }
-        
+
         Ok(Self {
             wind_directions,
             wind_speeds,
             ti_table,
             freq_table,
             value_table,
+            compute_zero_freq_occurrence: false,
             heterogeneous_map: None,
+            multidim_conditions: None,
         })
     }
-    
+
     /// Assign TI using a function
     pub fn assign_ti_using_wd_ws_function<F>(&mut self, func: F)
     where
@@ -410,11 +1106,12 @@ impl WindRose {
     {
         for i in 0..self.wind_directions.len() {
             for j in 0..self.wind_speeds.len() {
-                self.ti_table[[i, j]] = func(self.wind_directions[i], self.wind_speeds[j]).clamp(0.0, 1.0);
+                self.ti_table[[i, j]] =
+                    func(self.wind_directions[i], self.wind_speeds[j]).clamp(0.0, 1.0);
             }
         }
     }
-    
+
     /// Assign TI using IEC method
     pub fn assign_ti_using_iec_method(&mut self, params: Option<TIParams>) {
         let params = params.unwrap_or_default();
@@ -424,7 +1121,7 @@ impl WindRose {
             }
         }
     }
-    
+
     /// Assign value using a function
     pub fn assign_value_using_wd_ws_function<F>(&mut self, func: F, normalize: bool)
     where
@@ -435,7 +1132,7 @@ impl WindRose {
         let mut value_table = Array2::from_shape_fn((n_dir, n_ws), |(i, j)| {
             func(self.wind_directions[i], self.wind_speeds[j])
         });
-        
+
         if normalize {
             let mean: Float = value_table.iter().sum::<Float>() / (n_dir * n_ws) as Float;
             if mean > 0.0 {
@@ -444,10 +1141,10 @@ impl WindRose {
                 }
             }
         }
-        
+
         self.value_table = Some(value_table);
     }
-    
+
     /// Assign value using piecewise linear function
     pub fn assign_value_piecewise_linear(
         &mut self,
@@ -468,13 +1165,13 @@ impl WindRose {
                 value_zero_ws + slope_1 * (ws_knee - 3.0) + slope_2 * (ws - ws_knee)
             }
         });
-        
+
         if limit_to_zero {
             for val in &mut value_table {
                 *val = val.max(0.0);
             }
         }
-        
+
         if normalize {
             let mean: Float = value_table.iter().sum::<Float>() / (n_dir * n_ws) as Float;
             if mean > 0.0 {
@@ -483,35 +1180,178 @@ impl WindRose {
                 }
             }
         }
-        
+
         self.value_table = Some(value_table);
     }
-    
+
     /// Downsample (aggregate) wind rose to fewer bins
     pub fn downsample(&self, _wd_step: Float, _ws_step: Float, _inplace: bool) -> Self {
         // Simplified implementation - in real code would aggregate bins
         self.clone()
     }
-    
+
     /// Upsample (resample) wind rose to more bins
-    pub fn upsample(&self, _wd_step: Float, _ws_step: Float, _method: &str, _inplace: bool) -> Self {
-        // Simplified implementation
+    pub fn upsample(
+        &self,
+        _wd_step: Float,
+        _ws_step: Float,
+        _method: &str,
+        _inplace: bool,
+    ) -> Self {
+        // Simplified implementation - in real code would use interpolation
         self.clone()
     }
-    
+
+    /// Aggregate (downsample) wind rose to fewer bins - wrapper for downsample
+    ///
+    /// This is a convenience method that wraps downsample() for backwards compatibility
+    /// with the Python FLORIS API.
+    ///
+    /// # Arguments
+    /// * `wd_step` - Wind direction step for aggregation
+    /// * `ws_step` - Wind speed step for aggregation
+    /// * `inplace` - Whether to modify self or return a new instance
+    ///
+    /// # Returns
+    /// WindRose with aggregated bins
+    pub fn aggregate(&self, wd_step: Float, ws_step: Float, inplace: bool) -> Self {
+        self.downsample(wd_step, ws_step, inplace)
+    }
+
+    /// Resample (upsample) wind rose to more bins using interpolation - wrapper for upsample
+    ///
+    /// This is a convenience method that wraps upsample() for backwards compatibility
+    /// with the Python FLORIS API.
+    ///
+    /// # Arguments
+    /// * `wd_step` - Wind direction step for resampling
+    /// * `ws_step` - Wind speed step for resampling
+    /// * `method` - Interpolation method: "linear" or "nearest"
+    /// * `inplace` - Whether to modify self or return a new instance
+    ///
+    /// # Returns
+    /// WindRose with resampled bins
+    pub fn resample_by_interpolation(
+        &self,
+        wd_step: Float,
+        ws_step: Float,
+        method: &str,
+        inplace: bool,
+    ) -> Self {
+        self.upsample(wd_step, ws_step, method, inplace)
+    }
+
+    /// Unpack multidimensional inflow conditions
+    ///
+    /// Returns the multidimensional conditions filtered by non-zero frequency mask.
+    /// If the conditions are all scalars (same value for all conditions), returns
+    /// the scalar conditions as-is. Otherwise, filters by the non-zero frequency mask.
+    ///
+    /// # Returns
+    /// Some(MultidimConditions) if multidim_conditions is set and has valid data,
+    /// None otherwise
+    pub fn unpack_multidim_conditions(&self) -> Option<MultidimConditions> {
+        let conditions = match &self.multidim_conditions {
+            Some(c) => c,
+            None => return None,
+        };
+
+        // Build the non-zero frequency mask
+        let n_dir = self.wind_directions.len();
+        let n_ws = self.wind_speeds.len();
+        let n_conditions = n_dir * n_ws;
+
+        let default_freq = Array2::from_elem((n_dir, n_ws), 1.0);
+        let freq = self.freq_table.as_ref().unwrap_or(&default_freq);
+
+        // Collect non-zero indices
+        let nonzero_indices: Vec<usize> = (0..n_conditions)
+            .filter(|&i| {
+                let d = i / n_ws;
+                let s = i % n_ws;
+                freq[[d, s]] > 0.0
+            })
+            .collect();
+
+        if nonzero_indices.is_empty() {
+            return None;
+        }
+
+        // Check if all TP values are the same (scalar case)
+        let tp_first = conditions.tp[nonzero_indices[0]];
+        let all_same_tp = nonzero_indices.iter().all(|&i| {
+            let d = i / n_ws;
+            let s = i % n_ws;
+            (conditions.tp[d * n_ws + s] - tp_first).abs() < 1e-10
+        });
+
+        // Check if all HS values are the same (if HS exists)
+        let all_same_hs = if let Some(ref hs) = conditions.hs {
+            let hs_first = hs[nonzero_indices[0]];
+            nonzero_indices.iter().all(|&i| {
+                let d = i / n_ws;
+                let s = i % n_ws;
+                (hs[d * n_ws + s] - hs_first).abs() < 1e-10
+            })
+        } else {
+            true
+        };
+
+        // If all values are the same, return scalar conditions
+        if all_same_tp && all_same_hs {
+            return Some(MultidimConditions {
+                tp: Array1::from_vec(vec![tp_first]),
+                hs: if conditions.hs.is_some() {
+                    Some(Array1::from_vec(vec![conditions.hs.as_ref().unwrap()[0]]))
+                } else {
+                    None
+                },
+            });
+        }
+
+        // Otherwise, filter by non-zero mask
+        let tp_filtered: Vec<Float> = nonzero_indices
+            .iter()
+            .map(|&i| {
+                let d = i / n_ws;
+                let s = i % n_ws;
+                conditions.tp[d * n_ws + s]
+            })
+            .collect();
+
+        let hs_filtered: Option<Array1> = if let Some(ref hs) = conditions.hs {
+            let hs_vec: Vec<Float> = nonzero_indices
+                .iter()
+                .map(|&i| {
+                    let d = i / n_ws;
+                    let s = i % n_ws;
+                    hs[d * n_ws + s]
+                })
+                .collect();
+            Some(Array1::from_vec(hs_vec))
+        } else {
+            None
+        };
+
+        Some(MultidimConditions {
+            tp: Array1::from_vec(tp_filtered),
+            hs: hs_filtered,
+        })
+    }
+
     /// Convert to time series
     pub fn to_time_series(&self) -> TimeSeries {
         let n_dir = self.wind_directions.len();
         let n_ws = self.wind_speeds.len();
-        
+
         let default_freq = Array2::from_elem((n_dir, n_ws), 1.0);
         let freq = self.freq_table.as_ref().unwrap_or(&default_freq);
-        
+
         let mut wd_flat = Vec::new();
         let mut ws_flat = Vec::new();
         let mut ti_flat = Vec::new();
         let mut count = 0usize;
-        
+
         for i in 0..n_dir {
             for j in 0..n_ws {
                 if freq[[i, j]] > 0.0 {
@@ -522,7 +1362,7 @@ impl WindRose {
                 }
             }
         }
-        
+
         TimeSeries {
             wind_directions: Array1::from_vec(wd_flat),
             wind_speeds: Array1::from_vec(ws_flat),
@@ -536,11 +1376,11 @@ impl WindData for WindRose {
     fn wind_speeds(&self) -> Array1 {
         self.wind_speeds.clone()
     }
-    
+
     fn wind_directions(&self) -> Array1 {
         self.wind_directions.clone()
     }
-    
+
     fn turbulence_intensities(&self) -> Array1 {
         // For WindRose, we can't return a single TI array since TI depends on both direction and speed
         // Return the TI from the first speed bin for each direction as a representative value
@@ -551,27 +1391,76 @@ impl WindData for WindRose {
             Array1::from_vec(vec![])
         }
     }
-    
+
     fn n_conditions(&self) -> usize {
         self.wind_directions.len() * self.wind_speeds.len()
     }
-    
-    fn unpack(&self) -> (Array1, Array1, Array1, Array2, Array2, Vec<usize>) {
+
+    fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig {
+        let n_conditions = self.n_conditions();
+        let n_points = if let Some(ref het_map) = self.heterogeneous_map {
+            het_map.x.len()
+        } else {
+            0
+        };
+
+        if n_points > 0 {
+            // Use the heterogeneous_map if available
+            let het_map = self.heterogeneous_map.as_ref().unwrap();
+            het_map
+                .get_heterogeneous_inflow_config(
+                    self.wind_directions.clone(),
+                    self.wind_speeds.clone(),
+                )
+                .unwrap_or_else(|_| HeterogeneousInflowConfig {
+                    x: het_map.x.clone(),
+                    y: het_map.y.clone(),
+                    z: het_map.z.clone(),
+                    wind_speeds: Some(self.wind_speeds.clone()),
+                    wind_directions: Some(self.wind_directions.clone()),
+                    speed_multipliers: Array2::zeros((n_conditions, n_points)),
+                })
+        } else {
+            // No heterogeneous map, return empty config
+            HeterogeneousInflowConfig {
+                x: Array1::from_vec(vec![]),
+                y: Array1::from_vec(vec![]),
+                z: None,
+                wind_speeds: Some(self.wind_speeds.clone()),
+                wind_directions: Some(self.wind_directions.clone()),
+                speed_multipliers: Array2::from_shape_vec((n_conditions, 0), vec![]).unwrap(),
+            }
+        }
+    }
+
+    fn set_layout(&mut self, _layout_x: &Option<Array1>, _layout_y: &Option<Array1>) {
+        // WindRose doesn't support layout changes through this interface
+    }
+
+    fn unpack(
+        &self,
+    ) -> (
+        Array1,
+        Array1,
+        Array1,
+        Array2,
+        Array2,
+        HeterogeneousInflowConfig,
+    ) {
         let n_dir = self.wind_directions.len();
         let n_ws = self.wind_speeds.len();
-        
+
         let default_freq = Array2::from_elem((n_dir, n_ws), 1.0);
         let default_value = Array2::from_elem((n_dir, n_ws), 1.0);
         let freq = self.freq_table.as_ref().unwrap_or(&default_freq);
         let value = self.value_table.as_ref().unwrap_or(&default_value);
-        
+
         let mut wind_directions = Vec::new();
         let mut wind_speeds = Vec::new();
         let mut turbulence_intensities = Vec::new();
         let mut frequencies = Vec::new();
         let mut values = Vec::new();
-        let mut nonzero_indices = Vec::new();
-        
+
         for i in 0..n_dir {
             for j in 0..n_ws {
                 if freq[[i, j]] > 0.0 {
@@ -580,23 +1469,22 @@ impl WindData for WindRose {
                     turbulence_intensities.push(self.ti_table[[i, j]]);
                     frequencies.push(freq[[i, j]]);
                     values.push(value[[i, j]]);
-                    nonzero_indices.push(wind_directions.len() - 1);
                 }
             }
         }
-        
+
         // Convert to 2D arrays with single column for single turbine
         let n = frequencies.len();
         let freq_2d = Array2::from_shape_vec((n, 1), frequencies).unwrap();
         let value_2d = Array2::from_shape_vec((n, 1), values).unwrap();
-        
+
         (
             Array1::from_vec(wind_directions),
             Array1::from_vec(wind_speeds),
             Array1::from_vec(turbulence_intensities),
             freq_2d,
             value_2d,
-            nonzero_indices,
+            self.heterogeneous_inflow_config(),
         )
     }
 }
@@ -606,10 +1494,10 @@ impl WindData for WindRose {
 pub struct WindTIRose {
     pub wind_directions: Array1,
     pub wind_speeds: Array1,
-    pub turbulence_intensities: Array1,  // Additional dimension
-    pub ti_table: Array3,                 // [n_directions, n_speeds, n_tis]
-    pub freq_table: Option<Array2>,       // [n_directions, n_speeds]
-    pub value_table: Option<Array2>,      // [n_directions, n_speeds]
+    pub turbulence_intensities: Array1, // Additional dimension
+    pub ti_table: Array3,               // [n_directions, n_speeds, n_tis]
+    pub freq_table: Option<Array2>,     // [n_directions, n_speeds]
+    pub value_table: Option<Array2>,    // [n_directions, n_speeds]
 }
 
 impl Default for WindTIRose {
@@ -637,11 +1525,11 @@ impl WindTIRose {
         let n_dir = wind_directions.len();
         let n_ws = wind_speeds.len();
         let n_ti = turbulence_intensities.len();
-        
+
         if ti_table.shape() != &[n_dir, n_ws, n_ti] {
             anyhow::bail!("ti_table must have shape ({}, {}, {})", n_dir, n_ws, n_ti);
         }
-        
+
         Ok(Self {
             wind_directions,
             wind_speeds,
@@ -651,7 +1539,7 @@ impl WindTIRose {
             value_table,
         })
     }
-    
+
     /// Assign value using a function
     pub fn assign_value_using_wd_ws_ti_function<F>(&mut self, func: F, normalize: bool)
     where
@@ -660,9 +1548,13 @@ impl WindTIRose {
         let n_dir = self.wind_directions.len();
         let n_ws = self.wind_speeds.len();
         let mut value_table = Array2::from_shape_fn((n_dir, n_ws), |(i, j)| {
-            func(self.wind_directions[i], self.wind_speeds[j], self.turbulence_intensities[0])
+            func(
+                self.wind_directions[i],
+                self.wind_speeds[j],
+                self.turbulence_intensities[0],
+            )
         });
-        
+
         if normalize {
             let mean: Float = value_table.iter().sum::<Float>() / (n_dir * n_ws) as Float;
             if mean > 0.0 {
@@ -671,10 +1563,10 @@ impl WindTIRose {
                 }
             }
         }
-        
+
         self.value_table = Some(value_table);
     }
-    
+
     /// Assign value using piecewise linear
     pub fn assign_value_piecewise_linear(
         &mut self,
@@ -695,13 +1587,13 @@ impl WindTIRose {
                 value_zero_ws + slope_1 * (ws_knee - 3.0) + slope_2 * (ws - ws_knee)
             }
         });
-        
+
         if limit_to_zero {
             for val in &mut value_table {
                 *val = val.max(0.0);
             }
         }
-        
+
         if normalize {
             let mean: Float = value_table.iter().sum::<Float>() / (n_dir * n_ws) as Float;
             if mean > 0.0 {
@@ -710,28 +1602,36 @@ impl WindTIRose {
                 }
             }
         }
-        
+
         self.value_table = Some(value_table);
     }
-    
+
     /// Unpack for simulation
-    pub fn unpack(&self) -> (Array1, Array1, Array1, Array2, Array2, Vec<usize>) {
+    pub fn unpack(
+        &self,
+    ) -> (
+        Array1,
+        Array1,
+        Array1,
+        Array2,
+        Array2,
+        HeterogeneousInflowConfig,
+    ) {
         let n_dir = self.wind_directions.len();
         let n_ws = self.wind_speeds.len();
         let n_ti = self.turbulence_intensities.len();
-        
+
         let default_freq = Array2::from_elem((n_dir, n_ws), 1.0);
         let default_value = Array2::from_elem((n_dir, n_ws), 1.0);
         let freq = self.freq_table.as_ref().unwrap_or(&default_freq);
         let value = self.value_table.as_ref().unwrap_or(&default_value);
-        
+
         let mut wind_directions = Vec::new();
         let mut wind_speeds = Vec::new();
         let mut turbulence_intensities = Vec::new();
         let mut frequencies = Vec::new();
         let mut values = Vec::new();
-        let mut nonzero_indices = Vec::new();
-        
+
         for i in 0..n_dir {
             for j in 0..n_ws {
                 for k in 0..n_ti {
@@ -741,24 +1641,23 @@ impl WindTIRose {
                         turbulence_intensities.push(self.ti_table[[i, j, k]]);
                         frequencies.push(freq[[i, j]]);
                         values.push(value[[i, j]]);
-                        nonzero_indices.push(wind_directions.len() - 1);
                     }
                 }
             }
         }
-        
+
         // Convert to 2D arrays with single column for single turbine
         let n = frequencies.len();
         let freq_2d = Array2::from_shape_vec((n, 1), frequencies).unwrap();
         let value_2d = Array2::from_shape_vec((n, 1), values).unwrap();
-        
+
         (
             Array1::from_vec(wind_directions),
             Array1::from_vec(wind_speeds),
             Array1::from_vec(turbulence_intensities),
             freq_2d,
             value_2d,
-            nonzero_indices,
+            self.heterogeneous_inflow_config(),
         )
     }
 }
@@ -767,21 +1666,87 @@ impl WindData for WindTIRose {
     fn wind_speeds(&self) -> Array1 {
         self.wind_speeds.clone()
     }
-    
+
     fn wind_directions(&self) -> Array1 {
         self.wind_directions.clone()
     }
-    
+
     fn turbulence_intensities(&self) -> Array1 {
         self.turbulence_intensities.clone()
     }
-    
+
     fn n_conditions(&self) -> usize {
         self.wind_directions.len() * self.wind_speeds.len() * self.turbulence_intensities.len()
     }
-    
-    fn unpack(&self) -> (Array1, Array1, Array1, Array2, Array2, Vec<usize>) {
-        self.unpack()
+
+    fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig {
+        let n_conditions = self.n_conditions();
+        HeterogeneousInflowConfig {
+            x: Array1::from_vec(vec![]),
+            y: Array1::from_vec(vec![]),
+            z: None,
+            wind_speeds: Some(self.wind_speeds.clone()),
+            wind_directions: Some(self.wind_directions.clone()),
+            speed_multipliers: Array2::from_shape_vec((n_conditions, 0), vec![]).unwrap(),
+        }
+    }
+
+    fn set_layout(&mut self, _layout_x: &Option<Array1>, _layout_y: &Option<Array1>) {
+        // WindTIRose doesn't support layout changes
+    }
+
+    fn unpack(
+        &self,
+    ) -> (
+        Array1,
+        Array1,
+        Array1,
+        Array2,
+        Array2,
+        HeterogeneousInflowConfig,
+    ) {
+        let n_dir = self.wind_directions.len();
+        let n_ws = self.wind_speeds.len();
+        let n_ti = self.turbulence_intensities.len();
+
+        let default_freq = Array2::from_elem((n_dir, n_ws), 1.0);
+        let default_value = Array2::from_elem((n_dir, n_ws), 1.0);
+        let freq = self.freq_table.as_ref().unwrap_or(&default_freq);
+        let value = self.value_table.as_ref().unwrap_or(&default_value);
+
+        let mut wind_directions = Vec::new();
+        let mut wind_speeds = Vec::new();
+        let mut turbulence_intensities = Vec::new();
+        let mut frequencies = Vec::new();
+        let mut values = Vec::new();
+
+        for i in 0..n_dir {
+            for j in 0..n_ws {
+                for k in 0..n_ti {
+                    if freq[[i, j]] > 0.0 {
+                        wind_directions.push(self.wind_directions[i]);
+                        wind_speeds.push(self.wind_speeds[j]);
+                        turbulence_intensities.push(self.ti_table[[i, j, k]]);
+                        frequencies.push(freq[[i, j]]);
+                        values.push(value[[i, j]]);
+                    }
+                }
+            }
+        }
+
+        // Convert to 2D arrays with single column for single turbine
+        let n = frequencies.len();
+        let freq_2d = Array2::from_shape_vec((n, 1), frequencies).unwrap();
+        let value_2d = Array2::from_shape_vec((n, 1), values).unwrap();
+
+        (
+            Array1::from_vec(wind_directions),
+            Array1::from_vec(wind_speeds),
+            Array1::from_vec(turbulence_intensities),
+            freq_2d,
+            value_2d,
+            self.heterogeneous_inflow_config(),
+        )
     }
 }
 
@@ -795,39 +1760,39 @@ mod tests {
         let wd = Array1::from_vec(vec![270.0, 280.0, 290.0]);
         let ws = Array1::from_vec(vec![8.0, 10.0, 12.0]);
         let ti = Array1::from_vec(vec![0.06, 0.08, 0.07]);
-        
+
         let ts = TimeSeries::new(wd.clone(), ws.clone(), ti.clone()).unwrap();
-        
+
         assert_eq!(ts.n_conditions(), 3);
         assert_eq!(ts.wind_directions, wd);
         assert_eq!(ts.wind_speeds, ws);
     }
-    
+
     #[test]
     fn test_time_series_with_values() {
         let wd = Array1::from_vec(vec![270.0, 280.0]);
         let ws = Array1::from_vec(vec![8.0, 10.0]);
         let ti = Array1::from_vec(vec![0.06, 0.08]);
         let values = Array1::from_vec(vec![100.0, 150.0]);
-        
+
         let ts = TimeSeries::with_values(wd, ws, ti, values).unwrap();
         assert_eq!(ts.values[0], 100.0);
         assert_eq!(ts.values[1], 150.0);
     }
-    
+
     #[test]
     fn test_time_series_assign_ti_iec() {
         let wd = Array1::from_vec(vec![270.0, 280.0, 290.0]);
         let ws = Array1::from_vec(vec![8.0, 10.0, 15.0]);
         let ti = Array1::from_vec(vec![0.06, 0.08, 0.10]);
-        
+
         let mut ts = TimeSeries::new(wd, ws, ti).unwrap();
         ts.assign_ti_using_iec_method(None);
-        
+
         // TI at 15 m/s should be approximately iref (0.07)
         assert_relative_eq!(ts.turbulence_intensities[2], 0.07, epsilon = 0.01);
     }
-    
+
     #[test]
     fn test_wind_rose_creation() {
         let wd = Array1::from_vec(vec![0.0, 90.0, 180.0, 270.0]);
@@ -836,165 +1801,179 @@ mod tests {
         let freq = Array2::from_shape_vec(
             (4, 3),
             vec![0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let wr = WindRose::new(wd, ws, ti_table, Some(freq), None).unwrap();
         assert_eq!(wr.n_conditions(), 12);
     }
-    
+
     #[test]
     fn test_wind_rose_assign_ti() {
         let wd = Array1::from_vec(vec![0.0, 90.0]);
         let ws = Array1::from_vec(vec![8.0, 10.0]);
         let ti_table = Array2::from_elem((2, 2), 0.06);
-        
+
         let mut wr = WindRose::new(wd, ws, ti_table, None, None).unwrap();
         wr.assign_ti_using_iec_method(None);
-        
+
         // All TI values should now be calculated by IEC
         for val in wr.ti_table.iter() {
             assert!(*val > 0.0 && *val < 1.0);
         }
     }
-    
+
     #[test]
     fn test_wind_rose_to_time_series() {
         let wd = Array1::from_vec(vec![0.0, 180.0]);
         let ws = Array1::from_vec(vec![8.0, 10.0]);
         let ti_table = Array2::from_shape_vec((2, 2), vec![0.06, 0.07, 0.08, 0.09]).unwrap();
         let freq = Array2::from_shape_vec((2, 2), vec![0.25, 0.25, 0.25, 0.25]).unwrap();
-        
+
         let wr = WindRose::new(wd, ws, ti_table, Some(freq), None).unwrap();
         let ts = wr.to_time_series();
-        
+
         // Should have 4 conditions (2 dirs × 2 speeds)
         assert_eq!(ts.n_conditions(), 4);
     }
-    
+
     #[test]
     fn test_wind_ti_rose_creation() {
         let wd = Array1::from_vec(vec![0.0, 180.0]);
         let ws = Array1::from_vec(vec![8.0, 10.0]);
         let ti = Array1::from_vec(vec![0.06, 0.08, 0.10]);
-        let ti_table = Array3::from_shape_fn((2, 2, 3), |(i, j, k)| {
-            0.05 + (i + j + k) as Float * 0.01
-        });
-        
+        let ti_table =
+            Array3::from_shape_fn((2, 2, 3), |(i, j, k)| 0.05 + (i + j + k) as Float * 0.01);
+
         let wir = WindTIRose::new(wd, ws, ti, ti_table, None, None).unwrap();
         assert_eq!(wir.n_conditions(), 12); // 2 × 2 × 3
     }
-    
+
     #[test]
     fn test_time_series_to_wind_rose() {
         let wd = Array1::from_vec(vec![270.0, 270.0, 270.0, 270.0]);
         let ws = Array1::from_vec(vec![8.0, 8.0, 10.0, 10.0]);
         let ti = Array1::from_vec(vec![0.06, 0.06, 0.08, 0.08]);
-        
+
         let ts = TimeSeries::new(wd, ws, ti).unwrap();
         let wr = ts.to_wind_rose(90.0, 2.0);
-        
+
         // Should have 4 direction bins (360/90) and 25 speed bins (50/2)
         assert_eq!(wr.wind_directions.len(), 4);
     }
-    
+
     #[test]
     fn test_wind_rose_by_turbine_creation() {
         let wd = Array1::from_vec(vec![0.0, 90.0, 180.0, 270.0]);
         let ws = Array1::from_vec(vec![8.0, 10.0, 12.0]);
         let ti_table = Array2::from_elem((4, 3), 0.08);
-        
+
         // Create individual wind roses for 2 turbines
         let freq1 = Array2::from_elem((4, 3), 0.25);
         let freq2 = Array2::from_elem((4, 3), 0.25);
-        
-        let wr1 = WindRose::new(wd.clone(), ws.clone(), ti_table.clone(), Some(freq1), None).unwrap();
-        let wr2 = WindRose::new(wd.clone(), ws.clone(), ti_table.clone(), Some(freq2), None).unwrap();
-        
+
+        let wr1 =
+            WindRose::new(wd.clone(), ws.clone(), ti_table.clone(), Some(freq1), None).unwrap();
+        let wr2 =
+            WindRose::new(wd.clone(), ws.clone(), ti_table.clone(), Some(freq2), None).unwrap();
+
         let wrbt = WindRoseByTurbine::new(wd, ws, ti_table, vec![wr1, wr2]).unwrap();
         assert_eq!(wrbt.n_conditions(), 12); // 4 dirs × 3 speeds
     }
-    
+
     #[test]
     fn test_wind_rose_by_turbine_set_layout() {
         let wd = Array1::from_vec(vec![0.0, 180.0]);
         let ws = Array1::from_vec(vec![8.0, 10.0]);
         let ti_table = Array2::from_elem((2, 2), 0.06);
-        
+
         // Create individual wind roses
         let freq = Array2::from_elem((2, 2), 0.25);
-        let wr1 = WindRose::new(wd.clone(), ws.clone(), ti_table.clone(), Some(freq.clone()), None).unwrap();
-        let wr2 = WindRose::new(wd.clone(), ws.clone(), ti_table.clone(), Some(freq.clone()), None).unwrap();
-        
+        let wr1 = WindRose::new(
+            wd.clone(),
+            ws.clone(),
+            ti_table.clone(),
+            Some(freq.clone()),
+            None,
+        )
+        .unwrap();
+        let wr2 = WindRose::new(
+            wd.clone(),
+            ws.clone(),
+            ti_table.clone(),
+            Some(freq.clone()),
+            None,
+        )
+        .unwrap();
+
         let mut wrbt = WindRoseByTurbine::new(wd, ws, ti_table, vec![wr1, wr2]).unwrap();
-        
+
         // Set layout
         let layout_x = Array1::from_vec(vec![0.0, 500.0]);
         let layout_y = Array1::from_vec(vec![0.0, 0.0]);
         wrbt.set_layout(layout_x, layout_y).unwrap();
-        
+
         // Should have wind roses for each turbine
         assert_eq!(wrbt.wind_roses.len(), 2);
         assert!(!wrbt.wd_flat.is_empty());
     }
-    
+
     #[test]
     fn test_weibull_cumulative() {
         // Test Weibull CDF at x = A should be 1 - exp(-1) ≈ 0.632
         // For a=10, k=2: (10/10)^2 = 1, exp(-1) ≈ 0.3679, so 1 - 0.3679 = 0.632
         let result = weibull_cumulative(10.0, 10.0, 2.0);
         assert!((result - 0.6321205588).abs() < 0.001);
-        
+
         // Test at x = 0 should return 0
         assert_eq!(weibull_cumulative(0.0, 10.0, 2.0), 0.0);
-        
+
         // Test at negative x should return 0
         assert_eq!(weibull_cumulative(-5.0, 10.0, 2.0), 0.0);
     }
-    
+
     #[test]
     fn test_generate_weibull_frequencies() {
         let wind_speeds = Array1::from_vec(vec![5.0, 7.5, 10.0, 12.5, 15.0]);
-        
+
         // Generate frequencies for Weibull A=8, k=2
         let freqs = generate_weibull_frequencies(8.0, 2.0, &wind_speeds);
-        
+
         // Should have same length as wind_speeds
         assert_eq!(freqs.len(), wind_speeds.len());
-        
+
         // Should sum to approximately 1.0
         let total: Float = freqs.iter().sum();
         assert!((total - 1.0).abs() < 0.001);
-        
+
         // All frequencies should be positive
         for &freq in &freqs {
             assert!(freq >= 0.0);
         }
     }
-    
+
     #[test]
     fn test_bilinear_interpolate() {
         let x_array = vec![0.0, 100.0, 200.0];
         let y_array = vec![0.0, 100.0, 200.0];
-        let data = Array2::from_shape_vec((3, 3), vec![
-            1.0, 2.0, 3.0,
-            4.0, 5.0, 6.0,
-            7.0, 8.0, 9.0,
-        ]).unwrap();
-        
+        let data =
+            Array2::from_shape_vec((3, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0])
+                .unwrap();
+
         // Test at exact grid point (0, 0) = data[0,0] = 1.0
         let result = bilinear_interpolate(0.0, 0.0, &x_array, &y_array, &data);
         assert!((result - 1.0).abs() < 0.001);
-        
+
         // Test at grid point (100, 0) = data[1,0] = 2.0
         let result = bilinear_interpolate(100.0, 0.0, &x_array, &y_array, &data);
         assert!((result - 2.0).abs() < 0.001);
-        
+
         // Test at center of grid cell (50, 50)
         // Bilinear interp between 1, 4, 2, 5 = (1+5)/2 * 0.5 + (2+4)/2 * 0.5 = 3.0
         let result = bilinear_interpolate(50.0, 50.0, &x_array, &y_array, &data);
         assert!((result - 3.0).abs() < 0.001);
     }
-    
+
     #[test]
     fn test_wind_rose_by_turbine_default() {
         let wrbt = WindRoseByTurbine::default();
@@ -1039,19 +2018,20 @@ pub struct WindRoseByTurbine {
 }
 
 /// Internal WRG file data structure
+#[derive(Debug, Clone, Default)]
 #[allow(dead_code)]
-struct WRGData {
-    nx: usize,
-    ny: usize,
-    xmin: Float,
-    ymin: Float,
-    grid_size: Float,
-    n_sectors: usize,
-    x_array: Vec<Float>,
-    y_array: Vec<Float>,
-    sector_freq: Array2,
-    weibull_a: Array3,
-    weibull_k: Array3,
+pub struct WRGData {
+    pub nx: usize,
+    pub ny: usize,
+    pub xmin: Float,
+    pub ymin: Float,
+    pub grid_size: Float,
+    pub n_sectors: usize,
+    pub x_array: Vec<Float>,
+    pub y_array: Vec<Float>,
+    pub sector_freq: Array3,
+    pub weibull_a: Array3,
+    pub weibull_k: Array3,
 }
 
 /// Weibull cumulative distribution function
@@ -1066,32 +2046,28 @@ fn weibull_cumulative(x: Float, a: Float, k: Float) -> Float {
 
 /// Generate wind speed frequency distribution from Weibull parameters
 #[allow(dead_code)]
-fn generate_weibull_frequencies(
-    a: Float,
-    k: Float,
-    wind_speeds: &Array1,
-) -> Array1 {
+fn generate_weibull_frequencies(a: Float, k: Float, wind_speeds: &Array1) -> Array1 {
     let n_ws = wind_speeds.len();
     let ws_step = if n_ws > 1 {
         wind_speeds[1] - wind_speeds[0]
     } else {
         1.0
     };
-    
+
     let mut frequencies = Vec::with_capacity(n_ws);
-    
+
     for i in 0..n_ws {
         let ws = wind_speeds[i];
         let ws_low = (ws - ws_step / 2.0).max(0.0);
         let ws_high = ws + ws_step / 2.0;
-        
+
         let cdf_high = weibull_cumulative(ws_high, a, k);
         let cdf_low = weibull_cumulative(ws_low, a, k);
-        
+
         let freq = (cdf_high - cdf_low).max(0.0);
         frequencies.push(freq);
     }
-    
+
     // Normalize
     let total: Float = frequencies.iter().sum();
     if total > 0.0 {
@@ -1099,7 +2075,7 @@ fn generate_weibull_frequencies(
             *freq /= total;
         }
     }
-    
+
     Array1::from_vec(frequencies)
 }
 
@@ -1115,32 +2091,32 @@ fn bilinear_interpolate(
     if x_array.len() < 2 || y_array.len() < 2 {
         return 0.0;
     }
-    
+
     // Find position in grid
     let x_idx_f = (x - x_array[0]) / (x_array[1] - x_array[0]);
     let y_idx_f = (y - y_array[0]) / (y_array[1] - y_array[0]);
-    
+
     // Clamp to grid bounds
     let x_idx_f = x_idx_f.clamp(0.0, (x_array.len() - 1) as Float);
     let y_idx_f = y_idx_f.clamp(0.0, (y_array.len() - 1) as Float);
-    
+
     let x0 = x_idx_f.floor() as usize;
     let y0 = y_idx_f.floor() as usize;
     let x1 = (x0 + 1).min(x_array.len() - 1);
     let y1 = (y0 + 1).min(y_array.len() - 1);
-    
+
     let x_frac = x_idx_f - x0 as Float;
-        let y_frac = y_idx_f - y0 as Float;
-        
-        // Bilinear interpolation (ndarray uses row-major: [row, col] = [y, x])
-        let v00 = data[[y0, x0]];
-        let v01 = data[[y0, x1]];
-        let v10 = data[[y1, x0]];
-        let v11 = data[[y1, x1]];
-    
+    let y_frac = y_idx_f - y0 as Float;
+
+    // Bilinear interpolation (ndarray uses row-major: [row, col] = [y, x])
+    let v00 = data[[y0, x0]];
+    let v01 = data[[y0, x1]];
+    let v10 = data[[y1, x0]];
+    let v11 = data[[y1, x1]];
+
     let v0 = v00 * (1.0 - x_frac) + v10 * x_frac;
     let v1 = v01 * (1.0 - x_frac) + v11 * x_frac;
-    
+
     v0 * (1.0 - y_frac) + v1 * y_frac
 }
 
@@ -1157,97 +2133,101 @@ fn interpolate_sector_data(
     if x_array.len() < 2 || y_array.len() < 2 {
         return 0.0;
     }
-    
+
     // Find position in grid
     let x_idx_f = (x - x_array[0]) / (x_array[1] - x_array[0]);
     let y_idx_f = (y - y_array[0]) / (y_array[1] - y_array[0]);
-    
+
     // Use nearest neighbor outside bounds
-    let use_nearest = x < x_array[0] || x > x_array[x_array.len() - 1] 
-                   || y < y_array[0] || y > y_array[y_array.len() - 1];
-    
+    let use_nearest = x < x_array[0]
+        || x > x_array[x_array.len() - 1]
+        || y < y_array[0]
+        || y > y_array[y_array.len() - 1];
+
     if use_nearest {
         let nearest_x = x.clamp(x_array[0], x_array[x_array.len() - 1]);
         let nearest_y = y.clamp(y_array[0], y_array[y_array.len() - 1]);
-        
+
         let x_idx = ((nearest_x - x_array[0]) / (x_array[1] - x_array[0])).round() as usize;
         let y_idx = ((nearest_y - y_array[0]) / (y_array[1] - y_array[0])).round() as usize;
-        
+
         let x_idx = x_idx.min(x_array.len() - 1);
         let y_idx = y_idx.min(y_array.len() - 1);
-        
+
         return sector_data[[x_idx, y_idx, sector]];
     }
-    
+
     // Bilinear interpolation for inside bounds
     let x0 = x_idx_f.floor() as usize;
     let y0 = y_idx_f.floor() as usize;
     let x1 = (x0 + 1).min(x_array.len() - 1);
     let y1 = (y0 + 1).min(y_array.len() - 1);
-    
+
     let x_frac = x_idx_f - x0 as Float;
     let y_frac = y_idx_f - y0 as Float;
-    
+
     let v00 = sector_data[[x0, y0, sector]];
     let v01 = sector_data[[x0, y1, sector]];
     let v10 = sector_data[[x1, y0, sector]];
     let v11 = sector_data[[x1, y1, sector]];
-    
+
     let v0 = v00 * (1.0 - x_frac) + v10 * x_frac;
     let v1 = v01 * (1.0 - x_frac) + v11 * x_frac;
-    
-        v0 * (1.0 - y_frac) + v1 * y_frac
+
+    v0 * (1.0 - y_frac) + v1 * y_frac
 }
 
 /// Read and parse a WRG file
 fn read_wrg_file(filename: &std::path::Path) -> Result<WRGData> {
     use std::fs::File;
     use std::io::{BufRead, BufReader};
-    
+
     let file = File::open(filename)?;
     let reader = BufReader::new(file);
     let mut lines: Vec<String> = Vec::new();
-    
+
     for line in reader.lines() {
         lines.push(line?);
     }
-    
+
     if lines.is_empty() {
         anyhow::bail!("WRG file is empty: {}", filename.display());
     }
-    
+
     // Parse header line: nx ny xmin ymin grid_size
     let header_parts: Vec<&str> = lines[0].trim().split_whitespace().collect();
     if header_parts.len() < 5 {
         anyhow::bail!("Invalid WRG header: expected 'nx ny xmin ymin grid_size'");
     }
-    
+
     let nx: usize = header_parts[0].parse()?;
     let ny: usize = header_parts[1].parse()?;
     let xmin: Float = header_parts[2].parse()?;
     let ymin: Float = header_parts[3].parse()?;
     let grid_size: Float = header_parts[4].parse()?;
-    
+
     // Number of sectors is in the second line
     let n_sectors: usize = lines[1].trim().parse()?;
-    
+
     // Calculate expected lines
     let data_rows_per_sector = ny + 1; // Each sector has ny data rows + 1 header
-    
+
     // Verify we have enough lines
     let expected_lines = 2 + n_sectors * data_rows_per_sector;
     if lines.len() < expected_lines {
         anyhow::bail!(
             "WRG file has {} lines but expected at least {} for {} sectors",
-            lines.len(), expected_lines, n_sectors
+            lines.len(),
+            expected_lines,
+            n_sectors
         );
     }
-    
-    // Initialize data arrays
-    let sector_freq = Array2::zeros((nx, ny));
+
+    // Initialize data arrays as 3D for sector_freq (nx, ny, n_sectors)
+    let mut sector_freq = Array3::zeros((nx, ny, n_sectors));
     let mut weibull_a = Array3::zeros((nx, ny, n_sectors));
     let mut weibull_k = Array3::zeros((nx, ny, n_sectors));
-    
+
     // Create coordinate arrays
     let mut x_array: Vec<Float> = Vec::with_capacity(nx);
     let mut y_array: Vec<Float> = Vec::with_capacity(ny);
@@ -1257,33 +2237,62 @@ fn read_wrg_file(filename: &std::path::Path) -> Result<WRGData> {
     for j in 0..ny {
         y_array.push(ymin + j as Float * grid_size);
     }
-    
-    // Parse data for each sector
+
+    // Parse data for each grid point
+    // Each line contains data for one grid point
+    // Format: x, y, z, h, then sector data (freq, A, k for each sector)
     let mut line_idx = 2;
-    for sector in 0..n_sectors {
-        line_idx += 1; // Skip frequency row (already read from header)
-        
-        // Parse Weibull parameters for this sector (ny rows of nx values each)
-        for y_idx in 0..ny {
-            let parts: Vec<&str> = lines[line_idx].trim().split_whitespace().collect();
-            line_idx += 1;
-            
-            // Each row has: A k for each x position (2 values per position)
-            let n_values = parts.len() / 2;
-            for x_idx in 0..nx {
-                if x_idx < n_values {
-                    let a_idx = x_idx * 2;
-                    let k_idx = x_idx * 2 + 1;
-                    
-                    if a_idx < parts.len() && k_idx < parts.len() {
-                        weibull_a[[x_idx, y_idx, sector]] = parts[a_idx].parse().unwrap_or(0.0);
-                        weibull_k[[x_idx, y_idx, sector]] = parts[k_idx].parse().unwrap_or(0.0);
-                    }
+    for _gid in 0..(nx * ny) {
+        if line_idx >= lines.len() {
+            break;
+        }
+        let line = &lines[line_idx];
+        line_idx += 1;
+
+        // Parse basic coordinates
+        let x_val: Float = line[10..20].trim().parse().unwrap_or(0.0);
+        let y_val: Float = line[20..30].trim().parse().unwrap_or(0.0);
+        let _z_val: Float = line[30..38].trim().parse().unwrap_or(0.0);
+        let _h_val: Float = line[38..43].trim().parse().unwrap_or(0.0);
+
+        // Find x and y indices
+        let x_idx = ((x_val - xmin) / grid_size).round() as usize;
+        let y_idx = ((y_val - ymin) / grid_size).round() as usize;
+
+        if x_idx >= nx || y_idx >= ny {
+            continue;
+        }
+
+        // Parse sector data
+        for sector in 0..n_sectors {
+            let base_pos = 72 + sector * 13;
+
+            // Frequency (probability * 1000) - 4 chars at base_pos
+            let freq_str = &line[base_pos..base_pos + 4];
+            if !freq_str.trim().is_empty() {
+                if let Ok(freq) = freq_str.trim().parse::<Float>() {
+                    sector_freq[[x_idx, y_idx, sector]] = freq / 1000.0;
+                }
+            }
+
+            // Weibull A (stored * 10) - 4 chars at base_pos + 4
+            let a_str = &line[base_pos + 4..base_pos + 8];
+            if !a_str.trim().is_empty() {
+                if let Ok(a_val) = a_str.trim().parse::<Float>() {
+                    weibull_a[[x_idx, y_idx, sector]] = a_val / 10.0;
+                }
+            }
+
+            // Weibull k (stored * 100) - 5 chars at base_pos + 8
+            let k_str = &line[base_pos + 8..base_pos + 13];
+            if !k_str.trim().is_empty() {
+                if let Ok(k_val) = k_str.trim().parse::<Float>() {
+                    weibull_k[[x_idx, y_idx, sector]] = k_val / 100.0;
                 }
             }
         }
     }
-    
+
     Ok(WRGData {
         nx,
         ny,
@@ -1334,7 +2343,8 @@ impl WindRoseByTurbine {
         }
 
         // Initialize frequency and value tables
-        let default_freq = Array2::from_elem((n_dir * n_ws, n_turbines), 1.0 / (n_dir * n_ws) as Float);
+        let default_freq =
+            Array2::from_elem((n_dir * n_ws, n_turbines), 1.0 / (n_dir * n_ws) as Float);
         let default_value = Array2::from_elem((n_dir * n_ws, n_turbines), 1.0);
 
         // Create flattened data (Cartesian product of directions and speeds)
@@ -1485,8 +2495,7 @@ impl WindRoseByTurbine {
         // Create uniform frequency table
         let freq_table = Array2::from_elem((n_dir, n_ws), 1.0 / (n_dir * n_ws) as Float);
 
-        WindRose::new(wd, ws, ti, Some(freq_table), None)
-            .unwrap_or_else(|_| WindRose::default())
+        WindRose::new(wd, ws, ti, Some(freq_table), None).unwrap_or_else(|_| WindRose::default())
     }
 
     /// Set wind directions
@@ -1503,7 +2512,7 @@ impl WindRoseByTurbine {
     pub fn set_ti_table(&mut self, ti_table: Array2) {
         self.ti_table = ti_table;
     }
-    
+
     /// Create WindRoseByTurbine from a WRG file
     ///
     /// Reads a WAsP WRG (Wind Resource Grid) file and creates a wind resource
@@ -1525,30 +2534,33 @@ impl WindRoseByTurbine {
         ti_table: Option<Array2>,
     ) -> Result<Self> {
         let filename = filename.as_ref();
-        
+
         // Read and parse WRG file
         let wrg_data = read_wrg_file(filename)?;
-        
+
         // Set default wind speeds if not provided
-        let wind_speeds = wind_speeds.unwrap_or_else(|| {
-            Array1::from_iter((0..26).map(|i| i as Float))
-        });
-        
+        let wind_speeds =
+            wind_speeds.unwrap_or_else(|| Array1::from_iter((0..26).map(|i| i as Float)));
+
         // Set default TI table if not provided
         let ti_table = ti_table.unwrap_or_else(|| {
             let n_dir = wrg_data.n_sectors;
             let n_ws = wind_speeds.len();
             Array2::from_elem((n_dir, n_ws), 0.06)
         });
-        
+
         // Calculate wind directions from WRG sectors
         let wind_directions: Array1 = (0..wrg_data.n_sectors)
             .map(|i| {
                 let angle = i as Float * (360.0 / wrg_data.n_sectors as Float);
-                if angle >= 360.0 { angle - 360.0 } else { angle }
+                if angle >= 360.0 {
+                    angle - 360.0
+                } else {
+                    angle
+                }
             })
             .collect();
-        
+
         // Create flattened data
         let n_dir = wind_directions.len();
         let n_ws = wind_speeds.len();
@@ -1562,9 +2574,9 @@ impl WindRoseByTurbine {
         }
         let wd_flat = Array1::from_vec(wd_flat_vec);
         let ws_flat = Array1::from_vec(ws_flat_vec);
-        
+
         let nonzero_freq_mask: Vec<bool> = vec![true; wd_flat.len()];
-        
+
         Ok(Self {
             wind_directions,
             wind_speeds,
@@ -1604,7 +2616,34 @@ impl WindData for WindRoseByTurbine {
         self.wd_flat.len()
     }
 
-    fn unpack(&self) -> (Array1, Array1, Array1, Array2, Array2, Vec<usize>) {
+    fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig {
+        let n_conditions = self.n_conditions();
+        HeterogeneousInflowConfig {
+            x: Array1::from_vec(vec![]),
+            y: Array1::from_vec(vec![]),
+            z: None,
+            wind_speeds: Some(self.wind_speeds.clone()),
+            wind_directions: Some(self.wind_directions.clone()),
+            speed_multipliers: Array2::from_shape_vec((n_conditions, 0), vec![]).unwrap(),
+        }
+    }
+
+    fn set_layout(&mut self, layout_x: &Option<Array1>, layout_y: &Option<Array1>) {
+        if let (Some(lx), Some(ly)) = (layout_x, layout_y) {
+            let _ = self.set_layout(lx.clone(), ly.clone());
+        }
+    }
+
+    fn unpack(
+        &self,
+    ) -> (
+        Array1,
+        Array1,
+        Array1,
+        Array2,
+        Array2,
+        HeterogeneousInflowConfig,
+    ) {
         let n_dir = self.wind_directions.len();
         let n_ws = self.wind_speeds.len();
         let n_turbines = self.wind_roses.len();
@@ -1627,14 +2666,6 @@ impl WindData for WindRoseByTurbine {
         // Build value table (same for all turbines by default)
         let value_table = Array2::from_elem((n_conditions, n_turbines), 1.0);
 
-        // Build nonzero indices
-        let nonzero_indices: Vec<usize> = self.nonzero_freq_mask
-            .iter()
-            .enumerate()
-            .filter(|(_, & nonzero)| nonzero)
-            .map(|(idx, _)| idx)
-            .collect();
-
         let ti_flat: Vec<Float> = (0..n_conditions)
             .map(|i| {
                 let d = i / n_ws;
@@ -1653,7 +2684,7 @@ impl WindData for WindRoseByTurbine {
             Array1::from_vec(ti_flat),
             freq_table,
             value_table,
-            nonzero_indices,
+            self.heterogeneous_inflow_config(),
         )
     }
 }

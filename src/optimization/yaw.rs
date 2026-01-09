@@ -551,9 +551,9 @@ impl TrapezoidBounds {
 /// Corresponds to floris.optimization.yaw_optimizer_geometric.geometric_yaw in Python FLORIS v4.6
 pub fn geometric_yaw(
     turbine_x: &[Float],
-    turbine_y: &[Float],
+    _turbine_y: &[Float],
     wind_direction: Float,
-    rotor_diameter: Float,
+    _rotor_diameter: Float,
     bounds: Option<TrapezoidBounds>,
 ) -> Vec<Float> {
     let bounds = bounds.unwrap_or_default();
@@ -561,8 +561,8 @@ pub fn geometric_yaw(
     // Rotate coordinates to align with wind direction
     // (simplified implementation - uses West as reference)
     let wind_direction_rad = wind_direction.to_radians();
-    let cos_wd = wind_direction_rad.cos();
-    let sin_wd = wind_direction_rad.sin();
+    let _cos_wd = wind_direction_rad.cos();
+    let _sin_wd = wind_direction_rad.sin();
     
     // Normalize x positions relative to first turbine
     let min_x = turbine_x.iter().fold(Float::INFINITY, |m, &x| x.min(m));

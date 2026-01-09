@@ -1,10 +1,12 @@
+use serde::Deserialize;
+use serde::Serialize;
+
+use crate::core::flow_field::FlowField;
+use crate::core::grid::GridBase;
 /// Base wake model traits and structures
 ///
 /// Corresponds to wake/geometry.py and base_classes in Python implementation
-
-use crate::types::{Float, Array1, Array2, Array4};
-use crate::core::grid::GridBase;
-use crate::core::flow_field::FlowField;
+use crate::types::{Array1, Array2, Array4, Float};
 use std::collections::HashMap;
 
 /// Base structure for wake model parameters
@@ -103,11 +105,13 @@ pub trait CombinationModel {
     ) -> anyhow::Result<HashMap<String, Array4>>;
 
     /// Main combination function
-    fn function(
-        &self,
-        wake_field: &Array4,
-        velocity_field: &Array4,
-    ) -> anyhow::Result<Array4>;
+    fn function(&self, wake_field: &Array4, velocity_field: &Array4) -> anyhow::Result<Array4>;
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum InterpMethod {
+    Nearest,
+    Linear,
+    Cubic,
 }
 
 #[cfg(test)]
@@ -120,9 +124,9 @@ mod tests {
         let mut params = HashMap::new();
         params.insert("ka".to_string(), 0.1);
         params.insert("kb".to_string(), 0.05);
-        
+
         let model = BaseModel::new(params, "wind_vector");
-        
+
         assert_eq!(model.model_dimension, "wind_vector");
         assert_eq!(model.parameters.get("ka"), Some(&0.1));
         assert_eq!(model.parameters.get("kb"), Some(&0.05));
@@ -132,12 +136,12 @@ mod tests {
     fn test_base_model_parameters() {
         let mut params = HashMap::new();
         params.insert("test_param".to_string(), 42.0);
-        
+
         let model = BaseModel::new(params.clone(), "scalar");
-        
+
         // Verify parameter access
         assert_eq!(model.parameters.get("test_param"), Some(&42.0));
-        
+
         // Verify non-existent parameter returns None
         assert_eq!(model.parameters.get("nonexistent"), None);
     }
@@ -146,10 +150,10 @@ mod tests {
     fn test_base_model_clone() {
         let mut params = HashMap::new();
         params.insert("ka".to_string(), 0.1);
-        
+
         let model1 = BaseModel::new(params, "wind_vector");
         let model2 = model1.clone();
-        
+
         assert_eq!(model1.model_dimension, model2.model_dimension);
         assert_eq!(model1.parameters.get("ka"), model2.parameters.get("ka"));
     }
