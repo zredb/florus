@@ -457,7 +457,7 @@ impl GridBase for PointsGrid {
     }
     fn sorted_indices(&self) -> &Array2 {
         // PointsGrid doesn't have sorted indices, return identity mapping
-        // This is a placeholder - in practice, PointsGrid may need proper sorting support
+        // PointsGrid is used for scattered point evaluations
         static INDICES: std::sync::OnceLock<Array2> = std::sync::OnceLock::new();
         INDICES.get_or_init(|| Array2::zeros((0, 0)))
     }
