@@ -264,6 +264,7 @@ impl WindRoseWRG {
         result
     }
 
+    #[allow(dead_code)]
     /// Calculate Weibull cumulative distribution function
     fn weibull_cumulative(&self, x: Float, a: Float, k: Float) -> Float {
         if x <= 0.0 {
@@ -273,6 +274,7 @@ impl WindRoseWRG {
         1.0 - exponent.exp()
     }
 
+    #[allow(dead_code)]
     /// Generate wind speed frequencies from Weibull parameters
     fn generate_wind_speed_frequencies_from_weibull(
         &self,

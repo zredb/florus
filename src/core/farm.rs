@@ -586,6 +586,35 @@ impl Farm {
         self.turbine_type_map = NdArray2::from_elem((n_findex, n_turbines), String::new());
         self.turbine_type_map_sorted = NdArray2::from_elem((n_findex, n_turbines), String::new());
     }
+
+    /// Set turbine layout
+    ///
+    /// Updates the turbine positions and reinitializes related properties.
+    pub fn set_layout(&mut self, layout_x: &Array1, layout_y: &Array1) -> crate::Result<()> {
+        if layout_x.len() != layout_y.len() {
+            anyhow::bail!("layout_x and layout_y must have the same number of entries");
+        }
+
+        let n_turbines = layout_x.len();
+        self.layout_x = layout_x.clone();
+        self.layout_y = layout_y.clone();
+
+        // Reconstruct derived properties
+        self.construct_hub_heights();
+        self.construct_rotor_diameters();
+        self.construct_turbine_tsrs();
+        self.construct_turbine_ref_tilts();
+        self.construct_turbine_correct_cp_ct_for_tilt();
+
+        // Reconstruct turbine map with correct number of turbines
+        if self._turbine_types.len() == 1 {
+            // Single turbine type - repeat for all positions
+            self._turbine_types = vec![self._turbine_types[0].clone(); n_turbines];
+        }
+        self.construct_turbine_map();
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

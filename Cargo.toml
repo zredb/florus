@@ -16,6 +16,10 @@ thiserror = "1.0"
 rayon = "1.10"
 nalgebra = "0.33"
 approx = "0.5"
+rand = "0.8"
+getrandom = { version = "0.2", features = ["js"] }
+argmin = "0.11"
+argmin-math = { version = "0.5", features = ["nalgebra_latest"] }
 
 [dev-dependencies]
 criterion = "0.5"

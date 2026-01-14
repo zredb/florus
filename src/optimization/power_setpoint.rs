@@ -54,7 +54,7 @@ pub fn optimize_derating_factor(
 ) -> Float {
     if wake_deficit > 0.1 && downstream_power < upstream_power * (1.0 - wake_deficit) {
         (current_derating * 0.9).max(0.5)
-    } else if downstream_power > upstream_power * 0.95 {
+    } else if downstream_power >= upstream_power * 0.95 {
         (current_derating * 1.05).min(1.0)
     } else {
         current_derating

@@ -12,33 +12,27 @@ use crate::core::FlowField;
 pub fn calculate_aep_from_time_series(
     farm: &Farm,
     time_series: &dyn WindData,
-    frequency_cutoff: Option<Float>,
+    _frequency_cutoff: Option<Float>,
 ) -> AEPResult {
-    let frequencies = time_series.wind_speeds();
     let wind_speeds = time_series.wind_speeds();
     let wind_directions = time_series.wind_directions();
     let turbulence_intensities = time_series.turbulence_intensities();
-    
+
     let mut total_energy = 0.0; // Wh
     let mut energy_by_turbine = vec![0.0; farm.n_turbines()];
-    
+
     let n_conditions = time_series.n_conditions();
-    
+
     for fi in 0..n_conditions {
-        let freq = frequencies[fi];
-        
-        // Skip if below frequency cutoff
-        if let Some(cutoff) = frequency_cutoff {
-            if freq < cutoff {
-                continue;
-            }
-        }
-        
+        // For time series, each condition represents 1 hour
+        // (TimeSeries stores individual time steps, not aggregated frequencies)
+        let hours = 1.0;
+
         // Extract conditions
         let ws = wind_speeds[fi];
         let wd = wind_directions[fi];
         let ti = turbulence_intensities[fi];
-        
+
         // Create flow field for this condition
         let flow_field = FlowField::new(
             Array1::from_vec(vec![ws]),
@@ -49,7 +43,7 @@ pub fn calculate_aep_from_time_series(
             Array1::from_vec(vec![ti]),
             90.0,
         ).unwrap();
-        
+
         // Create and run model
         let mut model = FlorisModel {
             farm: farm.clone(),
@@ -59,21 +53,30 @@ pub fn calculate_aep_from_time_series(
             solver_type: "turbine_grid".to_string(),
             model_manager: None,
         };
-        
+
         // Initialize and run
-        let _ = model.initialize_grid();
-        let _ = model.initialize_flow_field();
-        let _ = model.run();
-        
+        if let Err(e) = model.initialize_grid() {
+            eprintln!("Grid initialization failed: {:?}", e);
+            continue;
+        }
+        if let Err(e) = model.initialize_flow_field() {
+            eprintln!("Flow field initialization failed: {:?}", e);
+            continue;
+        }
+        if let Err(e) = model.run() {
+            eprintln!("Model run failed: {:?}", e);
+            continue;
+        }
+
         // Get power for each turbine
         let powers = model.get_turbine_powers();
         let shape = powers.shape();
         let n_turbines = shape[1];
-        
+
         // Energy = Power * Time (hours)
-        let hours = freq;
+        // Note: powers has shape [1, n_turbines] since each model run is for 1 findex
         let energy_kwh = powers.mapv(|p| p / 1000.0 * hours);
-        
+
         // Sum energy for this condition
         for ti_idx in 0..n_turbines {
             energy_by_turbine[ti_idx] += energy_kwh[[0, ti_idx]];
@@ -215,20 +218,20 @@ mod tests {
         let layout_x = Array1::from_vec(vec![0.0, 630.0]);
         let layout_y = Array1::from_vec(vec![0.0, 0.0]);
         let turbine_types = vec!["nrel_5MW".to_string(); 2];
-        
+
         let farm = crate::core::Farm::new(layout_x, layout_y, turbine_types).unwrap();
-        
+
         let ws = Array1::from_vec(vec![8.0, 8.0, 10.0, 10.0]);
         let wd = Array1::from_vec(vec![270.0, 270.0, 270.0, 270.0]);
         let ti = Array1::from_vec(vec![0.06, 0.06, 0.06, 0.06]);
       //  let freq = Array1::from_vec(vec![2190.0, 2190.0, 2190.0, 2190.0]); // 4 seasons, 2190 hours each
-        
-        let time_series = TimeSeries::new(ws, wd, ti).unwrap();
-        
+
+        let time_series = TimeSeries::new(wd, ws, ti).unwrap();
+
         // Create a simple AEP calculation test
         let result = calculate_aep_from_time_series(&farm, &time_series, None);
-        
-        assert!(result.conditions_processed > 0);
-        assert!(result.total_energy_mwh > 0.0);
+
+        assert!(result.conditions_processed > 0, "No conditions processed");
+        assert!(result.total_energy_mwh > 0.0, "Total energy is 0: {:?}", result);
     }
 }

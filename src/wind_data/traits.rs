@@ -1,11 +1,9 @@
 //! WindData trait and common types for wind data structures.
 //!
 //! This module defines the base trait that all wind data sources must implement.
-
-use crate::core::base::InterpMethod;
-use crate::heterogeneous_map::{HeterogeneousInflowConfig, HeterogeneousMap, MultidimConditions};
+//!
 use crate::types::{Array1, Array2, Float};
-use crate::Result;
+use crate::heterogeneous_map::HeterogeneousInflowConfig;
 
 /// Base trait for wind data sources
 ///

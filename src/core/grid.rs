@@ -21,6 +21,8 @@ pub trait GridBase {
         None
     }
     fn average_method(&self) -> AveragingMethod;
+    fn sorted_indices(&self) -> &Array2;
+    fn resolution(&self) -> usize;
 }
 
 /// Standard turbine grid with square rotor points
@@ -176,6 +178,12 @@ impl GridBase for TurbineGrid {
     fn average_method(&self) -> AveragingMethod {
         AveragingMethod::CubicMean
     }
+    fn sorted_indices(&self) -> &Array2 {
+        &self.sorted_indices
+    }
+    fn resolution(&self) -> usize {
+        self.grid_resolution
+    }
 }
 
 /// Turbine grid with cubature integration points
@@ -326,6 +334,12 @@ impl GridBase for TurbineCubatureGrid {
     fn average_method(&self) -> AveragingMethod {
         AveragingMethod::SimpleCubature
     }
+    fn sorted_indices(&self) -> &Array2 {
+        &self.sorted_indices
+    }
+    fn resolution(&self) -> usize {
+        self.grid_resolution
+    }
 }
 
 /// Cubature coefficients
@@ -440,6 +454,17 @@ impl GridBase for PointsGrid {
     }
     fn average_method(&self) -> AveragingMethod {
         AveragingMethod::CubicMean
+    }
+    fn sorted_indices(&self) -> &Array2 {
+        // PointsGrid doesn't have sorted indices, return identity mapping
+        // This is a placeholder - in practice, PointsGrid may need proper sorting support
+        static INDICES: std::sync::OnceLock<Array2> = std::sync::OnceLock::new();
+        INDICES.get_or_init(|| Array2::zeros((0, 0)))
+    }
+    fn resolution(&self) -> usize {
+        // PointsGrid doesn't have a traditional grid resolution
+        // Return 1 as default for single point per location
+        1
     }
 }
 

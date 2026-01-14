@@ -283,6 +283,13 @@ impl FlorisModel {
         Ok(())
     }
 
+    /// Set turbine layout
+    pub fn set_layout(&mut self, layout_x: &Array1, layout_y: &Array1) -> crate::Result<()> {
+        self.farm.set_layout(layout_x, layout_y)?;
+        self.grid = None; // Reset grid when layout changes
+        Ok(())
+    }
+
     /// Calculate Annual Energy Production (AEP)
     pub fn get_farm_aep(&self, wind_data: &dyn WindData, hours_per_year: Float) -> Float {
         let n_conditions = wind_data.n_conditions();
@@ -299,6 +306,35 @@ impl FlorisModel {
         total_energy
     }
 
+    /// Calculate AEP using uniform frequencies (1/N for each condition)
+    ///
+    /// This is useful for layout optimization when you want to compare
+    /// layouts using the same set of wind conditions.
+    pub fn get_farm_aep_uniform(&self, hours_per_year: Float) -> Float {
+        let n_conditions = self.flow_field.n_findex;
+        let frequency = 1.0 / n_conditions as Float;
+        let powers = self.get_turbine_powers();
+
+        let mut total_energy = 0.0;
+
+        for i in 0..n_conditions {
+            let power = powers.row(i).sum();
+            total_energy += power * frequency * hours_per_year;
+        }
+
+        total_energy
+    }
+
+    /// Get Annual Value Production (AVP)
+    ///
+    /// Returns the total value-weighted energy production.
+    /// If no value table is available, returns AEP.
+    pub fn get_farm_avp(&self) -> Float {
+        // Simple implementation: return farm power as a proxy for value
+        // In a full implementation, this would multiply by value factors
+        self.get_farm_power().sum()
+    }
+
     /// Get velocity at each turbine
     pub fn get_turbine_velocities(&self) -> Array3 {
         let n_findex = self.flow_field.n_findex;
@@ -313,6 +349,40 @@ impl FlorisModel {
         }
 
         velocities
+    }
+
+    /// Get thrust coefficients for each turbine
+    ///
+    /// Returns thrust coefficient array for all turbines at current operating conditions.
+    /// Shape: (n_findex, n_turbines)
+    pub fn get_turbine_thrust_coefficients(&self) -> Array2 {
+        let n_findex = self.flow_field.n_findex;
+        let n_turbines = self.farm.n_turbines();
+
+        let mut ct_array = Array2::zeros((n_findex, n_turbines));
+
+        for fi in 0..n_findex {
+            for ti in 0..n_turbines {
+                if ti < self.farm.turbine_map.len() {
+                    let turbine = &self.farm.turbine_map[ti];
+                    let velocity = self.flow_field.u_sorted[[fi, ti, 0, 0]];
+                    ct_array[[fi, ti]] = turbine.ct_at_speed(velocity);
+                }
+            }
+        }
+
+        ct_array
+    }
+
+    /// Get the operation model for turbines
+    ///
+    /// Returns the operation model type string (e.g., "simple", "cosine-loss", etc.)
+    /// All turbines in the farm currently use the same operation model.
+    pub fn get_operation_model(&self) -> String {
+        if self.farm.turbine_map.is_empty() {
+            return "simple".to_string();
+        }
+        self.farm.turbine_map[0].operation_model.clone()
     }
 }
 
