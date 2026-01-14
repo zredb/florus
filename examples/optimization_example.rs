@@ -10,7 +10,7 @@ use florus::optimization::{
     optimize_yaw_angles,
     golden_section_search_yaw,
     coordinate_descent_yaw,
-    estimate_wake_deflection,
+    estimate_wake_deflection_angle,
     yaw_cosine_loss,
 };
 
@@ -70,7 +70,7 @@ fn main() -> Result<()> {
 
     // Demonstrate wake deflection estimation
     println!("2. Wake Deflection Estimation:");
-    let deflection = estimate_wake_deflection(
+    let deflection = estimate_wake_deflection_angle(
         20.0,   // yaw angle [degrees]
         0.8,    // thrust coefficient
         126.0,  // rotor diameter [m]

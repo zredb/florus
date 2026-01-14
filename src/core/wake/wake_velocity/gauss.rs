@@ -222,6 +222,13 @@ mod tests {
             fn average_method(&self) -> AveragingMethod {
                 AveragingMethod::CubicMean
             }
+            fn sorted_indices(&self) -> &Array2 {
+                static INDICES: std::sync::OnceLock<Array2> = std::sync::OnceLock::new();
+                INDICES.get_or_init(|| Array2::zeros((1, 1)))
+            }
+            fn resolution(&self) -> usize {
+                1
+            }
         }
         FakeGrid
     }
