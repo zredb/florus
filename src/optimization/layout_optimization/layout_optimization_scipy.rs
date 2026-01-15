@@ -152,7 +152,7 @@ impl LayoutOptimizer for LayoutOptimizationScipy {
         
         // Simple coordinate descent optimization
         let max_iter = self.config.max_iterations;
-        let tolerance = self.config.tolerance;
+        let _tolerance = self.config.tolerance;
         let mut iteration = 0;
         
         for _ in 0..max_iter {

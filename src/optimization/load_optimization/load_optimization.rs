@@ -19,7 +19,7 @@ pub const POWER_SETPOINT_DISABLED: Float = 0.0;
 /// * `fmodel` - FlorisModel object
 /// * `ambient_lti` - Ambient 'load' turbulence intensity for each findex
 /// * `wake_slope` - Wake slope, lateral expansion per unit downstream distance (default: 0.3)
-/// * `max_dist_D` - Maximum distance downstream of a turbine beyond which wake
+/// * `max_dist_d` - Maximum distance downstream of a turbine beyond which wake
 ///   added turbulence is assumed to be zero, in rotor diameters (default: 10.0)
 ///
 /// # Returns
@@ -33,7 +33,7 @@ pub fn compute_lti(
     fmodel: &FlorisModel,
     ambient_lti: &[Float],
     wake_slope: Float,
-    max_dist_D: Float,
+    max_dist_d: Float,
 ) -> anyhow::Result<Array2> {
     if !fmodel.state.initialized {
         anyhow::bail!("FlorisModel must be run before computing load turbulence intensity");
@@ -53,7 +53,7 @@ pub fn compute_lti(
         );
     }
 
-    let D = fmodel.farm.rotor_diameters[0];
+    let d = fmodel.farm.rotor_diameters[0];
     let sorted_indices = grid.sorted_indices();
     let x_sorted = grid.x_sorted();
     let y_sorted = grid.y_sorted();
@@ -118,17 +118,17 @@ pub fn compute_lti(
                     continue;
                 }
 
-                let wake_width = D + wake_slope * dx;
+                let wake_width = d + wake_slope * dx;
                 if dy.abs() > wake_width {
                     continue;
                 }
 
                 let distance = (dx * dx + dy * dy).sqrt();
-                if distance >= D * max_dist_D {
+                if distance >= d * max_dist_d {
                     continue;
                 }
 
-                let ws_std_wake_add = ambient_ws / (1.5 + 0.8 * (distance / D) / ct_t.sqrt());
+                let ws_std_wake_add = ambient_ws / (1.5 + 0.8 * (distance / d) / ct_t.sqrt());
                 let lti_update = ((ws_std_wake_add.powi(2) + (ambient_lti[fi] * ambient_ws).powi(2)).sqrt()) / ambient_ws;
 
                 let sorted_idx = tj;
@@ -152,10 +152,10 @@ pub fn compute_lti(
 
 pub fn compute_turbine_voc(
     fmodel: &FlorisModel,
-    A: Float,
+    a: Float,
     ambient_lti: &[Float],
     wake_slope: Float,
-    max_dist_D: Float,
+    max_dist_d: Float,
     exp_ws_std: Float,
     exp_thrust: Float,
 ) -> anyhow::Result<Array2> {
@@ -172,8 +172,8 @@ pub fn compute_turbine_voc(
         v
     })?;
 
-    let D = fmodel.farm.rotor_diameters[0];
-    let area = PI * (D / 2.0).powi(2);
+    let d = fmodel.farm.rotor_diameters[0];
+    let area = PI * (d / 2.0).powi(2);
 
     let cts = fmodel.get_turbine_thrust_coefficients();
     let air_density = fmodel.flow_field.air_density;
@@ -187,14 +187,14 @@ pub fn compute_turbine_voc(
         }
     }
 
-    let load_ti = compute_lti(fmodel, ambient_lti, wake_slope, max_dist_D)?;
+    let load_ti = compute_lti(fmodel, ambient_lti, wake_slope, max_dist_d)?;
 
     let ws_std = &ambient_wind_speeds * &load_ti;
 
     let mut voc = Array::zeros((n_findex, n_turbines));
     for fi in 0..n_findex {
         for ti in 0..n_turbines {
-            voc[[fi, ti]] = A * ws_std[[fi, ti]].powf(exp_ws_std) * thrust[[fi, ti]].powf(exp_thrust);
+            voc[[fi, ti]] = a * ws_std[[fi, ti]].powf(exp_ws_std) * thrust[[fi, ti]].powf(exp_thrust);
         }
     }
 
@@ -203,19 +203,19 @@ pub fn compute_turbine_voc(
 
 pub fn compute_farm_voc(
     fmodel: &FlorisModel,
-    A: Float,
+    a: Float,
     ambient_lti: &[Float],
     wake_slope: Float,
-    max_dist_D: Float,
+    max_dist_d: Float,
     exp_ws_std: Float,
     exp_thrust: Float,
 ) -> anyhow::Result<Array1> {
     let turbine_voc = compute_turbine_voc(
         fmodel,
-        A,
+        a,
         ambient_lti,
         wake_slope,
-        max_dist_D,
+        max_dist_d,
         exp_ws_std,
         exp_thrust,
     )?;
@@ -237,10 +237,10 @@ pub fn compute_farm_revenue(fmodel: &FlorisModel) -> anyhow::Result<Array1> {
 
 pub fn compute_net_revenue(
     fmodel: &FlorisModel,
-    A: Float,
+    _a: Float,
     ambient_lti: &[Float],
     wake_slope: Float,
-    max_dist_D: Float,
+    max_dist_d: Float,
     exp_ws_std: Float,
     exp_thrust: Float,
 ) -> anyhow::Result<Array1> {
@@ -248,10 +248,10 @@ pub fn compute_net_revenue(
 
     let farm_voc = compute_farm_voc(
         fmodel,
-        A,
+        1.0,
         ambient_lti,
         wake_slope,
-        max_dist_D,
+        max_dist_d,
         exp_ws_std,
         exp_thrust,
     )?;
@@ -259,12 +259,12 @@ pub fn compute_net_revenue(
     Ok(&revenue - &farm_voc)
 }
 
-pub fn find_A_to_satisfy_rev_voc_ratio(
+pub fn find_a_to_satisfy_rev_voc_ratio(
     fmodel: &FlorisModel,
     target_rev_voc_ratio: Float,
     ambient_lti: &[Float],
     wake_slope: Float,
-    max_dist_D: Float,
+    max_dist_d: Float,
     exp_ws_std: Float,
     exp_thrust: Float,
 ) -> anyhow::Result<Float> {
@@ -275,7 +275,7 @@ pub fn find_A_to_satisfy_rev_voc_ratio(
         1.0,
         ambient_lti,
         wake_slope,
-        max_dist_D,
+        max_dist_d,
         exp_ws_std,
         exp_thrust,
     )?;
@@ -286,12 +286,12 @@ pub fn find_A_to_satisfy_rev_voc_ratio(
     Ok((total_revenue / total_voc) / target_rev_voc_ratio)
 }
 
-pub fn find_A_to_satisfy_target_VOC_per_MW(
+pub fn find_a_to_satisfy_target_voc_per_mw(
     fmodel: &FlorisModel,
-    target_VOC_per_MW_findex: Float,
+    target_voc_per_mw_findex: Float,
     ambient_lti: &[Float],
     wake_slope: Float,
-    max_dist_D: Float,
+    max_dist_d: Float,
     exp_ws_std: Float,
     exp_thrust: Float,
 ) -> anyhow::Result<Float> {
@@ -306,7 +306,7 @@ pub fn find_A_to_satisfy_target_VOC_per_MW(
         1.0,
         ambient_lti,
         wake_slope,
-        max_dist_D,
+        max_dist_d,
         exp_ws_std,
         exp_thrust,
     )?;
@@ -314,15 +314,15 @@ pub fn find_A_to_satisfy_target_VOC_per_MW(
     let total_power: Float = farm_power.sum();
     let total_voc: Float = farm_voc.sum();
 
-    Ok(1e-6 * target_VOC_per_MW_findex / (total_voc / total_power))
+    Ok(1e-6 * target_voc_per_mw_findex / (total_voc / total_power))
 }
 
 pub fn optimize_power_setpoints(
     fmodel: &mut FlorisModel,
-    A: Float,
+    a: Float,
     ambient_lti: &[Float],
     wake_slope: Float,
-    max_dist_D: Float,
+    max_dist_d: Float,
     exp_ws_std: Float,
     exp_thrust: Float,
     power_setpoint_initial: Option<&Array2>,
@@ -369,10 +369,10 @@ pub fn optimize_power_setpoints(
 
     let mut net_revenue_opt = compute_net_revenue(
         fmodel,
-        A,
+        a,
         ambient_lti,
         wake_slope,
-        max_dist_D,
+        max_dist_d,
         exp_ws_std,
         exp_thrust,
     )?;
@@ -389,10 +389,10 @@ pub fn optimize_power_setpoints(
 
                 let test_net_revenue = compute_net_revenue(
                     fmodel,
-                    A,
+                    a,
                     ambient_lti,
                     wake_slope,
-                    max_dist_D,
+                    max_dist_d,
                     exp_ws_std,
                     exp_thrust,
                 )?;

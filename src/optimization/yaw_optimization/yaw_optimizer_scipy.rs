@@ -67,7 +67,7 @@ impl YawOptimization for YawOptimizationScipy {
 
         fmodel.set_yaw_angles(baseline_yaw_angles.clone())?;
         fmodel.run()?;
-        let baseline_power = fmodel.get_farm_power().sum();
+        let _baseline_power = fmodel.get_farm_power().sum();
 
         let mut yaw_angles = baseline_yaw_angles.clone();
         let step_size = self.scipy_config.eps;

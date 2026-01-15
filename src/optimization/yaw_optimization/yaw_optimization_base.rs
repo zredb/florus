@@ -1,6 +1,5 @@
-use crate::types::{Array1, Array2, Array4, Float};
+use crate::types::{Array2, Float};
 use crate::floris_model::FlorisModel;
-use crate::core::grid::GridBase;
 
 /// Result of yaw optimization
 #[derive(Debug, Clone)]
@@ -203,7 +202,7 @@ pub fn simple_yaw_optimization(
         .unwrap_or_else(|| Array2::zeros((n_findex, n_turbines)));
     fmodel.set_yaw_angles(baseline_yaw_angles.clone())?;
     fmodel.run()?;
-    let baseline_power = fmodel.get_farm_power().sum();
+    let _baseline_power = fmodel.get_farm_power().sum();
 
     let mut yaw_angles = baseline_yaw_angles.clone();
 
@@ -324,7 +323,7 @@ pub fn geometric_yaw(
         .zip(turbine_y.iter())
         .map(|(&x, &y)| x * cos_wd + y * sin_wd)
         .collect();
-    let rotated_y: Vec<Float> = turbine_x
+    let _rotated_y: Vec<Float> = turbine_x
         .iter()
         .zip(turbine_y.iter())
         .map(|(&x, &y)| -x * sin_wd + y * cos_wd)
@@ -334,7 +333,7 @@ pub fn geometric_yaw(
     let max_x = rotated_x.iter().fold(Float::NEG_INFINITY, |m, &x| x.max(m));
 
     for i in 0..n_turbines {
-        let x_norm = if max_x > min_x {
+        let _x_norm = if max_x > min_x {
             (rotated_x[i] - min_x) / (max_x - min_x)
         } else {
             0.5

@@ -198,6 +198,11 @@ impl LayoutOptimizer for LayoutOptimizationPyOptSparse {
             return 0.0;
         }
 
+        if let Err(e) = fmodel.run() {
+            eprintln!("Warning: Failed to run model: {}", e);
+            return 0.0;
+        }
+
         if self.config.use_value {
             fmodel.get_farm_avp()
         } else {
@@ -249,7 +254,7 @@ impl LayoutOptimizer for LayoutOptimizationPyOptSparse {
                     improvement_pct,
                 })
             }
-            Err(e) => {
+            Err(_e) => {
                 // Return current layout as fallback
                 Ok(LayoutOptimizationResult {
                     x: initial_x,
@@ -334,11 +339,11 @@ impl LayoutOptimizer for LayoutOptimizationGoldenSection {
     fn calculate_objective(&self, x: &Array1, y: &Array1) -> Float {
         let mut fmodel = self.fmodel.clone();
 
-        if let Err(e) = fmodel.set_layout(x, y) {
+        if let Err(_e) = fmodel.set_layout(x, y) {
             return 0.0;
         }
 
-        if let Err(e) = fmodel.run() {
+        if let Err(_e) = fmodel.run() {
             return 0.0;
         }
 

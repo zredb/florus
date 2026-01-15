@@ -226,7 +226,7 @@ impl LayoutOptimizer for LayoutOptimizationRandomSearch {
         candidate_values.push(self.initial_value);
         
         // Generate remaining candidates with distance-based initialization
-        for i in 1..self.n_individuals {
+        for _i in 1..self.n_individuals {
             if let Some((x, y)) = self.generate_distance_based_layout(min_dist) {
                 candidates_x.push(x.clone());
                 candidates_y.push(y.clone());

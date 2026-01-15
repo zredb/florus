@@ -621,8 +621,6 @@ impl Farm {
 mod tests {
     use super::*;
     use crate::types::Array1;
-    use ndarray::{Array2, Array};
-    use approx::assert_relative_eq;
 
     #[test]
     fn test_farm_creation() {

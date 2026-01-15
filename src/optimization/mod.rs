@@ -45,7 +45,7 @@ pub use layout_optimization::{
 
 pub use load_optimization::{
     compute_farm_revenue, compute_farm_voc, compute_lti, compute_net_revenue, compute_turbine_voc,
-    find_A_to_satisfy_rev_voc_ratio, find_A_to_satisfy_target_VOC_per_MW, optimize_power_setpoints,
+    find_a_to_satisfy_rev_voc_ratio, find_a_to_satisfy_target_voc_per_mw, optimize_power_setpoints,
     POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED,
 };
 

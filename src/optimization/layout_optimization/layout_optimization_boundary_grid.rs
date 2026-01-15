@@ -122,7 +122,7 @@ impl LayoutOptimizationBoundaryGrid {
     /// Generate smart start positions using grid-based initialization
     fn generate_smart_start(&self) -> (Array1, Array1) {
         let grid_points = self.generate_grid_points();
-        let min_dist = self.config.smart_start_distance;
+        let _min_dist = self.config.smart_start_distance;
 
         if grid_points.is_empty() {
             // Fallback to random initialization
@@ -236,7 +236,7 @@ impl LayoutOptimizationBoundaryGrid {
                 10000 // Limit for large grids
             } else {
                 // Use binomial coefficient approximation
-                let mut count = 0usize;
+                let _count = 0usize;
                 let mut c = vec![0.0; self.n_turbines + 1];
                 c[0] = 1.0;
                 for i in 1..=self.n_turbines {
@@ -309,11 +309,11 @@ impl LayoutOptimizer for LayoutOptimizationBoundaryGrid {
     fn calculate_objective(&self, x: &Array1, y: &Array1) -> Float {
         let mut fmodel = self.fmodel.clone();
 
-        if let Err(e) = fmodel.set_layout(x, y) {
+        if let Err(_e) = fmodel.set_layout(x, y) {
             return 0.0;
         }
 
-        if let Err(e) = fmodel.run() {
+        if let Err(_e) = fmodel.run() {
             return 0.0;
         }
 
@@ -433,11 +433,11 @@ impl LayoutOptimizer for LayoutOptimizationMixedInteger {
     fn calculate_objective(&self, x: &Array1, y: &Array1) -> Float {
         let mut fmodel = self.fmodel.clone();
 
-        if let Err(e) = fmodel.set_layout(x, y) {
+        if let Err(_e) = fmodel.set_layout(x, y) {
             return 0.0;
         }
 
-        if let Err(e) = fmodel.run() {
+        if let Err(_e) = fmodel.run() {
             return 0.0;
         }
 
@@ -449,8 +449,8 @@ impl LayoutOptimizer for LayoutOptimizationMixedInteger {
     }
 
     fn optimize(&mut self) -> Result<LayoutOptimizationResult> {
-        let initial_x = self.farm_layout_x();
-        let initial_y = self.farm_layout_y();
+        let _initial_x = self.farm_layout_x();
+        let _initial_y = self.farm_layout_y();
         let min_dist = self.min_dist();
 
         // First pass: grid-based selection for discrete positions
