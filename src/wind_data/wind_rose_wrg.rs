@@ -180,9 +180,7 @@ impl WindRoseWRG {
         // Calculate wind directions from WRG sectors or use specified step
         let (wind_directions, wd_step) = if let Some(step) = wd_step {
             let n_dir = (360.0 / step).ceil() as usize;
-            let directions: Array1 = (0..n_dir)
-                .map(|i| (i as Float + 0.5) * step)
-                .collect();
+            let directions: Array1 = (0..n_dir).map(|i| (i as Float + 0.5) * step).collect();
             (directions, step)
         } else {
             let directions: Array1 = (0..wrg_data.n_sectors)
@@ -233,7 +231,12 @@ impl WindRoseWRG {
     }
 
     /// Interpolate data at a given (x, y) location
-    fn interpolate_data(&self, x: Float, y: Float, interpolants: &[RegularGridInterpolant]) -> Array1 {
+    fn interpolate_data(
+        &self,
+        x: Float,
+        y: Float,
+        interpolants: &[RegularGridInterpolant],
+    ) -> Array1 {
         let n_sectors = self.wrg_data.n_sectors;
         let mut result = Array1::zeros(n_sectors);
 
@@ -276,11 +279,7 @@ impl WindRoseWRG {
 
     #[allow(dead_code)]
     /// Generate wind speed frequencies from Weibull parameters
-    fn generate_wind_speed_frequencies_from_weibull(
-        &self,
-        a: Float,
-        k: Float,
-    ) -> (Array1, Array1) {
+    fn generate_wind_speed_frequencies_from_weibull(&self, a: Float, k: Float) -> (Array1, Array1) {
         let n_ws = self.wind_speeds.len();
         let ws_step = if n_ws > 1 {
             self.wind_speeds[1] - self.wind_speeds[0]
@@ -310,10 +309,7 @@ impl WindRoseWRG {
             }
         }
 
-        (
-            self.wind_speeds.clone(),
-            Array1::from_vec(frequencies),
-        )
+        (self.wind_speeds.clone(), Array1::from_vec(frequencies))
     }
 
     /// Get the wind rose at a specific (x, y) location
@@ -386,7 +382,7 @@ impl WindRoseWRG {
             wind_rose
         } else if wd_step < base_wd_step {
             // Need to upsample
-            wind_rose.upsample(wd_step, ws[1] - ws[0], "linear", false)
+            wind_rose.upsample(wd_step, ws[1] - ws[0], &InterpMethod::Linear, false)
         } else {
             // Need to downsample
             wind_rose.downsample(wd_step, ws[1] - ws[0], false)
@@ -414,7 +410,11 @@ impl WindRoseWRG {
             let ws_high = ws + ws_step / 2.0;
 
             let exponent_low = -((ws_low / a).powf(k));
-            let cdf_low = if ws_low <= 0.0 { 0.0 } else { 1.0 - exponent_low.exp() };
+            let cdf_low = if ws_low <= 0.0 {
+                0.0
+            } else {
+                1.0 - exponent_low.exp()
+            };
 
             let exponent_high = -((ws_high / a).powf(k));
             let cdf_high = 1.0 - exponent_high.exp();
@@ -431,10 +431,7 @@ impl WindRoseWRG {
             }
         }
 
-        (
-            wind_speeds.clone(),
-            Array1::from_vec(frequencies),
-        )
+        (wind_speeds.clone(), Array1::from_vec(frequencies))
     }
 
     /// Set the wind direction step
@@ -538,7 +535,11 @@ impl WindRoseWRG {
                 .map(|i| {
                     for rose in &self.wind_roses {
                         if let Some(ref freq) = rose.freq_table {
-                            if freq[[i % first_rose.wind_directions.len(), i / first_rose.wind_directions.len()]] > 0.0 {
+                            if freq[[
+                                i % first_rose.wind_directions.len(),
+                                i / first_rose.wind_directions.len(),
+                            ]] > 0.0
+                            {
                                 return true;
                             }
                         }
@@ -633,14 +634,7 @@ impl WindData for WindRoseWRG {
         // Loop over wind roses and collect data
         for i in 0..n_turbines {
             let wind_rose = &self.wind_roses[i];
-            let (
-                wd,
-                ws,
-                ti,
-                freq_2d,
-                value_2d,
-                _,
-            ) = wind_rose.unpack();
+            let (wd, ws, ti, freq_2d, value_2d, _) = wind_rose.unpack();
 
             if i == 0 {
                 wind_directions_unpack = wd;

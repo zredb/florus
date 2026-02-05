@@ -19,3 +19,20 @@ pub use types::{Array1, Array2, Array3, Array4, Float};
 
 /// Result type for FLORIS operations
 pub type Result<T> = std::result::Result<T, anyhow::Error>;
+
+pub enum OneOrManyD1 {
+    One(Float),
+    Many(Array1),
+}
+pub enum OneOrManyD2 {
+    One(Float),
+    Many(Array2),
+}
+pub enum OneOrManyD3 {
+    One(Float),
+    Many(Array3),
+}
+pub enum OneOrManyD4 {
+    One(Float),
+    Many(Array4),
+}

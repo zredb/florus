@@ -1,9 +1,11 @@
+//checked by zhb on 2026-1-16
+
 //! WindData trait and common types for wind data structures.
 //!
 //! This module defines the base trait that all wind data sources must implement.
 //!
+use crate::heterogeneous_map::{HeterogeneousInflowConfig, MultidimConditions};
 use crate::types::{Array1, Array2, Float};
-use crate::heterogeneous_map::HeterogeneousInflowConfig;
 
 /// Base trait for wind data sources
 ///
@@ -51,14 +53,7 @@ pub trait WindData {
     /// Unpack for reinitialization
     ///
     /// Provides wind conditions without frequency/value tables.
-    fn unpack_for_reinitialize(
-        &self,
-    ) -> (
-        Array1,
-        Array1,
-        Array1,
-        HeterogeneousInflowConfig,
-    ) {
+    fn unpack_for_reinitialize(&self) -> (Array1, Array1, Array1, HeterogeneousInflowConfig) {
         let (
             wind_directions_unpack,
             wind_speeds_unpack,
@@ -74,6 +69,25 @@ pub trait WindData {
             heterogeneous_inflow_config,
         )
     }
+
+    fn unpack_freq(&self) -> Array2 {
+        let (_, _, _, frequency_table, _, _) = self.unpack().clone();
+        frequency_table
+    }
+    fn unpack_value(&self) -> Array2 {
+        let (_, _, _, _, value_table, _) = self.unpack().clone();
+        value_table
+    }
+    fn unpack_multidim_conditions(&self) -> MultidimConditions {
+        //   NOTE: This is a temporary method for backwards compatibility and will be removed in a
+        // future release, when multidim_conditions are included in the unpack() method of child
+        // classes.
+        unimplemented!()
+    }
+    // rust 的类型系统可以保证heterogeneous_inflow_config 正确, 所以不需要check方法
+    // fn check_heterogeneous_inflow_config(&self, heterogeneous_inflow_config: HeterogeneousInflowConfig) -> anyhow::Result<()> {
+    //     Ok(())
+    // }
 }
 
 /// Turbulence intensity parameters for IEC method

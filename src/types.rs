@@ -1,7 +1,6 @@
 /// Type definitions for FLORIS-RS
 ///
 /// Corresponds to type_dec.py in Python implementation
-
 use ndarray::{Array1 as NdArray1, Array2 as NdArray2, Array3 as NdArray3, Array4 as NdArray4};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -12,15 +11,19 @@ pub type Float = f64;
 
 /// 1D array of floats
 pub type Array1 = NdArray1<Float>;
+pub type ArrayView1<'a> = ndarray::ArrayView1<'a, Float>;
 
 /// 2D array of floats
 pub type Array2 = NdArray2<Float>;
+pub type ArrayView2<'a> = ndarray::ArrayView2<'a, Float>;
 
 /// 3D array of floats
 pub type Array3 = NdArray3<Float>;
+pub type ArrayView3<'a> = ndarray::ArrayView3<'a, Float>;
 
 /// 4D array of floats
 pub type Array4 = NdArray4<Float>;
+pub type ArrayView4<'a> = ndarray::ArrayView4<'a, Float>;
 
 /// Numeric dictionary type for configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,7 +92,8 @@ mod tests {
     #[test]
     fn test_numeric_dict() {
         let mut dict = NumericDict::new();
-        dict.data.insert("key1".to_string(), ConfigValue::Float(1.0));
+        dict.data
+            .insert("key1".to_string(), ConfigValue::Float(1.0));
         assert_eq!(dict.get_scalar("key1"), Some(1.0));
     }
 }
