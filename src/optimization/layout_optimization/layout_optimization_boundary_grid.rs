@@ -351,6 +351,7 @@ impl LayoutOptimizer for LayoutOptimizationBoundaryGrid {
 
 /// Mixed integer optimizer combining grid and continuous optimization
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct LayoutOptimizationMixedInteger {
     /// FlorisModel for simulation
     fmodel: FlorisModel,

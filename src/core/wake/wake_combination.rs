@@ -1,7 +1,6 @@
 /// Wake combination models
 ///
 /// Corresponds to wake_combination/ module in Python implementation
-
 pub mod fls;
 pub mod max;
 pub mod sosfs;

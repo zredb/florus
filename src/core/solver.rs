@@ -1,7 +1,6 @@
 /// Wake solver algorithms
 ///
 /// Corresponds to core/solver.py in Python implementation
-
 use crate::core::turbine::Turbine;
 use crate::core::wake::WakeModelManager;
 use crate::core::{Farm, FlowField, GridBase};

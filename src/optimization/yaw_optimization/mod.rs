@@ -47,14 +47,14 @@
 //!
 //! # Usage Examples
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use florus::optimization::yaw_optimization::YawOptimization;
 //!
 //! // Using the trait directly
 //! let result = yaw_optimization::simple_yaw_optimization(fmodel, None)?;
 //! ```
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use florus::optimization::yaw_optimization::YawOptimizationGeometric;
 //!
 //! // Geometric optimizer for fast estimates

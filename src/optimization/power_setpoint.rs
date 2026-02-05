@@ -1,10 +1,10 @@
-/// Power Setpoint Optimization Module
-///
-/// Provides optimization functions for power setpoint control including:
-/// - Optimal power setpoint calculation for derating control
-/// - Power allocation across turbines
-///
-/// This module corresponds to floris.optimization.power_setpoint_optimization in Python FLORIS v4.6
+//! Power Setpoint Optimization Module
+//!
+//! Provides optimization functions for power setpoint control including:
+//! - Optimal power setpoint calculation for derating control
+//! - Power allocation across turbines
+//!
+//! This module corresponds to floris.optimization.power_setpoint_optimization in Python FLORIS v4.6
 
 use crate::types::{Array2, Float};
 

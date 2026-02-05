@@ -1,13 +1,13 @@
-/// Load optimization module for FLORIS-RS
-///
-/// This module implements load-aware turbine optimization that balances power production
-/// with variable operating costs (VOC). It extends FLORIS beyond power maximization to:
-///
-/// 1. Compute Load Turbulence Intensity (LTI) - IEC 61400-1 Ed.4 standard-based turbulence calculation
-/// 2. Calculate Variable Operating Costs (VOC) - Cost model based on wind speed variation and turbine thrust
-/// 3. Optimize Power Setpoints - Sequential derating optimization to maximize net revenue
-///
-/// This module corresponds to floris/optimization/load_optimization/ in Python FLORIS v4.6.
+//! Load optimization module for FLORIS-RS
+//!
+//! This module implements load-aware turbine optimization that balances power production
+//! with variable operating costs (VOC). It extends FLORIS beyond power maximization to:
+//!
+//! 1. Compute Load Turbulence Intensity (LTI) - IEC 61400-1 Ed.4 standard-based turbulence calculation
+//! 2. Calculate Variable Operating Costs (VOC) - Cost model based on wind speed variation and turbine thrust
+//! 3. Optimize Power Setpoints - Sequential derating optimization to maximize net revenue
+//!
+//! This module corresponds to floris/optimization/load_optimization/ in Python FLORIS v4.6.
 
 pub mod load_optimization;
 

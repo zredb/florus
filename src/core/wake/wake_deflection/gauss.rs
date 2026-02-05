@@ -1,7 +1,6 @@
 /// Gauss wake deflection model
 ///
 /// Based on Bastankhah and Porte-Agel (2016) - wake deflection for Gauss velocity model
-
 use crate::types::{Float, Array1, Array2};
 use crate::core::wake::{BaseModel, DeflectionModel};
 use crate::core::{GridBase, FlowField};

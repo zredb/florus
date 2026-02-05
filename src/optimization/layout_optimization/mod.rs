@@ -1,13 +1,13 @@
-/// Layout optimization module for wind farm turbine positioning
-///
-/// Provides optimization algorithms for wind farm layout including:
-/// - Random search optimization (genetic algorithm-style)
-/// - Scipy-based coordinate descent optimization
-/// - PyOptSparse-style gradient-based optimization (argmin)
-/// - Grid-based exhaustive search optimization
-/// - Mixed integer optimization (grid + continuous refinement)
-///
-/// This module corresponds to floris/optimization/layout_optimization/ in Python FLORIS v4.6
+//! Layout optimization module for wind farm turbine positioning
+//!
+//! Provides optimization algorithms for wind farm layout including:
+//! - Random search optimization (genetic algorithm-style)
+//! - Scipy-based coordinate descent optimization
+//! - PyOptSparse-style gradient-based optimization (argmin)
+//! - Grid-based exhaustive search optimization
+//! - Mixed integer optimization (grid + continuous refinement)
+//!
+//! This module corresponds to floris/optimization/layout_optimization/ in Python FLORIS v4.6
 
 // Module declarations
 pub mod layout_optimization_base;

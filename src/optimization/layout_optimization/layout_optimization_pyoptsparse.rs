@@ -18,6 +18,7 @@ use argmin::solver::linesearch::MoreThuenteLineSearch;
 ///
 /// Corresponds to floris.optimization.LayoutOptimizationPyOptSparse in Python FLORIS v4.6
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct LayoutOptimizationPyOptSparse {
     /// FlorisModel for simulation
     fmodel: FlorisModel,
@@ -270,6 +271,7 @@ impl LayoutOptimizer for LayoutOptimizationPyOptSparse {
 
 /// Golden Section Search optimizer for 1D problems
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct LayoutOptimizationGoldenSection {
     /// FlorisModel for simulation
     fmodel: FlorisModel,

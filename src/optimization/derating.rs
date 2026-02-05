@@ -1,10 +1,10 @@
-/// Derating Optimization Module
-///
-/// Provides optimization functions for turbine derating control including:
-/// - Optimal derating factor calculation
-/// - Wake-aware derating strategies
-///
-/// This module corresponds to floris.optimization.derating in Python FLORIS v4.6
+//! Derating Optimization Module
+//!
+//! Provides optimization functions for turbine derating control including:
+//! - Optimal derating factor calculation
+//! - Wake-aware derating strategies
+//!
+//! This module corresponds to floris.optimization.derating in Python FLORIS v4.6
 
 use crate::types::Float;
 

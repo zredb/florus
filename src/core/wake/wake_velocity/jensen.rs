@@ -1,6 +1,6 @@
-/// Jensen wake velocity model
-///
-/// Classical Jensen (N.O. Jensen) wake model with linear wake expansion
+//! Jensen wake velocity model
+//!
+//! Classical Jensen (N.O. Jensen) wake model with linear wake expansion
 
 use crate::types::{Float, Array2, Array4};
 use crate::core::wake::{BaseModel, VelocityModel};

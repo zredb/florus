@@ -1,6 +1,6 @@
-/// None wake velocity model
-///
-/// No wake deficit - free stream conditions maintained
+//! None wake velocity model
+//!
+//! No wake deficit - free stream conditions maintained
 
 use crate::types::{Float, Array2, Array4};
 use crate::core::wake::{BaseModel, VelocityModel};

@@ -1,6 +1,6 @@
-/// Crespo-Hernandez wake turbulence model
-///
-/// Based on Crespo et al. with Hernandez - wake-added turbulence intensity
+//! Crespo-Hernandez wake turbulence model
+//!
+//! Based on Crespo et al. with Hernandez - wake-added turbulence intensity
 
 use crate::types::{Float, Array1};
 use crate::core::wake::{BaseModel, TurbulenceModel};

@@ -1,5 +1,4 @@
 /// State management for solver
-
 use serde::{Deserialize, Serialize};
 
 /// Solver state for tracking computation progress

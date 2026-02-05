@@ -1,6 +1,6 @@
-/// Wake Model Manager
-///
-/// Manages all wake models (velocity, deflection, turbulence, combination)
+//! Wake Model Manager
+//!
+//! Manages all wake models (velocity, deflection, turbulence, combination)
 
 use crate::types::NumericDict;
 use crate::core::wake::{

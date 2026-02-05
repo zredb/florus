@@ -1,6 +1,6 @@
-/// Turbine operation models
-/// 
-/// Different control modes for turbine operation
+//! Turbine operation models
+//!
+//! Different control modes for turbine operation
 
 use crate::types::Float;
 

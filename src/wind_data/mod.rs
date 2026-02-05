@@ -57,17 +57,111 @@ pub fn validate_wind_directions(wind_directions: &ArrayView1) -> ValidationResul
         return Ok(0.0); // 单个元素，步长为0
     }
 
-    // 检查单调递增
+    // 检查单调递增（考虑循环360°的情况）
+    let mut has_wrap = false;
     for i in 1..n {
-        if wind_directions[i] <= wind_directions[i - 1] {
-            return Err(ValidationError::NotMonotonicallyIncreasing(
-                "wind_directions".to_string(),
-            ));
+        // 检测是否跨越了360°边界
+        if wind_directions[i] < wind_directions[i - 1] {
+            // 可能是跨越360°的情况，添加360°后再检查
+            if wind_directions[i] + 360.0 > wind_directions[i - 1] {
+                has_wrap = true;
+            } else {
+                return Err(ValidationError::NotMonotonicallyIncreasing(
+                    "wind_directions".to_string(),
+                ));
+            }
         }
     }
 
-    // 检查等间距（考虑循环）
-    check_and_identify_wind_direction_step(wind_directions)
+    // 如果跨越了360°，对步长检查进行特殊处理
+    if has_wrap {
+        check_and_identify_wind_direction_step_cyclic(wind_directions)
+    } else {
+        check_and_identify_wind_direction_step(wind_directions)
+    }
+}
+
+/// 检查并识别风向步长（标准单调情况）
+fn check_and_identify_wind_direction_step(wind_directions: &ArrayView1) -> ValidationResult<f64> {
+    let n = wind_directions.len();
+
+    if n < 2 {
+        return Err(ValidationError::InsufficientElements);
+    }
+
+    // 计算内部步长
+    let steps: Vec<f64> = wind_directions
+        .windows(2)
+        .into_iter()
+        .map(|w| w[1] - w[0])
+        .collect();
+
+    // 确认所有内部步长为正
+    if !steps.iter().all(|&s| s > 0.0) {
+        return Err(ValidationError::NotMonotonicallyIncreasing(
+            "wind_directions".to_string(),
+        ));
+    }
+
+    match n {
+        2 => {
+            // 对于两个元素，返回步长
+            Ok(steps[0])
+        }
+        _ => {
+            // 对于更多元素，检查所有步长是否相等
+            if are_all_close(&steps, steps[0]) {
+                Ok(steps[0])
+            } else {
+                Err(ValidationError::NotEvenlySpaced(
+                    "wind_directions".to_string(),
+                ))
+            }
+        }
+    }
+}
+
+/// 检查并识别风向步长（处理跨越360°的情况）
+fn check_and_identify_wind_direction_step_cyclic(wind_directions: &ArrayView1) -> ValidationResult<f64> {
+    let n = wind_directions.len();
+
+    if n < 2 {
+        return Err(ValidationError::InsufficientElements);
+    }
+
+    // 计算内部步长（处理跨越360°的情况）
+    let mut steps: Vec<f64> = Vec::with_capacity(n);
+    for i in 0..n - 1 {
+        let mut step = wind_directions[i + 1] - wind_directions[i];
+        if step < 0.0 {
+            step += 360.0; // 跨越360°时添加360°
+        }
+        steps.push(step);
+    }
+    // 计算跨越360°的循环步长
+    let last_step = wind_directions[0] + 360.0 - wind_directions[n - 1];
+    steps.push(last_step);
+
+    // 统计步长
+    let mut step_counts = std::collections::HashMap::new();
+    for &step in &steps {
+        let key = OrderedFloat::from(round_step(step));
+        *step_counts.entry(key).or_insert(0) += 1;
+    }
+
+    // 找到最常见的步长
+    let most_common_step = step_counts
+        .iter()
+        .max_by_key(|(_, &count)| count)
+        .map(|(&step, _)| step)
+        .unwrap();
+
+    // 检查最常见的步长出现了多少次（应该是n-1次或n次）
+    if *step_counts.get(&most_common_step).unwrap() >= n - 1 {
+        Ok(most_common_step.into_inner())
+    } else {
+        Err(ValidationError::InvalidWindDirectionSteps)
+    }
 }
 
 /// 检查风速数组的有效性
@@ -92,7 +186,7 @@ pub fn validate_wind_speeds(wind_speeds: &ArrayView1) -> ValidationResult<f64> {
     }
 
     // 检查等间距
-    check_and_identify_step_size(wind_speeds, false)
+    check_and_identify_step_size(wind_speeds, true)
 }
 
 /// 主验证函数（对应Python原逻辑）
@@ -140,89 +234,7 @@ fn is_monotonically_increasing(arr: &ArrayView1) -> bool {
     arr.windows(2).into_iter().all(|w| w[1] > w[0])
 }
 
-/// 检查并识别风向步长（特殊处理360°循环）
-fn check_and_identify_wind_direction_step(wind_directions: &ArrayView1) -> ValidationResult<f64> {
-    let n = wind_directions.len();
 
-    if n < 2 {
-        return Err(ValidationError::InsufficientElements);
-    }
-
-    // 计算内部步长
-    let steps: Vec<f64> = wind_directions
-        .windows(2)
-        .into_iter()
-        .map(|w| w[1] - w[0])
-        .collect();
-
-    // 确认所有内部步长为正（已由单调性检查保证）
-    if !steps.iter().all(|&s| s > 0.0) {
-        return Err(ValidationError::NotMonotonicallyIncreasing(
-            "wind_directions".to_string(),
-        ));
-    }
-
-    // 计算最后一个元素到第一个元素的循环步长（加上360°）
-    let last_step = wind_directions[0] - wind_directions[n - 1] + 360.0;
-
-    match n {
-        2 => {
-            // 对于两个元素，返回较小的步长
-            Ok(steps[0].min(last_step))
-        }
-        3 => {
-            // 对于三个元素的特殊处理
-            if (steps[0] - steps[1]).abs() < f64::EPSILON {
-                // 如果两个内部步长相等
-                Ok(steps[0])
-            } else if (steps[0] - last_step).abs() < f64::EPSILON {
-                Ok(steps[0])
-            } else if (steps[1] - last_step).abs() < f64::EPSILON {
-                Ok(steps[1])
-            } else {
-                Err(ValidationError::InvalidWindDirectionSteps)
-            }
-        }
-        _ => {
-            // 对于更多元素
-            if are_all_close(&steps, steps[0]) {
-                // 所有内部步长相等
-                return Ok(steps[0]);
-            }
-
-            // 统计步长出现频率
-            let mut step_counts = std::collections::HashMap::new();
-            for &step in &steps {
-                let key = OrderedFloat::from(round_step(step));
-                *step_counts.entry(key).or_insert(0) += 1;
-            }
-
-            // 如果只有一种步长（已由上面处理）
-            // 检查是否有两种步长，且其中一种只出现一次
-            if step_counts.len() == 2 {
-                let counts: Vec<&i32> = step_counts.values().collect();
-                if *counts[0] == 1 || *counts[1] == 1 {
-                    // 找到最常见的步长
-                    let most_common_step = step_counts
-                        .iter()
-                        .max_by_key(|(_, &count)| count)
-                        .map(|(&step, _)| step)
-                        .unwrap();
-
-                    // 检查循环步长是否等于最常见的步长
-                    let rounded_last_step = OrderedFloat::from(round_step(last_step));
-                    if (rounded_last_step - most_common_step).abs() < f64::EPSILON {
-                        return Ok(most_common_step.into_inner());
-                    }
-                }
-            }
-
-            Err(ValidationError::NotEvenlySpaced(
-                "wind_directions".to_string(),
-            ))
-        }
-    }
-}
 
 /// 检查并识别普通数组的步长
 fn check_and_identify_step_size(arr: &ArrayView1, is_wind_speed: bool) -> ValidationResult<f64> {

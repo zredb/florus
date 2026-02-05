@@ -1,7 +1,6 @@
 /// AEP (Annual Energy Production) calculation module
 ///
 /// Provides functions to calculate farm energy production based on wind data
-
 use crate::types::{Array1, Float};
 use crate::wind_data::{ WindData};
 use crate::FlorisModel;

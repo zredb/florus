@@ -1,6 +1,6 @@
-/// None wake turbulence model
-///
-/// No additional wake turbulence - ambient turbulence only
+//! None wake turbulence model
+//!
+//! No additional wake turbulence - ambient turbulence only
 
 use crate::types::{Float, Array1};
 use crate::core::wake::{BaseModel, TurbulenceModel};

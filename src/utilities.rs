@@ -1,6 +1,6 @@
-/// Utility functions for FLORIS-RS
-/// 
-/// Corresponds to utilities.py in the Python implementation
+//! Utility functions for FLORIS-RS
+//!
+//! Corresponds to utilities.py in the Python implementation
 
 use crate::types::{Float, Array1, Array2, Array4};
 use anyhow::{Context, Result};

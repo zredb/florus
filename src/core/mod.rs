@@ -1,7 +1,6 @@
 /// Core data structures for FLORIS-RS
 ///
 /// Corresponds to core/ module in Python implementation
-
 pub mod base;
 pub mod rotor_velocity;
 pub mod grid;

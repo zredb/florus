@@ -1,7 +1,6 @@
 /// Rotor velocity calculations
-/// 
+///
 /// Corresponds to rotor_velocity.py in the Python implementation
-
 use crate::types::{Float, Array2, Array3, Array4};
 use crate::utilities::cosd;
 use ndarray::{s, Axis};

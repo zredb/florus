@@ -1,4 +1,4 @@
-/// Turbine module organization
+//! Turbine module organization
 
 pub mod operation_models;
 

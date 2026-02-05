@@ -104,7 +104,7 @@ fn main() -> Result<()> {
     // Demonstrate coordinate descent yaw optimization
     println!("5. Coordinate Descent Yaw Optimization:");
     let mut yaw_angles = Array1::from_vec(vec![0.0, 0.0, 0.0]).insert_axis(ndarray::Axis(0));
-    let n_turbines = 3;
+    let _n_turbines = 3;
     
     // Simple power model that increases with yaw for demonstration
     let get_power = |yaw: &ndarray::Array2<f64>| {

@@ -1,7 +1,6 @@
 /// Wake model management
 ///
 /// Corresponds to wake.py in Python implementation
-
 pub mod wake_combination;
 pub mod wake_deflection;
 pub mod wake_turbulence;

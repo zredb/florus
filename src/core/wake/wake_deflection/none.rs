@@ -1,7 +1,6 @@
 /// None wake deflection model
 ///
 /// No wake deflection - wakes propagate straight downstream
-
 use crate::types::{Float, Array1, Array2};
 use crate::core::wake::{BaseModel, DeflectionModel};
 use crate::core::{GridBase, FlowField};

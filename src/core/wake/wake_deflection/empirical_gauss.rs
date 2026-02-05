@@ -1,7 +1,6 @@
 /// Empirical Gauss wake deflection model
 ///
 /// Extended Gauss model with empirical corrections for different conditions
-
 use crate::types::{Float, Array1, Array2};
 use crate::core::wake::{BaseModel, DeflectionModel};
 use crate::core::{GridBase, FlowField};

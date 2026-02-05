@@ -8,7 +8,6 @@ use crate::heterogeneous_map::{HeterogeneousInflowConfig, HeterogeneousMap, Mult
 use crate::types::{Array1, Array2, Float};
 use crate::wind_data::traits::{TIParams, WindData};
 use crate::wind_data::{ValidationError, ValidationResult};
-use crate::Result;
 use serde::{Deserialize, Serialize};
 
 /// Wind rose - aggregated wind statistics by direction/speed bins
@@ -142,6 +141,7 @@ impl WindRose {
         self.value_table.as_ref().map(|v| v.flatten().to_owned())
     }
 
+    #[allow(dead_code)]
     fn get_multidim_conditions_flat(&self) -> Option<MultidimConditions> {
         self.multidim_conditions.as_ref().map(|mc| {
             let n_dir = self.wind_directions.len();
@@ -175,9 +175,11 @@ impl WindRose {
             }
         })
     }
+    #[allow(dead_code)]
     fn n_conditions(&self) -> usize {
         self.wind_directions.len() * self.wind_speeds.len()
     }
+    #[allow(dead_code)]
     fn get_non_zero_freq_mask(&self) -> Vec<usize> {
         let n_dir = self.wind_directions.len();
         let n_ws = self.wind_speeds.len();
@@ -282,7 +284,7 @@ impl WindRose {
         &self,
         wd_step: Option<Float>,
         ws_step: Option<Float>,
-        ti_step: Option<Float>,
+        _ti_step: Option<Float>,
     ) -> Self {
         if self.wind_directions.is_empty() || self.wind_speeds.is_empty() {
             return self.clone();
@@ -303,6 +305,9 @@ impl WindRose {
             360.0
         };
 
+        let wd_step = wd_step.unwrap_or(wd_step_current);
+        let ws_step = ws_step.unwrap_or(ws_step_current);
+
         if wd_step < wd_step_current {
             panic!("wd_step must be >= current step ({}).", wd_step_current);
         }
@@ -311,22 +316,10 @@ impl WindRose {
             panic!("ws_step must be >= current step ({}).", ws_step_current);
         }
 
-        let wd_min = self
-            .wind_directions
-            .iter()
-            .fold(Float::INFINITY, |acc, &v| acc.min(v));
-        let wd_max = self
-            .wind_directions
-            .iter()
-            .fold(Float::NEG_INFINITY, |acc, &v| acc.max(v));
-        let ws_min = self
-            .wind_speeds
-            .iter()
-            .fold(Float::INFINITY, |acc, &v| acc.min(v));
-        let ws_max = self
-            .wind_speeds
-            .iter()
-            .fold(Float::NEG_INFINITY, |acc, &v| acc.max(v));
+        let wd_min = self.wind_directions.iter().fold(Float::INFINITY, |acc, &v| acc.min(v));
+        let wd_max = self.wind_directions.iter().fold(Float::NEG_INFINITY, |acc, &v| acc.max(v));
+        let ws_min = self.wind_speeds.iter().fold(Float::INFINITY, |acc, &v| acc.min(v));
+        let ws_max = self.wind_speeds.iter().fold(Float::NEG_INFINITY, |acc, &v| acc.max(v));
 
         let wd_range_min = wd_min - wd_step_current / 2.0;
         let wd_range_max = wd_max + wd_step_current / 2.0;
@@ -574,8 +567,8 @@ impl WindRose {
     ///
     /// This is a convenience method that wraps downsample() for backwards compatibility
     /// with the Python FLORIS API.
-    pub fn aggregate(&self, wd_step: Float, ws_step: Float, inplace: bool) -> Self {
-        self.downsample(wd_step, ws_step, inplace)
+    pub fn aggregate(&self, wd_step: Float, ws_step: Float, _inplace: bool) -> Self {
+        self.downsample(Some(wd_step), Some(ws_step), None)
     }
 
     /// Resample (upsample) wind rose to more bins using interpolation - wrapper for upsample
@@ -587,9 +580,9 @@ impl WindRose {
         wd_step: Float,
         ws_step: Float,
         method: &InterpMethod,
-        inplace: bool,
+        _inplace: bool,
     ) -> Self {
-        self.upsample(wd_step, ws_step, method, inplace)
+        self.upsample(wd_step, ws_step, method)
     }
 
     fn nearest_index(arr: &Array1, target: Float) -> usize {
@@ -642,8 +635,7 @@ impl WindRose {
         let n_ws = self.wind_speeds.len();
         let n_conditions = n_dir * n_ws;
 
-        let default_freq = Array2::from_elem((n_dir, n_ws), 1.0);
-        let freq = self.freq_table.as_ref().unwrap_or(&default_freq);
+        let freq = &self.freq_table;
 
         // Collect non-zero indices
         let nonzero_indices: Vec<usize> = (0..n_conditions)
@@ -725,8 +717,7 @@ impl WindRose {
         let n_dir = self.wind_directions.len();
         let n_ws = self.wind_speeds.len();
 
-        let default_freq = Array2::from_elem((n_dir, n_ws), 1.0);
-        let freq = self.freq_table.as_ref().unwrap_or(&default_freq);
+        let freq = &self.freq_table;
 
         let mut wd_flat = Vec::new();
         let mut ws_flat = Vec::new();
@@ -860,10 +851,7 @@ impl WindData for WindRose {
     }
 }
 
-fn filter_by_nonzero_freq<T>(values: &Array1, freq: &Array1) -> Array1
-where
-    T: Copy,
-{
+fn filter_by_nonzero_freq(values: &Array1, freq: &Array1) -> Array1 {
     values
         .iter()
         .zip(freq.iter())
@@ -887,7 +875,7 @@ mod tests {
         )
         .unwrap();
 
-        let wr = WindRose::new(wd, ws, ti_table, Some(freq), None).unwrap();
+        let wr = WindRose::new(wd, ws, ti_table, Some(freq), None, false, None, None).unwrap();
         assert_eq!(wr.n_conditions(), 12);
     }
 
@@ -897,7 +885,7 @@ mod tests {
         let ws = Array1::from_vec(vec![8.0, 10.0]);
         let ti_table = Array2::from_elem((2, 2), 0.06);
 
-        let mut wr = WindRose::new(wd, ws, ti_table, None, None).unwrap();
+        let mut wr = WindRose::new(wd, ws, ti_table, None, None, false, None, None).unwrap();
         wr.assign_ti_using_iec_method(None);
 
         // All TI values should now be calculated by IEC
@@ -913,7 +901,7 @@ mod tests {
         let ti_table = Array2::from_shape_vec((2, 2), vec![0.06, 0.07, 0.08, 0.09]).unwrap();
         let freq = Array2::from_shape_vec((2, 2), vec![0.25, 0.25, 0.25, 0.25]).unwrap();
 
-        let wr = WindRose::new(wd, ws, ti_table, Some(freq), None).unwrap();
+        let wr = WindRose::new(wd, ws, ti_table, Some(freq), None, false, None, None).unwrap();
         let ts = wr.to_time_series();
 
         // Should have 4 conditions (2 dirs × 2 speeds)

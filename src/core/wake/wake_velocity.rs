@@ -1,6 +1,6 @@
-/// Wake velocity models
-///
-/// Corresponds to wake_velocity/ module in Python implementation
+//! Wake velocity models
+//!
+//! Corresponds to wake_velocity/ module in Python implementation
 
 pub mod none;
 pub mod gauss;

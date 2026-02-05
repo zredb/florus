@@ -1,7 +1,6 @@
 /// Turbine model and operations
-/// 
+///
 /// Corresponds to core/turbine/ module in Python implementation
-
 use crate::types::{Float, Array2, Array4};
 use crate::core::rotor_velocity::{rotor_effective_velocity, AveragingMethod};
 use ndarray::Array;

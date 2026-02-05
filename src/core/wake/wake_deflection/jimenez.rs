@@ -1,7 +1,6 @@
 /// Jimenez wake deflection model
 ///
 /// Based on Jimenez et al. (2010) - wake deflection due to yaw misalignment
-
 use crate::types::{Float, Array1, Array2};
 use crate::core::wake::{BaseModel, DeflectionModel};
 use crate::core::{GridBase, FlowField};

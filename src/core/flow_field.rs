@@ -1,7 +1,6 @@
 /// Flow field representation
-/// 
+///
 /// Corresponds to flow_field.py
-
 use crate::types::{Float, Array1, Array4};
 use serde::{Deserialize, Serialize};
 use ndarray::Array;
@@ -122,7 +121,7 @@ impl FlowField {
             for ti in 0..n_turbines {
                 for iy in 0..n_y {
                     for iz in 0..n_z {
-                        let height_factor = (h_ref / h_ref).powf(self.wind_shear);
+                        let height_factor = 1.0_f64;
                         self.u_initial_sorted[[fi, ti, iy, iz]] = ws * height_factor;
                     }
                 }

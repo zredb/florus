@@ -367,6 +367,9 @@ impl WindRoseWRG {
             ti.clone(),
             Some(freq_table),
             None,
+            false,
+            None,
+            None,
         )
         .unwrap_or_default();
 
@@ -382,10 +385,10 @@ impl WindRoseWRG {
             wind_rose
         } else if wd_step < base_wd_step {
             // Need to upsample
-            wind_rose.upsample(wd_step, ws[1] - ws[0], &InterpMethod::Linear, false)
+            wind_rose.upsample(wd_step, ws[1] - ws[0], &InterpMethod::Linear)
         } else {
             // Need to downsample
-            wind_rose.downsample(wd_step, ws[1] - ws[0], false)
+            wind_rose.downsample(Some(wd_step), Some(ws[1] - ws[0]), None)
         }
     }
 
@@ -534,14 +537,13 @@ impl WindRoseWRG {
             self.nonzero_freq_mask = (0..self.wd_flat.len())
                 .map(|i| {
                     for rose in &self.wind_roses {
-                        if let Some(ref freq) = rose.freq_table {
-                            if freq[[
-                                i % first_rose.wind_directions.len(),
-                                i / first_rose.wind_directions.len(),
-                            ]] > 0.0
-                            {
-                                return true;
-                            }
+                        let freq = &rose.freq_table;
+                        if freq[[
+                            i % first_rose.wind_directions.len(),
+                            i / first_rose.wind_directions.len(),
+                        ]] > 0.0
+                        {
+                            return true;
                         }
                     }
                     false
@@ -749,10 +751,9 @@ impl WindRoseByTurbine {
         let nonzero_freq_mask: Vec<bool> = (0..(n_dir * n_ws))
             .map(|i| {
                 for rose in &wind_roses {
-                    if let Some(ref freq) = rose.freq_table {
-                        if freq[[i % n_dir, i / n_dir]] > 0.0 {
-                            return true;
-                        }
+                    let freq = &rose.freq_table;
+                    if freq[[i % n_dir, i / n_dir]] > 0.0 {
+                        return true;
                     }
                 }
                 false
@@ -833,6 +834,9 @@ impl WindRoseByTurbine {
                 ti_table,
                 Some(freq_table),
                 None,
+                false,
+                None,
+                None,
             )?;
 
             self.wind_roses.push(wind_rose);
@@ -849,10 +853,9 @@ impl WindRoseByTurbine {
         self.nonzero_freq_mask = (0..n_conditions)
             .map(|i| {
                 for rose in &self.wind_roses {
-                    if let Some(ref freq) = rose.freq_table {
-                        if freq[[i % n_dir, i / n_dir]] > 0.0 {
-                            return true;
-                        }
+                    let freq = &rose.freq_table;
+                    if freq[[i % n_dir, i / n_dir]] > 0.0 {
+                        return true;
                     }
                 }
                 false
@@ -881,7 +884,7 @@ impl WindRoseByTurbine {
         // Create uniform frequency table
         let freq_table = Array2::from_elem((n_dir, n_ws), 1.0 / (n_dir * n_ws) as Float);
 
-        WindRose::new(wd, ws, ti, Some(freq_table), None).unwrap_or_else(|_| WindRose::default())
+        WindRose::new(wd, ws, ti, Some(freq_table), None, false, None, None).unwrap_or_else(|_| WindRose::default())
     }
 
     /// Set wind directions
@@ -1026,12 +1029,11 @@ impl WindData for WindRoseByTurbine {
         let mut freq_table = Array2::zeros((n_conditions, n_turbines));
 
         for (t_idx, wind_rose) in self.wind_roses.iter().enumerate() {
-            if let Some(ref freq) = wind_rose.freq_table {
-                for d in 0..n_dir {
-                    for s in 0..n_ws {
-                        let idx = d * n_ws + s;
-                        freq_table[[idx, t_idx]] = freq[[d, s]];
-                    }
+            let freq = &wind_rose.freq_table;
+            for d in 0..n_dir {
+                for s in 0..n_ws {
+                    let idx = d * n_ws + s;
+                    freq_table[[idx, t_idx]] = freq[[d, s]];
                 }
             }
         }
@@ -1436,9 +1438,9 @@ mod tests {
         let freq2 = Array2::from_elem((4, 3), 0.25);
 
         let wr1 =
-            WindRose::new(wd.clone(), ws.clone(), ti_table.clone(), Some(freq1), None).unwrap();
+            WindRose::new(wd.clone(), ws.clone(), ti_table.clone(), Some(freq1), None, false, None, None).unwrap();
         let wr2 =
-            WindRose::new(wd.clone(), ws.clone(), ti_table.clone(), Some(freq2), None).unwrap();
+            WindRose::new(wd.clone(), ws.clone(), ti_table.clone(), Some(freq2), None, false, None, None).unwrap();
 
         let wrbt = WindRoseByTurbine::new(wd, ws, ti_table, vec![wr1, wr2]).unwrap();
         assert_eq!(wrbt.n_conditions(), 12); // 4 dirs × 3 speeds
@@ -1460,6 +1462,9 @@ mod tests {
             ti_table.clone(),
             Some(freq.clone()),
             None,
+            false,
+            None,
+            None,
         )
         .unwrap();
         let wr2 = WindRose::new(
@@ -1467,6 +1472,9 @@ mod tests {
             ws.clone(),
             ti_table.clone(),
             Some(freq.clone()),
+            None,
+            false,
+            None,
             None,
         )
         .unwrap();

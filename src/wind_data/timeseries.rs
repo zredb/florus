@@ -204,7 +204,7 @@ impl TimeSeries {
             wind_directions,
             wind_speeds,
             ti_table,
-            freq_table: Some(freq_table),
+            freq_table,
             value_table: None,
             heterogeneous_map: None,
             multidim_conditions: None,

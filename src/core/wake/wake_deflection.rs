@@ -1,7 +1,6 @@
 /// Wake deflection models
 ///
 /// Corresponds to wake_deflection/ module in Python implementation
-
 pub mod none;
 pub mod gauss;
 pub mod jimenez;
