@@ -24,7 +24,7 @@ pub use wake_deflection::{
 };
 
 // Re-export wake turbulence models
-pub use wake_turbulence::{CrespoHernandez, NoneTurbulence};
+pub use wake_turbulence::{CrespoHernandez, NoneTurbulence, WakeInducedMixing};
 
 // Re-export wake velocity models
 pub use wake_velocity::{GaussVelocity, JensenVelocity, NoneVelocity};
