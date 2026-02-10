@@ -1,15 +1,15 @@
-/// MAX model - Maximum wake velocity deficit
-///
-/// Takes maximum wake velocity deficit to add to base flow field
-use crate::types::Array4;
 use crate::core::wake::CombinationModel;
-use crate::core::{GridBase, FlowField};
+use crate::core::{FlowField, GridBase};
+/// SOSFS - Sum of Squares Free Stream
+///
+/// Square root of sum of squares of wake field and velocity field
+use crate::types::Array4;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy)]
-pub struct MAX;
+pub struct SOSFSCopied;
 
-impl CombinationModel for MAX {
+impl CombinationModel for SOSFSCopied {
     fn prepare_function(
         &self,
         _grid: &dyn GridBase,
@@ -19,7 +19,7 @@ impl CombinationModel for MAX {
     }
 
     fn function(&self, wake_field: &Array4, velocity_field: &Array4) -> anyhow::Result<Array4> {
-        // Take maximum of wake_field and velocity_field element-wise
+        // Square root of sum of squares: sqrt(wake^2 + velocity^2)
         let shape = wake_field.shape();
         let mut result = Array4::zeros((shape[0], shape[1], shape[2], shape[3]));
 
@@ -29,7 +29,7 @@ impl CombinationModel for MAX {
                     for z in 0..shape[3] {
                         let w_val = wake_field[[f, t, y, z]];
                         let v_val = velocity_field[[f, t, y, z]];
-                        result[[f, t, y, z]] = w_val.max(v_val);
+                        result[[f, t, y, z]] = (w_val.powi(2) + v_val.powi(2)).sqrt();
                     }
                 }
             }
@@ -41,53 +41,55 @@ impl CombinationModel for MAX {
 #[cfg(test)]
 mod tests {
     use super::*;
-use crate::types::Array1;
-use crate::types::Array2;
-use ndarray::Array;
+    use crate::types::Array1;
+    use crate::types::Array2;
     use approx::assert_relative_eq;
+    use ndarray::Array;
 
     #[test]
-    fn test_max_creation() {
-        let max_model = MAX;
-        assert_eq!(format!("{:?}", max_model), "MAX");
+    fn test_sosfs_creation() {
+        let sosfs = SOSFS;
+        assert_eq!(format!("{:?}", sosfs), "SOSFSCopied");
     }
 
     #[test]
-    fn test_max_function() {
-        let max_model = MAX;
-        
+    fn test_sosfs_function() {
+        let sosfs = SOSFS;
+
         let wake_field = Array::zeros((1, 2, 3, 3));
         let velocity_field = Array::zeros((1, 2, 3, 3));
-        
-        let result = max_model.function(&wake_field, &velocity_field);
+
+        let result = sosfs.function(&wake_field, &velocity_field);
         assert!(result.is_ok());
-        
+
         let combined = result.unwrap();
         assert_eq!(combined.shape().len(), 4);
     }
 
     #[test]
-    fn test_max_takes_maximum() {
-        let max_model = MAX;
-        
+    fn test_sosfs_sqrt_sum_squares() {
+        let sosfs = SOSFS;
+
         let mut wake_field = Array::zeros((1, 1, 2, 2));
-        wake_field[[0, 0, 0, 0]] = 0.3;
-        wake_field[[0, 0, 1, 1]] = 0.2;
-        
+        wake_field[[0, 0, 0, 0]] = 3.0;
+        wake_field[[0, 0, 1, 1]] = 0.0;
+
         let mut velocity_field = Array::zeros((1, 1, 2, 2));
-        velocity_field[[0, 0, 0, 0]] = 0.5;  // Greater than wake
-        velocity_field[[0, 0, 1, 1]] = 0.1;  // Less than wake
-        
-        let result = max_model.function(&wake_field, &velocity_field).unwrap();
-        
-        // MAX should take the maximum value
-        assert_relative_eq!(result[[0, 0, 0, 0]], 0.5);
-        assert_relative_eq!(result[[0, 0, 1, 1]], 0.2);
+        velocity_field[[0, 0, 0, 0]] = 4.0;
+        velocity_field[[0, 0, 1, 1]] = 5.0;
+
+        let result = sosfs.function(&wake_field, &velocity_field).unwrap();
+
+        // SOSFS should compute sqrt(wake^2 + velocity^2)
+        // sqrt(3^2 + 4^2) = 5.0
+        assert_relative_eq!(result[[0, 0, 0, 0]], 5.0);
+        // sqrt(0^2 + 5^2) = 5.0
+        assert_relative_eq!(result[[0, 0, 1, 1]], 5.0);
     }
 
     #[test]
-    fn test_max_prepare_function() {
-        let max_model = MAX;
+    fn test_sosfs_prepare_function() {
+        let sosfs = SOSFS;
         let empty_4d = ndarray::Array4::zeros((0, 0, 0, 0));
         let flow_field = crate::core::FlowField {
             wind_speeds: Array1::from_vec(vec![8.0]),
@@ -110,23 +112,41 @@ use ndarray::Array;
             turbulence_intensity_field: empty_4d.clone(),
             turbulence_intensity_field_sorted: empty_4d,
         };
-        let result = max_model.prepare_function(&FakeGrid, &flow_field);
+        let result = sosfs.prepare_function(&FakeGrid, &flow_field);
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
     }
-    
+
     // Fake implementations for testing
     struct FakeGrid;
     impl crate::core::GridBase for FakeGrid {
-        fn n_turbines(&self) -> usize { 1 }
-        fn n_findex(&self) -> usize { 1 }
-        fn x_sorted(&self) -> &Array4 { panic!() }
-        fn y_sorted(&self) -> &Array4 { panic!() }
-        fn z_sorted(&self) -> &Array4 { panic!() }
-        fn x_sorted_inertial_frame(&self) -> &Array4 { panic!() }
-        fn y_sorted_inertial_frame(&self) -> &Array4 { panic!() }
-        fn z_sorted_inertial_frame(&self) -> &Array4 { panic!() }
-        fn cubature_weights(&self) -> Option<&Array2> { None }
+        fn n_turbines(&self) -> usize {
+            1
+        }
+        fn n_findex(&self) -> usize {
+            1
+        }
+        fn x_sorted(&self) -> &Array4 {
+            panic!()
+        }
+        fn y_sorted(&self) -> &Array4 {
+            panic!()
+        }
+        fn z_sorted(&self) -> &Array4 {
+            panic!()
+        }
+        fn x_sorted_inertial_frame(&self) -> &Array4 {
+            panic!()
+        }
+        fn y_sorted_inertial_frame(&self) -> &Array4 {
+            panic!()
+        }
+        fn z_sorted_inertial_frame(&self) -> &Array4 {
+            panic!()
+        }
+        fn cubature_weights(&self) -> Option<&Array2> {
+            None
+        }
         fn average_method(&self) -> crate::core::AveragingMethod {
             crate::core::AveragingMethod::CubicMean
         }
@@ -134,6 +154,10 @@ use ndarray::Array;
             static INDICES: std::sync::OnceLock<Array2> = std::sync::OnceLock::new();
             INDICES.get_or_init(|| Array2::zeros((1, 1)))
         }
-        fn resolution(&self) -> usize { 1 }
+        fn resolution(&self) -> usize {
+            1
+        }
     }
 }
+
+pub use SOSFSCopied as SOSFS;
