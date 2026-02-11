@@ -3,10 +3,11 @@
 /// Corresponds to floris_model.py
 use crate::core::{Farm, FlowField, GridBase, State, TurbineGrid};
 use crate::core::wake::{WakeModelManager, WakeModelStrings};
-use crate::types::{Array1, Array2, Array3, Float};
-use crate::utilities::load_yaml;
+use crate::types::{Array1, Array2, Array3, Float, NumericDict};
+use crate::utilities::{cosd, load_yaml};
 use ndarray::Array;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 
@@ -26,6 +27,7 @@ pub struct FlorisModel {
     pub state: State,
     pub grid: Option<Box<dyn GridBase>>,
     pub solver_type: String,
+    pub turbine_grid_points: usize,
     pub model_manager: Option<WakeModelManager>,
 }
 
@@ -37,6 +39,7 @@ impl Clone for FlorisModel {
             state: self.state.clone(),
             grid: None, // Cannot clone dyn GridBase, need to reinitialize
             solver_type: self.solver_type.clone(),
+            turbine_grid_points: self.turbine_grid_points,
             model_manager: self.model_manager.as_ref().map(|m| m.clone()),
         }
     }
@@ -49,6 +52,7 @@ impl fmt::Debug for FlorisModel {
             .field("flow_field", &self.flow_field)
             .field("state", &self.state)
             .field("solver_type", &self.solver_type)
+            .field("turbine_grid_points", &self.turbine_grid_points)
             .field("grid", &"Box<dyn GridBase>")
             .field("model_manager", &self.model_manager.is_some())
             .finish()
@@ -62,7 +66,58 @@ pub struct FlorisConfig {
     pub farm: FarmConfig,
     pub solver: SolverConfig,
     #[serde(default)]
+    pub wake: Option<WakeConfig>,
+    #[serde(default)]
     pub turbine_library: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WakeConfig {
+    #[serde(default)]
+    pub model_strings: WakeModelStringsConfig,
+    #[serde(default)]
+    pub model_params: Option<HashMap<String, serde_yaml::Value>>,
+    #[serde(default)]
+    pub enable_secondary_steering: bool,
+    #[serde(default)]
+    pub enable_yaw_added_recovery: bool,
+    #[serde(default)]
+    pub use_parallel_calc: bool,
+}
+
+impl Default for WakeConfig {
+    fn default() -> Self {
+        Self {
+            model_strings: WakeModelStringsConfig::default(),
+            model_params: None,
+            enable_secondary_steering: false,
+            enable_yaw_added_recovery: false,
+            use_parallel_calc: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WakeModelStringsConfig {
+    #[serde(rename = "velocity_model")]
+    pub velocity_model: String,
+    #[serde(rename = "deflection_model")]
+    pub deflection_model: String,
+    #[serde(rename = "combination_model")]
+    pub combination_model: String,
+    #[serde(rename = "turbulence_model")]
+    pub turbulence_model: String,
+}
+
+impl Default for WakeModelStringsConfig {
+    fn default() -> Self {
+        Self {
+            velocity_model: "gauss".to_string(),
+            deflection_model: "gauss".to_string(),
+            combination_model: "fls".to_string(),
+            turbulence_model: "crespo_hernandez".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -124,13 +179,65 @@ impl FlorisModel {
 
         let state = State::new();
 
+        // Parse wake configuration
+        let wake_config = config.wake.unwrap_or_default();
+        let model_strings = WakeModelStrings {
+            velocity_model: wake_config.model_strings.velocity_model,
+            deflection_model: wake_config.model_strings.deflection_model,
+            combination_model: wake_config.model_strings.combination_model,
+            turbulence_model: wake_config.model_strings.turbulence_model,
+        };
+
+        // Parse model parameters if provided
+        let model_params: HashMap<String, NumericDict> = if let Some(params) = wake_config.model_params {
+            params.into_iter()
+                .map(|(k, v)| {
+                    // Convert serde_yaml::Value to NumericDict
+                    let dict = match v {
+                        serde_yaml::Value::Mapping(m) => {
+                            let mut data = std::collections::HashMap::new();
+                            for (key, val) in m {
+                                if let Some(s) = key.as_str() {
+                                    match val {
+                                        serde_yaml::Value::Number(n) => {
+                                            data.insert(s.to_string(), crate::types::ConfigValue::Float(n.as_f64().unwrap_or(0.0)));
+                                        }
+                                        serde_yaml::Value::String(s) => {
+                                            data.insert(s.to_string(), crate::types::ConfigValue::String(s));
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            crate::types::NumericDict { data }
+                        }
+                        _ => crate::types::NumericDict { data: std::collections::HashMap::new() },
+                    };
+                    (k, dict)
+                })
+                .collect()
+        } else {
+            HashMap::new()
+        };
+
+        let model_manager = WakeModelManager::new(
+            model_strings.clone(),
+            model_params,
+            HashMap::new(),
+            HashMap::new(),
+            wake_config.enable_secondary_steering,
+            wake_config.enable_yaw_added_recovery,
+            wake_config.use_parallel_calc,
+        )?;
+
         Ok(Self {
             farm,
             flow_field,
             state,
             grid: None,
             solver_type: config.solver.solver_type,
-            model_manager: None,
+            turbine_grid_points: config.solver.turbine_grid_points.unwrap_or(3),
+            model_manager: Some(model_manager),
         })
     }
 
@@ -142,22 +249,37 @@ impl FlorisModel {
 
         self.initialize_flow_field()?;
 
-        let model_strings = WakeModelStrings {
-            velocity_model: "gauss".to_string(),
-            deflection_model: "gauss".to_string(),
-            combination_model: "fls".to_string(),
-            turbulence_model: "crespo_hernandez".to_string(),
-        };
+        // Expand farm properties using sorted indices from grid
+        // This must be done before running the solver
+        if let Some(ref grid) = self.grid {
+            self.farm.expand_farm_properties(
+                self.flow_field.n_findex,
+                grid.sorted_coord_indices(),
+            );
+        }
 
-        let model_manager = WakeModelManager::new(
-            model_strings,
-            std::collections::HashMap::new(),
-            std::collections::HashMap::new(),
-            std::collections::HashMap::new(),
-            false,
-            false,
-            false,
-        )?;
+        // Use configured model manager or create default if not set
+        let model_manager = if let Some(ref mut mm) = self.model_manager {
+            mm.clone()
+        } else {
+            // Create default model manager if not configured
+            let model_strings = WakeModelStrings {
+                velocity_model: "gauss".to_string(),
+                deflection_model: "gauss".to_string(),
+                combination_model: "fls".to_string(),
+                turbulence_model: "crespo_hernandez".to_string(),
+            };
+
+            WakeModelManager::new(
+                model_strings,
+                std::collections::HashMap::new(),
+                std::collections::HashMap::new(),
+                std::collections::HashMap::new(),
+                false,
+                false,
+                false,
+            )?
+        };
 
         crate::core::solver::sequential_solver(
             &self.farm,
@@ -178,7 +300,7 @@ impl FlorisModel {
             coords,
             self.farm.rotor_diameters.clone(),
             self.flow_field.wind_directions.clone(),
-            3,
+            self.turbine_grid_points,
         )?;
 
         self.grid = Some(Box::new(grid));
@@ -201,6 +323,9 @@ impl FlorisModel {
     pub fn get_turbine_powers(&self) -> Array2 {
         let n_findex = self.flow_field.n_findex;
         let n_turbines = self.farm.n_turbines();
+        // Use sorted yaw angles since we're iterating in sorted order (upstream to downstream)
+        let yaw_angles_sorted = &self.farm.yaw_angles_sorted;
+        let yaw_angles = yaw_angles_sorted; // Use sorted version
 
         let mut powers = Array::zeros((n_findex, n_turbines));
 
@@ -212,17 +337,31 @@ impl FlorisModel {
             }
 
             let turbine = &self.farm.turbine_map[ti];
-            let rotor_diameter = self.farm.rotor_diameters[ti];
+            // Use sorted rotor diameters
+            let rotor_diameter = self.farm.rotor_diameters_sorted[[0, ti]];
             let area = std::f64::consts::PI * (rotor_diameter / 2.0).powi(2);
 
             for fi in 0..n_findex {
-                let v = velocities[[fi, ti, 0, 0]];
+                // Average velocity over all grid points on the rotor
+                let mut v_sum = 0.0;
+                let grid_points = velocities.shape()[2] * velocities.shape()[3];
+                for iy in 0..velocities.shape()[2] {
+                    for iz in 0..velocities.shape()[3] {
+                        v_sum += velocities[[fi, ti, iy, iz]];
+                    }
+                }
+                let mut v_avg = v_sum / grid_points as f64;
 
-                let power = if v < turbine.cut_in_wind_speed || v > turbine.cut_out_wind_speed {
+                // Apply yaw cosine correction using sorted yaw angles
+                let yaw = yaw_angles[[fi, ti]];
+                let yaw_factor = cosd(yaw).powf(3.0);
+                v_avg *= yaw_factor;
+
+                let power = if v_avg < turbine.cut_in_wind_speed || v_avg > turbine.cut_out_wind_speed {
                     0.0
                 } else {
-                    let cp = turbine.power_coefficient(v);
-                    0.5 * self.flow_field.air_density * area * v.powi(3) * cp
+                    let cp = turbine.power_coefficient(v_avg);
+                    0.5 * self.flow_field.air_density * area * v_avg.powi(3) * cp
                 };
 
                 powers[[fi, ti]] = power.min(turbine.rated_power);
@@ -421,6 +560,7 @@ mod tests {
             state: State::new(),
             grid: None,
             solver_type: "turbine_grid".to_string(),
+            turbine_grid_points: 3,
             model_manager: None,
         };
 
@@ -457,6 +597,7 @@ mod tests {
             state: State::new(),
             grid: None,
             solver_type: "turbine_grid".to_string(),
+            turbine_grid_points: 3,
             model_manager: None,
         };
 
@@ -496,6 +637,7 @@ mod tests {
             state: State::new(),
             grid: None,
             solver_type: "turbine_grid".to_string(),
+            turbine_grid_points: 3,
             model_manager: None,
         };
 

@@ -51,6 +51,7 @@ impl VelocityModel for JensenVelocity {
         _thrust_coefficient: Float,
         _hub_height: Float,
         rotor_diameter: Float,
+        turbine_index: usize,
         _model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4> {
         let shape = x.shape();
@@ -61,22 +62,21 @@ impl VelocityModel for JensenVelocity {
 
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
-        // Get turbine 0's position (the wake source)
-        let x_wake_source = x[[0, 0, 0, 0]];
-        let y_wake_source = y[[0, 0, 0, 0]];
+        // Use the specified turbine's position as the wake source
+        let x_wake_source = x[[0, turbine_index, 0, 0]];
+        let y_wake_source = y[[0, turbine_index, 0, 0]];
         
-        // Only calculate wake if we're downstream of the source
+        // Turbine upstream of reference point (x < 0) doesn't generate a wake
         if x_wake_source < 0.0 {
             return Ok(velocity_deficit);
         }
 
         for fi in 0..n_findex {
-            // Get deflection at wake source
-            let deflection_at_source = deflection_field[[fi, 0]];
+            // Get deflection at the wake source turbine
+            let deflection_at_source = deflection_field[[fi, turbine_index]];
             
             // Calculate wake radius at the source
             let r0 = rotor_diameter / 2.0;
-            //let wake_radius_source = self.calculate_wake_radius(x_wake_source, r0, turbulence_intensity);
 
             // Calculate base deficit at source
             let deficit_0 = self.calculate_deficit(axial_induction, x_wake_source, r0, turbulence_intensity);

@@ -22,6 +22,7 @@ pub trait GridBase {
     }
     fn average_method(&self) -> AveragingMethod;
     fn sorted_indices(&self) -> &Array2;
+    fn sorted_coord_indices(&self) -> &Array2;
     fn resolution(&self) -> usize;
 }
 
@@ -112,10 +113,22 @@ impl TurbineGrid {
             }
         }
 
-        // Apply sorting
-        let x_sorted = _x.clone();
-        let y_sorted = _y.clone();
-        let z_sorted = _z.clone();
+        let mut x_sorted = Array::zeros((n_findex, n_turbines, grid_resolution, grid_resolution));
+        let mut y_sorted = Array::zeros((n_findex, n_turbines, grid_resolution, grid_resolution));
+        let mut z_sorted = Array::zeros((n_findex, n_turbines, grid_resolution, grid_resolution));
+
+        for fi in 0..n_findex {
+            for ti in 0..n_turbines {
+                let original_idx = sorted_indices[[fi, ti]] as usize;
+                for i in 0..grid_resolution {
+                    for j in 0..grid_resolution {
+                        x_sorted[[fi, ti, i, j]] = _x[[fi, original_idx, i, j]];
+                        y_sorted[[fi, ti, i, j]] = _y[[fi, original_idx, i, j]];
+                        z_sorted[[fi, ti, i, j]] = _z[[fi, original_idx, i, j]];
+                    }
+                }
+            }
+        }
 
         // Reverse rotate to get inertial frame coordinates
         let (x_sorted_inertial_frame, y_sorted_inertial_frame, z_sorted_inertial_frame) =
@@ -180,6 +193,9 @@ impl GridBase for TurbineGrid {
     }
     fn sorted_indices(&self) -> &Array2 {
         &self.sorted_indices
+    }
+    fn sorted_coord_indices(&self) -> &Array2 {
+        &self.sorted_coord_indices
     }
     fn resolution(&self) -> usize {
         self.grid_resolution
@@ -337,6 +353,9 @@ impl GridBase for TurbineCubatureGrid {
     fn sorted_indices(&self) -> &Array2 {
         &self.sorted_indices
     }
+    fn sorted_coord_indices(&self) -> &Array2 {
+        &self.sorted_coord_indices
+    }
     fn resolution(&self) -> usize {
         self.grid_resolution
     }
@@ -460,6 +479,11 @@ impl GridBase for PointsGrid {
         // PointsGrid is used for scattered point evaluations
         static INDICES: std::sync::OnceLock<Array2> = std::sync::OnceLock::new();
         INDICES.get_or_init(|| Array2::zeros((0, 0)))
+    }
+    fn sorted_coord_indices(&self) -> &Array2 {
+        // PointsGrid doesn't use turbine sorting, return a static empty array
+        static COORD_INDICES: std::sync::OnceLock<Array2> = std::sync::OnceLock::new();
+        COORD_INDICES.get_or_init(|| Array2::zeros((0, 0)))
     }
     fn resolution(&self) -> usize {
         // PointsGrid doesn't have a traditional grid resolution

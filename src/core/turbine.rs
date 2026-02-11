@@ -141,21 +141,23 @@ impl Turbine {
         if wind_speed < self.cut_in_wind_speed || wind_speed > self.cut_out_wind_speed {
             return 0.0;
         }
-        
-        let power = self.interpolate(
+
+        let power_kw = self.interpolate(
             &self.power_curve_wind_speeds,
             &self.power_curve_powers,
             wind_speed,
         );
-        
+
+        // Convert kW to W for correct Cp calculation
+        let power_watts = power_kw * 1000.0;
+
         // Convert power to Cp: Cp = P / (0.5 * ρ * A * v³)
-        // Using standard air density
         let area = std::f64::consts::PI * (self.rotor_diameter / 2.0).powi(2);
         let rho = 1.225;
         let max_power = 0.5 * rho * area * wind_speed.powi(3);
-        
+
         if max_power > 0.0 {
-            (power / max_power).min(0.59) // Betz limit
+            (power_watts / max_power).min(0.59) // Betz limit
         } else {
             0.0
         }

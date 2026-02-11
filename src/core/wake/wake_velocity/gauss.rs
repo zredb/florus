@@ -53,6 +53,7 @@ impl VelocityModel for GaussVelocity {
         _thrust_coefficient: Float,
         hub_height: Float,
         rotor_diameter: Float,
+        turbine_index: usize,
         _model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4> {
         let r0 = rotor_diameter / 2.0;
@@ -65,28 +66,18 @@ impl VelocityModel for GaussVelocity {
 
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
-        // Get turbine 0's position (the wake source)
-        let x_wake_source = x[[0, 0, 0, 0]];
-        let y_wake_source = y[[0, 0, 0, 0]];
+        // Use the specified turbine's position as the wake source
+        let x_wake_source = x[[0, turbine_index, 0, 0]];
+        let y_wake_source = y[[0, turbine_index, 0, 0]];
 
-        // Only calculate wake if we're downstream of the source
-        // Allow very small x values (right at the turbine) to pass through
-        // The wake deficit will be small near the turbine and increase downstream
+        // Turbine upstream of reference point (x < 0) doesn't generate a wake
         if x_wake_source < 0.0 {
             return Ok(velocity_deficit);
         }
 
         for fi in 0..n_findex {
-            // Get wake center deflection at downstream positions
-            // deflection_field has deflection for turbine 0 at each downstream position
-            let deflection_at_source = deflection_field[[fi, 0]];
-
-            // Calculate wake parameters at the wake source
-            let sigma_y = self.calculate_sigma_y(x_wake_source, r0, turbulence_intensity);
-            let sigma_z = self.calculate_sigma_z(x_wake_source, r0, turbulence_intensity);
-
-            let deficit_0 =
-                self.calculate_deficit(axial_induction, x_wake_source, r0, turbulence_intensity);
+            // Get deflection at the wake source turbine
+            let deflection_at_source = deflection_field[[fi, turbine_index]];
 
             // Apply deficit to all grid points that are downstream
             for ti in 0..n_turbines {
@@ -99,8 +90,16 @@ impl VelocityModel for GaussVelocity {
                             continue;
                         }
 
-                        // Calculate distance from wake center
-                        // The wake center is deflected by yaw
+                        // Calculate distance from wake source
+                        let downstream_x = x_point - x_wake_source;
+
+                        // Calculate wake parameters at this downstream position
+                        let sigma_y = self.calculate_sigma_y(downstream_x, r0, turbulence_intensity);
+                        let sigma_z = self.calculate_sigma_z(downstream_x, r0, turbulence_intensity);
+
+                        let deficit_0 =
+                            self.calculate_deficit(axial_induction, downstream_x, r0, turbulence_intensity);
+
                         let y_point = y[[fi, ti, iy, iz]];
                         let z_point = z[[fi, ti, iy, iz]];
 
@@ -141,14 +140,14 @@ impl GaussVelocity {
         sigma_z0 + self.kb * x + epsilon
     }
 
-    fn calculate_deficit(&self, axial_induction: Float, x: Float, r0: Float, _ti: Float) -> Float {
+    fn calculate_deficit(&self, axial_induction: Float, x: Float, r0: Float, turbulence_intensity: Float) -> Float {
         // At x=0 (right at turbine), deficit is maximum (1 - c1)
         // As x increases, deficit decreases
         if axial_induction <= 0.0 {
             return 0.0;
         }
 
-        let sigma = self.calculate_sigma_y(x, r0, _ti);
+        let sigma = self.calculate_sigma_y(x, r0, turbulence_intensity);
         let c1 = 1.0 - axial_induction;
 
         // Bastankhah-Porte-Agel model
@@ -225,6 +224,10 @@ mod tests {
             fn sorted_indices(&self) -> &Array2 {
                 static INDICES: std::sync::OnceLock<Array2> = std::sync::OnceLock::new();
                 INDICES.get_or_init(|| Array2::zeros((1, 1)))
+            }
+            fn sorted_coord_indices(&self) -> &Array2 {
+                static COORD_INDICES: std::sync::OnceLock<Array2> = std::sync::OnceLock::new();
+                COORD_INDICES.get_or_init(|| Array2::zeros((1, 1)))
             }
             fn resolution(&self) -> usize {
                 1

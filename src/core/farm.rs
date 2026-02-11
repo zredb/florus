@@ -370,48 +370,177 @@ impl Farm {
     pub fn expand_farm_properties(
         &mut self,
         n_findex: usize,
-        _sorted_coord_indices: &NdArray2<usize>,
+        sorted_coord_indices: &Array2,
     ) {
         let n_turbines = self.n_turbines();
 
-        // 扩展农场属性
-        self.hub_heights_sorted = self
+        // Helper function to broadcast array2 from (1, n) to (n_findex, n)
+        let broadcast_array2 = |arr: &Array2| -> Array2 {
+            if arr.shape()[0] == n_findex {
+                arr.clone()
+            } else if arr.shape()[0] == 1 {
+                let mut expanded = Array2::zeros((n_findex, n_turbines));
+                for fi in 0..n_findex {
+                    for ti in 0..n_turbines {
+                        expanded[[fi, ti]] = arr[[0, ti]];
+                    }
+                }
+                expanded
+            } else {
+                Array2::zeros((n_findex, n_turbines))
+            }
+        };
+
+        // Helper function to broadcast NdArray2<String> from (1, n) to (n_findex, n)
+        let broadcast_string_array2 = |arr: &NdArray2<String>| -> NdArray2<String> {
+            if arr.shape()[0] == n_findex {
+                arr.clone()
+            } else if arr.shape()[0] == 1 {
+                let mut expanded = NdArray2::from_elem((n_findex, n_turbines), String::new());
+                for fi in 0..n_findex {
+                    for ti in 0..n_turbines {
+                        expanded[[fi, ti]] = arr[[0, ti]].clone();
+                    }
+                }
+                expanded
+            } else {
+                NdArray2::from_elem((n_findex, n_turbines), String::new())
+            }
+        };
+
+        // Broadcast arrays from first findex to all findex
+        let yaw_angles_expanded = broadcast_array2(&self.yaw_angles);
+        let tilt_angles_expanded = broadcast_array2(&self.tilt_angles);
+        let power_setpoints_expanded = broadcast_array2(&self.power_setpoints);
+        let awc_modes_expanded = broadcast_string_array2(&self.awc_modes);
+        let awc_amplitudes_expanded = broadcast_array2(&self.awc_amplitudes);
+        let awc_frequencies_expanded = broadcast_array2(&self.awc_frequencies);
+        let turbine_type_map_expanded = broadcast_string_array2(&self.turbine_type_map);
+
+        // Helper function to sort array1 according to sorted_indices for each findex
+        let sort_array1_for_findex = |arr: &Array1, fi: usize| -> Array1 {
+            let mut sorted = Array1::zeros(n_turbines);
+            for new_i in 0..n_turbines {
+                let old_i = sorted_coord_indices[[fi, new_i]] as usize;
+                sorted[new_i] = arr[old_i];
+            }
+            sorted
+        };
+
+        // Expand and sort hub_heights
+        let _hub_heights_expanded = self
             .hub_heights
             .to_owned()
             .insert_axis(ndarray::Axis(0))
             .broadcast((n_findex, n_turbines))
             .unwrap()
             .to_owned();
-        self.rotor_diameters_sorted = self
-            .rotor_diameters
-            .to_owned()
-            .insert_axis(ndarray::Axis(0))
-            .broadcast((n_findex, n_turbines))
-            .unwrap()
-            .to_owned();
-        self.tsrs_sorted = self
-            .tsrs
-            .to_owned()
-            .insert_axis(ndarray::Axis(0))
-            .broadcast((n_findex, n_turbines))
-            .unwrap()
-            .to_owned();
-        self.ref_tilts_sorted = self
-            .ref_tilts
-            .to_owned()
-            .insert_axis(ndarray::Axis(0))
-            .broadcast((n_findex, n_turbines))
-            .unwrap()
-            .to_owned();
-        self.correct_cp_ct_for_tilt_sorted = self
-            .correct_cp_ct_for_tilt
-            .to_owned()
-            .insert_axis(ndarray::Axis(0))
-            .broadcast((n_findex, n_turbines))
-            .unwrap()
-            .to_owned();
+        self.hub_heights_sorted = Array2::zeros((n_findex, n_turbines));
+        for fi in 0..n_findex {
+            let sorted = sort_array1_for_findex(&self.hub_heights, fi);
+            for ti in 0..n_turbines {
+                self.hub_heights_sorted[[fi, ti]] = sorted[ti];
+            }
+        }
 
-        self.tilt_angles_sorted = self.tilt_angles.clone();
+        // Expand and sort rotor_diameters
+        self.rotor_diameters_sorted = Array2::zeros((n_findex, n_turbines));
+        for fi in 0..n_findex {
+            let sorted = sort_array1_for_findex(&self.rotor_diameters, fi);
+            for ti in 0..n_turbines {
+                self.rotor_diameters_sorted[[fi, ti]] = sorted[ti];
+            }
+        }
+
+        // Expand and sort tsrs
+        self.tsrs_sorted = Array2::zeros((n_findex, n_turbines));
+        for fi in 0..n_findex {
+            let sorted = sort_array1_for_findex(&self.tsrs, fi);
+            for ti in 0..n_turbines {
+                self.tsrs_sorted[[fi, ti]] = sorted[ti];
+            }
+        }
+
+        // Expand and sort ref_tilts
+        self.ref_tilts_sorted = Array2::zeros((n_findex, n_turbines));
+        for fi in 0..n_findex {
+            let sorted = sort_array1_for_findex(&self.ref_tilts, fi);
+            for ti in 0..n_turbines {
+                self.ref_tilts_sorted[[fi, ti]] = sorted[ti];
+            }
+        }
+
+        // Expand and sort correct_cp_ct_for_tilt
+        self.correct_cp_ct_for_tilt_sorted = Array2::zeros((n_findex, n_turbines));
+        for fi in 0..n_findex {
+            let sorted = sort_array1_for_findex(&self.correct_cp_ct_for_tilt, fi);
+            for ti in 0..n_turbines {
+                self.correct_cp_ct_for_tilt_sorted[[fi, ti]] = sorted[ti];
+            }
+        }
+
+        // Sort yaw_angles according to sorted_indices for each findex
+        self.yaw_angles_sorted = Array2::zeros((n_findex, n_turbines));
+        for fi in 0..n_findex {
+            for new_i in 0..n_turbines {
+                let old_i = sorted_coord_indices[[fi, new_i]] as usize;
+                self.yaw_angles_sorted[[fi, new_i]] = yaw_angles_expanded[[fi, old_i]];
+            }
+        }
+
+        // Sort tilt_angles according to sorted_indices for each findex
+        self.tilt_angles_sorted = Array2::zeros((n_findex, n_turbines));
+        for fi in 0..n_findex {
+            for new_i in 0..n_turbines {
+                let old_i = sorted_coord_indices[[fi, new_i]] as usize;
+                self.tilt_angles_sorted[[fi, new_i]] = tilt_angles_expanded[[fi, old_i]];
+            }
+        }
+
+        // Sort power_setpoints according to sorted_indices for each findex
+        self.power_setpoints_sorted = Array2::zeros((n_findex, n_turbines));
+        for fi in 0..n_findex {
+            for new_i in 0..n_turbines {
+                let old_i = sorted_coord_indices[[fi, new_i]] as usize;
+                self.power_setpoints_sorted[[fi, new_i]] = power_setpoints_expanded[[fi, old_i]];
+            }
+        }
+
+        // Sort awc_modes according to sorted_indices for each findex
+        self.awc_modes_sorted = NdArray2::from_elem((n_findex, n_turbines), "baseline".to_string());
+        for fi in 0..n_findex {
+            for new_i in 0..n_turbines {
+                let old_i = sorted_coord_indices[[fi, new_i]] as usize;
+                self.awc_modes_sorted[[fi, new_i]] = awc_modes_expanded[[fi, old_i]].clone();
+            }
+        }
+
+        // Sort awc_amplitudes according to sorted_indices for each findex
+        self.awc_amplitudes_sorted = Array2::zeros((n_findex, n_turbines));
+        for fi in 0..n_findex {
+            for new_i in 0..n_turbines {
+                let old_i = sorted_coord_indices[[fi, new_i]] as usize;
+                self.awc_amplitudes_sorted[[fi, new_i]] = awc_amplitudes_expanded[[fi, old_i]];
+            }
+        }
+
+        // Sort awc_frequencies according to sorted_indices for each findex
+        self.awc_frequencies_sorted = Array2::zeros((n_findex, n_turbines));
+        for fi in 0..n_findex {
+            for new_i in 0..n_turbines {
+                let old_i = sorted_coord_indices[[fi, new_i]] as usize;
+                self.awc_frequencies_sorted[[fi, new_i]] = awc_frequencies_expanded[[fi, old_i]];
+            }
+        }
+
+        // Sort turbine_type_map according to sorted_indices for each findex
+        self.turbine_type_map_sorted = NdArray2::from_elem((n_findex, n_turbines), String::new());
+        for fi in 0..n_findex {
+            for new_i in 0..n_turbines {
+                let old_i = sorted_coord_indices[[fi, new_i]] as usize;
+                self.turbine_type_map_sorted[[fi, new_i]] = turbine_type_map_expanded[[fi, old_i]].clone();
+            }
+        }
     }
 
     pub fn set_yaw_angles(&mut self, yaw_angles: Array2) {

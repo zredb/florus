@@ -35,20 +35,27 @@ pub fn sequential_solver(
 
     // Loop through turbines (upstream to downstream)
     for i in 0..n_turbines {
-        // Get turbine properties
+        // Get turbine properties - use sorted farm properties
+        // sorted_indices[fi, i] gives the original index in farm arrays
         let ct_i = thrust_coefficient(
             &flow_field.u_sorted,
             &farm.turbine_map,
-            farm.yaw_angles(),
-            farm.tilt_angles(),
+            &farm.yaw_angles_sorted,
+            &farm.tilt_angles_sorted,
             grid.average_method(),
         )?;
 
         let a_i = axial_induction(&ct_i);
         let ti_i = flow_field.turbulence_intensities.slice(s![..]);
-        let yaw_angle_i = farm.yaw_angles()[[0, i]];
-        let rotor_diameter_i = farm.rotor_diameters()[i];
-        let hub_height_i = farm.hub_heights()[i];
+        
+        // Use yaw_angles_sorted with sorted index i
+        let yaw_angle_i = farm.yaw_angles_sorted[[0, i]];
+        
+        // Use rotor_diameters_sorted with sorted index i
+        let rotor_diameter_i = farm.rotor_diameters_sorted[[0, i]];
+        
+        // Use hub_heights_sorted with sorted index i
+        let hub_height_i = farm.hub_heights_sorted[[0, i]];
 
         // Calculate 2D mean values for deflection at turbine i's position
         let x_i = x_grid.slice(s![.., i..i+1, .., ..]).to_owned();
@@ -68,15 +75,17 @@ pub fn sequential_solver(
             &std::collections::HashMap::new(),
         )?;
 
-        // Broadcast deflection to all turbines (deflection_field has shape [n_findex, 1])
+        // Broadcast deflection from wake source turbine i to all turbines
+        // deflection_field has shape [n_findex, 1] - deflection at turbine i's position
         let mut deflection_broadcast = Array::zeros((n_findex, n_turbines));
         for ti in 0..n_turbines {
             for fi in 0..n_findex {
                 deflection_broadcast[[fi, ti]] = deflection_field[[fi, 0]];
             }
         }
-
+        
         // Calculate velocity deficit at ALL grid points due to turbine i
+        // Pass turbine_index=i so the velocity model uses turbine i's position as the wake source
         let velocity_deficit = model_manager.velocity_model.function(
             x_grid.clone(),
             y_grid.clone(),
@@ -88,16 +97,23 @@ pub fn sequential_solver(
             ct_i[[0, i]],
             hub_height_i,
             rotor_diameter_i,
+            i,  // turbine_index
             &std::collections::HashMap::new(),
         )?;
 
         // Only apply deficit to grid points that are DOWNSTREAM of turbine i
+        // velocity_deficit[fi, ti, iy, iz] is the deficit at turbine ti's rotor caused by turbine i
         for fi in 0..n_findex {
             for ti in 0..n_turbines {
-                for iy in 0..grid_y_dim {
-                    for iz in 0..grid_z_dim {
-                        if x_grid[[fi, ti, iy, iz]] >= x_grid[[fi, i, 0, 0]] {
-                            wake_field[[fi, ti, iy, iz]] += velocity_deficit[[fi, i, iy, iz]];
+                // Check if turbine ti is downstream of turbine i
+                let x_ti_center = x_grid[[fi, ti, 0, 0]];
+                let x_i_center = x_grid[[fi, i, 0, 0]];
+                
+                if x_ti_center > x_i_center {
+                    // Turbine ti is downstream - apply the deficit
+                    for iy in 0..grid_y_dim {
+                        for iz in 0..grid_z_dim {
+                            wake_field[[fi, ti, iy, iz]] += velocity_deficit[[fi, ti, iy, iz]];
                         }
                     }
                 }

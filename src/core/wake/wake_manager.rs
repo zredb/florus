@@ -48,8 +48,8 @@ impl std::fmt::Debug for WakeModelManager {
 impl Clone for WakeModelManager {
     fn clone(&self) -> Self {
         Self {
-            velocity_model: Box::new(crate::core::wake::GaussVelocity::new(0.1, 0.05, 0.5)),
-            deflection_model: Box::new(crate::core::wake::GaussVelocityDeflection::new(0.01, 0.05)),
+            velocity_model: Box::new(crate::core::wake::GaussVelocity::new(0.38, 0.004, 0.5)),
+            deflection_model: Box::new(crate::core::wake::GaussVelocityDeflection::new(0.0, 0.0, 0.58, 0.077, 1.0)),
             turbulence_model: Box::new(crate::core::wake::CrespoHernandez::new(0.9, 0.9)),
             combination_model: Box::new(crate::core::wake::FLS),
             model_params: self.model_params.clone(),
@@ -108,15 +108,60 @@ impl WakeModelManager {
     /// Create velocity model from string identifier
     fn create_velocity_model(
         model_name: &str,
-        _model_params: &HashMap<String, NumericDict>,
+        model_params: &HashMap<String, NumericDict>,
         _turbine_type_params: &HashMap<String, NumericDict>,
     ) -> anyhow::Result<Box<dyn VelocityModel>> {
         match model_name.to_lowercase().as_str() {
-            "gauss" | "gaussian" => Ok(Box::new(
-                crate::core::wake::GaussVelocity::new(0.1, 0.05, 0.5)
+            "gauss" | "gaussian" => {
+                // model_params contains nested dict like: {"gauss": {"ka": 0.38, "kb": 0.004, ...}}
+                let gauss_params = model_params.get("gauss")
+                    .cloned()
+                    .unwrap_or_else(|| NumericDict {
+                        data: std::collections::HashMap::new()
+                    });
+
+                let ka = gauss_params.data.get("ka")
+                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
+                    .unwrap_or(0.38);
+                let kb = gauss_params.data.get("kb")
+                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
+                    .unwrap_or(0.004);
+                let initial_wake_width = gauss_params.data.get("alpha")
+                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
+                    .unwrap_or(0.5);
+
+                Ok(Box::new(
+                    crate::core::wake::GaussVelocity::new(ka, kb, initial_wake_width)
+                ))
+            },
+            "jensen" => {
+                let jensen_params = model_params.get("jensen")
+                    .cloned()
+                    .unwrap_or_else(|| NumericDict {
+                        data: std::collections::HashMap::new()
+                    });
+
+                let we = jensen_params.data.get("we")
+                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
+                    .unwrap_or(0.05);
+                Ok(Box::new(
+                    crate::core::wake::JensenVelocity::new(we, 0.0)
+                ))
+            },
+            "turbopark" => Ok(Box::new(
+                crate::core::wake_velocity::TurbOParkVelocityDeficit::default()
             )),
-            "jensen" => Ok(Box::new(
-                crate::core::wake::JensenVelocity::new(0.1, 0.0)
+            "turboparkgauss" => Ok(Box::new(
+                crate::core::wake_velocity::TurbOParkGaussVelocityDeficit::default()
+            )),
+            "gauss_legacy" | "gch" => Ok(Box::new(
+                crate::core::wake_velocity::GaussLegacyVelocityDeficit::default()
+            )),
+            "empirical_gauss" | "empirical-gauss" => Ok(Box::new(
+                crate::core::wake_velocity::EmpiricalGaussVelocityDeficit::default()
+            )),
+            "cumulative_gauss_curl" => Ok(Box::new(
+                crate::core::wake_velocity::CumulativeCurlVelocityDeficit::default()
             )),
             "none" => Ok(Box::new(crate::core::wake::NoneVelocity::new())),
             _ => Err(anyhow::anyhow!(
@@ -127,17 +172,61 @@ impl WakeModelManager {
     }
 
     /// Create deflection model from string identifier
+
+    /// Create deflection model from string identifier
     fn create_deflection_model(
         model_name: &str,
-        _model_params: &HashMap<String, NumericDict>,
+        model_params: &HashMap<String, NumericDict>,
     ) -> anyhow::Result<Box<dyn DeflectionModel>> {
         match model_name.to_lowercase().as_str() {
-            "gauss" | "gaussian" => Ok(Box::new(
-                crate::core::wake::GaussVelocityDeflection::new(0.01, 0.05)
-            )),
-            "jimenez" => Ok(Box::new(
-                crate::core::wake::JimenezVelocityDeflection::new(0.01, 0.05)
-            )),
+            "gauss" | "gaussian" => {
+                // model_params contains nested dict like: {"gauss": {"ad": 0.0, "alpha": 0.58, ...}}
+                let gauss_params = model_params.get("gauss")
+                    .cloned()
+                    .unwrap_or_else(|| NumericDict {
+                        data: std::collections::HashMap::new()
+                    });
+
+                let ad = gauss_params.data.get("ad")
+                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
+                    .unwrap_or(0.0);
+                let bd = gauss_params.data.get("bd")
+                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
+                    .unwrap_or(0.0);
+                let alpha = gauss_params.data.get("alpha")
+                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
+                    .unwrap_or(0.58);
+                let beta = gauss_params.data.get("beta")
+                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
+                    .unwrap_or(0.077);
+                let dm = gauss_params.data.get("dm")
+                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
+                    .unwrap_or(1.0);
+
+                Ok(Box::new(
+                    crate::core::wake::GaussVelocityDeflection::new(ad, bd, alpha, beta, dm)
+                ))
+            },
+            "jimenez" => {
+                let jimenez_params = model_params.get("jimenez")
+                    .cloned()
+                    .unwrap_or_else(|| NumericDict {
+                        data: std::collections::HashMap::new()
+                    });
+
+                let ad = jimenez_params.data.get("ad")
+                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
+                    .unwrap_or(0.0);
+                let bd = jimenez_params.data.get("bd")
+                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
+                    .unwrap_or(0.0);
+                let _kd = jimenez_params.data.get("kd")
+                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
+                    .unwrap_or(0.05);
+                Ok(Box::new(
+                    crate::core::wake::JimenezVelocityDeflection::new(ad, bd)
+                ))
+            },
             "empirical_gauss" | "empirical-gauss" => Ok(Box::new(
                 crate::core::wake::EmpiricalGaussVelocityDeflection::new(0.01, 0.05, 0.5)
             )),

@@ -13,18 +13,27 @@ pub struct GaussVelocityDeflection {
     pub base: BaseModel,
     pub kd: Float,
     pub ad: Float,
+    pub alpha: Float,
+    pub beta: Float,
+    pub dm: Float,
 }
 
 impl GaussVelocityDeflection {
-    pub fn new(kd: Float, ad: Float) -> Self {
+    pub fn new(kd: Float, ad: Float, alpha: Float, beta: Float, dm: Float) -> Self {
         let mut params = HashMap::new();
         params.insert("kd".to_string(), kd);
         params.insert("ad".to_string(), ad);
-        
+        params.insert("alpha".to_string(), alpha);
+        params.insert("beta".to_string(), beta);
+        params.insert("dm".to_string(), dm);
+
         Self {
             base: BaseModel::new(params, "wind_vector"),
             kd,
             ad,
+            alpha,
+            beta,
+            dm,
         }
     }
 }
@@ -94,14 +103,17 @@ mod tests {
 
     #[test]
     fn test_gauss_deflection_creation() {
-        let gauss = GaussVelocityDeflection::new(0.01, 0.05);
+        let gauss = GaussVelocityDeflection::new(0.01, 0.05, 0.58, 0.077, 1.0);
         assert_eq!(gauss.kd, 0.01);
         assert_eq!(gauss.ad, 0.05);
+        assert_eq!(gauss.alpha, 0.58);
+        assert_eq!(gauss.beta, 0.077);
+        assert_eq!(gauss.dm, 1.0);
     }
 
     #[test]
     fn test_gauss_deflection() {
-        let gauss = GaussVelocityDeflection::new(0.01, 0.05);
+        let gauss = GaussVelocityDeflection::new(0.01, 0.05, 0.58, 0.077, 1.0);
         let x = Array::from_shape_vec((1, 1), vec![100.0]).unwrap();
         let y = Array::from_shape_vec((1, 1), vec![0.0]).unwrap();
         

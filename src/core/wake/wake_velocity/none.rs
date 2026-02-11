@@ -49,6 +49,7 @@ impl VelocityModel for NoneVelocity {
         _thrust_coefficient: Float,
         _hub_height: Float,
         _rotor_diameter: Float,
+        _turbine_index: usize,
         _model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4> {
         let shape = _x.shape();

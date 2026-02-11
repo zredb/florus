@@ -37,6 +37,7 @@ pub trait VelocityModel {
     ) -> anyhow::Result<HashMap<String, Array4>>;
 
     /// Main velocity deficit function
+    /// turbine_index: which turbine is the wake source (for position lookup)
     fn function(
         &self,
         x: Array4,
@@ -49,6 +50,7 @@ pub trait VelocityModel {
         thrust_coefficient: Float,
         hub_height: Float,
         rotor_diameter: Float,
+        turbine_index: usize,
         model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4>;
 }

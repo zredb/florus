@@ -50,6 +50,7 @@ pub fn calculate_aep_from_time_series(
             state: crate::core::State::new(),
             grid: None,
             solver_type: "turbine_grid".to_string(),
+            turbine_grid_points: 3,
             model_manager: None,
         };
 
@@ -155,6 +156,7 @@ pub fn calculate_power_at_conditions(
         state: crate::core::State::new(),
         grid: None,
         solver_type: "turbine_grid".to_string(),
+        turbine_grid_points: 3,
         model_manager: None,
     };
     
