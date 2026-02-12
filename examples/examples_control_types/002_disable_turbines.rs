@@ -88,7 +88,7 @@ fn main() -> anyhow::Result<()> {
         flow_field,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 

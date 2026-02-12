@@ -11,6 +11,7 @@
 /// This is the Rust equivalent of Python's yaw optimization examples
 
 use florus::core::Farm;
+use florus::floris_config::SolverConfig;
 use florus::types::{Array1, Array2};
 
 fn main() -> anyhow::Result<()> {
@@ -54,7 +55,7 @@ fn main() -> anyhow::Result<()> {
         flow_field,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 
@@ -102,7 +103,7 @@ fn main() -> anyhow::Result<()> {
             flow_field,
             state: florus::core::State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
+            solver: SolverConfig::default(),
             model_manager: None,
         };
 
@@ -162,7 +163,7 @@ fn main() -> anyhow::Result<()> {
             flow_field,
             state: florus::core::State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
+            solver: SolverConfig::default(),
             model_manager: None,
         };
 

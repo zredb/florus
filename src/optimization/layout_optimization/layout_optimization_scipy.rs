@@ -3,10 +3,10 @@
 //! Provides scipy-style layout optimization using coordinate descent algorithm.
 //! This module corresponds to layout_optimization_scipy.py in Python FLORIS v4.6.
 
-use crate::floris_model::FlorisModel;
 use super::layout_optimization_base::{
     Boundary, LayoutOptimizationConfig, LayoutOptimizationResult, LayoutOptimizer,
 };
+use crate::floris_model::FlorisModel;
 use crate::types::{Array1, Float};
 use crate::Result;
 
@@ -137,11 +137,11 @@ impl LayoutOptimizer for LayoutOptimizationScipy {
 
     fn optimize(&mut self) -> Result<LayoutOptimizationResult> {
         let min_dist = self.min_dist();
-        
+
         // Initial layout
         let initial_x = self.farm_layout_x();
         let initial_y = self.farm_layout_y();
-        
+
         // Create optimization variables in normalized space [0, 1]
         let mut x_norm: Vec<Float> = (0..self.n_turbines)
             .map(|i| self.normalize(initial_x[i], self.xmin, self.xmax))
@@ -149,22 +149,22 @@ impl LayoutOptimizer for LayoutOptimizationScipy {
         let mut y_norm: Vec<Float> = (0..self.n_turbines)
             .map(|i| self.normalize(initial_y[i], self.ymin, self.ymax))
             .collect();
-        
+
         // Simple coordinate descent optimization
         let max_iter = self.config.max_iterations;
         let _tolerance = self.config.tolerance;
         let mut iteration = 0;
-        
+
         for _ in 0..max_iter {
             iteration += 1;
             let mut improved = false;
             let step_size = 0.05 / (1.0 + iteration as Float / 20.0);
-            
+
             // Try moving each turbine in each direction
             for ti in 0..self.n_turbines {
                 let original_x = x_norm[ti];
                 let original_y = y_norm[ti];
-                
+
                 // Try small steps in x and y directions
                 let directions = [
                     (step_size, 0.0),
@@ -172,55 +172,67 @@ impl LayoutOptimizer for LayoutOptimizationScipy {
                     (0.0, step_size),
                     (0.0, -step_size),
                 ];
-                
+
                 let current_value = self.calculate_objective(
                     &Array1::from_vec(x_norm.clone()),
                     &Array1::from_vec(y_norm.clone()),
                 );
-                
+
                 for &(dx, dy) in &directions {
                     x_norm[ti] = (original_x + dx).clamp(0.0, 1.0);
                     y_norm[ti] = (original_y + dy).clamp(0.0, 1.0);
-                    
-                    let new_x: Array1 = x_norm.iter().map(|&v| self.denormalize(v, self.xmin, self.xmax)).collect();
-                    let new_y: Array1 = y_norm.iter().map(|&v| self.denormalize(v, self.ymin, self.ymax)).collect();
-                    
+
+                    let new_x: Array1 = x_norm
+                        .iter()
+                        .map(|&v| self.denormalize(v, self.xmin, self.xmax))
+                        .collect();
+                    let new_y: Array1 = y_norm
+                        .iter()
+                        .map(|&v| self.denormalize(v, self.ymin, self.ymax))
+                        .collect();
+
                     // Check minimum distance constraint
                     let min_dist_actual = self.calculate_min_distance(&new_x, &new_y);
                     let in_bounds = self.check_boundary_constraints(&new_x, &new_y);
-                    
+
                     if min_dist_actual >= min_dist && in_bounds {
                         let new_value = self.calculate_objective(&new_x, &new_y);
-                        
+
                         // For maximization, check if new value is better
                         if new_value > current_value {
                             improved = true;
                             break;
                         }
                     }
-                    
+
                     // Revert
                     x_norm[ti] = original_x;
                     y_norm[ti] = original_y;
                 }
             }
-            
+
             if !improved {
                 break;
             }
         }
-        
+
         // Convert back to physical coordinates
-        let opt_x: Array1 = x_norm.iter().map(|&v| self.denormalize(v, self.xmin, self.xmax)).collect();
-        let opt_y: Array1 = y_norm.iter().map(|&v| self.denormalize(v, self.ymin, self.ymax)).collect();
-        
+        let opt_x: Array1 = x_norm
+            .iter()
+            .map(|&v| self.denormalize(v, self.xmin, self.xmax))
+            .collect();
+        let opt_y: Array1 = y_norm
+            .iter()
+            .map(|&v| self.denormalize(v, self.ymin, self.ymax))
+            .collect();
+
         let final_value = self.calculate_objective(&opt_x, &opt_y);
         let improvement_pct = if self.initial_value > 0.0 {
             100.0 * (final_value - self.initial_value) / self.initial_value
         } else {
             0.0
         };
-        
+
         Ok(LayoutOptimizationResult {
             x: opt_x,
             y: opt_y,
@@ -234,10 +246,11 @@ impl LayoutOptimizer for LayoutOptimizationScipy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::Array1;
     use crate::core::Farm;
-    use crate::floris_model::FlorisModel;
     use crate::core::FlowField;
+    use crate::floris_config::SolverConfig;
+    use crate::floris_model::FlorisModel;
+    use crate::types::Array1;
 
     #[test]
     fn test_scipy_optimizer_creation() {
@@ -245,13 +258,13 @@ mod tests {
         let layout_x = Array1::from_vec(vec![0.0, 500.0]);
         let layout_y = Array1::from_vec(vec![0.0, 0.0]);
         let turbine_types = vec!["nrel_5MW".to_string(); 2];
-        
+
         let farm = Farm::new(layout_x, layout_y, turbine_types).unwrap();
-        
+
         let wind_speeds = Array1::from_vec(vec![8.0]);
         let wind_directions = Array1::from_vec(vec![270.0]);
         let turbulence_intensities = Array1::from_vec(vec![0.06]);
-        
+
         let flow_field = FlowField::new(
             wind_speeds,
             wind_directions,
@@ -260,24 +273,25 @@ mod tests {
             1.225,
             turbulence_intensities,
             90.0,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let model = FlorisModel {
             farm,
             flow_field,
             state: crate::core::State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
+            solver: SolverConfig::default(),
             model_manager: None,
         };
-        
+
         let boundary = Boundary::Rectangle {
             min_x: 0.0,
             max_x: 1000.0,
             min_y: 0.0,
             max_y: 1000.0,
         };
-        
+
         let optimizer = LayoutOptimizationScipy::new(&model, boundary).unwrap();
         assert_eq!(optimizer.n_turbines(), 2);
     }

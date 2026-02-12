@@ -173,6 +173,11 @@ impl WindData for WindTIRose {
         self.wind_directions.len() * self.wind_speeds.len() * self.turbulence_intensities.len()
     }
 
+    fn frequencies(&self) -> Array2 {
+        // Use unpack_freq to get frequency table
+        self.unpack_freq()
+    }
+
     fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig {
         let n_conditions = self.n_conditions();
         HeterogeneousInflowConfig {

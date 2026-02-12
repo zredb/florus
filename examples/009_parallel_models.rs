@@ -7,8 +7,8 @@
 ///
 /// Note: Rust's rayon library provides excellent parallelization capabilities
 /// that can be used similarly to Python's multiprocessing interface.
-
 use florus::core::{Farm, FlowField};
+use florus::floris_config::SolverConfig;
 use florus::types::Array1;
 
 fn main() -> anyhow::Result<()> {
@@ -122,7 +122,7 @@ fn main() -> anyhow::Result<()> {
         flow_field,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 
@@ -130,12 +130,15 @@ fn main() -> anyhow::Result<()> {
     model.initialize_flow_field()?;
     model.run()?;
 
-    let turbine_powers = model.get_turbine_powers();
     let farm_power = model.get_farm_power();
 
     println!("Sequential results:");
     println!("  Conditions processed: {}", n_ws);
-    println!("  Farm power shape: ({}, {})", farm_power.shape()[0], farm_power.shape()[1]);
+    println!(
+        "  Farm power shape: ({}, {})",
+        farm_power.shape()[0],
+        farm_power.shape()[1]
+    );
     println!();
 
     // ============================================================

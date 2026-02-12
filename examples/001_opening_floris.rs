@@ -1,3 +1,5 @@
+use florus::Array1;
+
 /// Example 1: Opening FLORIS and Computing Power
 ///
 /// This example demonstrates the key concepts in FLORIS-RS:
@@ -9,37 +11,13 @@
 /// 5. Getting the power output of the turbines
 ///
 /// This is the Rust equivalent of Python's 001_opening_floris_computing_power.py
-use florus::core::Farm;
-use florus::types::Array1;
 
 fn main() -> anyhow::Result<()> {
-
     // The FlorisModel class is the entry point for most usage.
     // Initialize using an input yaml file or create programmatically
 
     // In this example, we'll create the model programmatically
     // (equivalent to Python's fmodel = FlorisModel("inputs/gch.yaml"))
-
-    // Create a simple 2-turbine layout
-    // In Python: fmodel.set(layout_x=[0, 500.0], layout_y=[0.0, 0.0])
-    let layout_x = Array1::from_vec(vec![0.0, 500.0]);
-    let layout_y = Array1::from_vec(vec![0.0, 0.0]);
-    let turbine_types = vec!["nrel_5MW".to_string(); 2];
-
-    println!("Creating wind farm with 2 turbines:");
-    println!("  Turbine 0: x = 0 m, y = 0 m");
-    println!("  Turbine 1: x = 500 m, y = 0 m");
-
-    let farm = Farm::new(layout_x.clone(), layout_y.clone(), turbine_types.clone())?;
-
-    // ============================================================
-    // Setting wind conditions
-    // ============================================================
-    // In Python:
-    // fmodel.set(
-    //     wind_directions=np.array([270.0]), wind_speeds=[8.0],
-    //     turbulence_intensities=np.array([0.06])
-    // )
 
     println!("\n--- Setting Wind Conditions ---");
 

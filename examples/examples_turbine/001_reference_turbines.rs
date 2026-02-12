@@ -13,8 +13,8 @@
 /// - nrel_5MW: NREL 5MW reference turbine
 /// - iea_10MW: IEA 10MW offshore turbine
 /// - iea_15MW: IEA 15MW offshore turbine
-
 use florus::core::Farm;
+use florus::floris_config::SolverConfig;
 use florus::types::Array1;
 
 fn main() -> anyhow::Result<()> {
@@ -55,16 +55,13 @@ fn main() -> anyhow::Result<()> {
     // ============================================================
     println!("--- Single Turbine Power Curves ---\n");
 
-    let turbine_types = vec![
-        "nrel_5MW".to_string(),
-        "iea_10MW".to_string(),
-        "iea_15MW".to_string(),
-    ];
-
     let wind_speeds: Vec<f64> = (3..26).map(|i| i as f64).collect();
 
     println!("Comparing power curves at different wind speeds:");
-    println!("  {:>8}  {:>10}  {:>10}  {:>10}", "WS (m/s)", "5MW (kW)", "10MW (kW)", "15MW (kW)");
+    println!(
+        "  {:>8}  {:>10}  {:>10}  {:>10}",
+        "WS (m/s)", "5MW (kW)", "10MW (kW)", "15MW (kW)"
+    );
     println!("  {}", "-".repeat(45));
 
     for &ws in wind_speeds.iter().step_by(3) {
@@ -76,7 +73,9 @@ fn main() -> anyhow::Result<()> {
         let flow_field_5mw = florus::core::FlowField::new(
             Array1::from_vec(vec![ws]),
             Array1::from_vec(vec![270.0]),
-            0.0, 0.14, 1.225,
+            0.0,
+            0.14,
+            1.225,
             Array1::from_vec(vec![0.06]),
             90.0,
         )?;
@@ -85,7 +84,7 @@ fn main() -> anyhow::Result<()> {
             flow_field: flow_field_5mw,
             state: florus::core::State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
+            solver: SolverConfig::default(),
             model_manager: None,
         };
         model_5mw.initialize_grid()?;
@@ -101,7 +100,9 @@ fn main() -> anyhow::Result<()> {
         let flow_field_10mw = florus::core::FlowField::new(
             Array1::from_vec(vec![ws]),
             Array1::from_vec(vec![270.0]),
-            0.0, 0.14, 1.225,
+            0.0,
+            0.14,
+            1.225,
             Array1::from_vec(vec![0.06]),
             119.0, // IEA 10MW hub height
         )?;
@@ -110,7 +111,7 @@ fn main() -> anyhow::Result<()> {
             flow_field: flow_field_10mw,
             state: florus::core::State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
+            solver: SolverConfig::default(),
             model_manager: None,
         };
         model_10mw.initialize_grid()?;
@@ -126,7 +127,9 @@ fn main() -> anyhow::Result<()> {
         let flow_field_15mw = florus::core::FlowField::new(
             Array1::from_vec(vec![ws]),
             Array1::from_vec(vec![270.0]),
-            0.0, 0.14, 1.225,
+            0.0,
+            0.14,
+            1.225,
             Array1::from_vec(vec![0.06]),
             150.0, // IEA 15MW hub height
         )?;
@@ -135,7 +138,7 @@ fn main() -> anyhow::Result<()> {
             flow_field: flow_field_15mw,
             state: florus::core::State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
+            solver: SolverConfig::default(),
             model_manager: None,
         };
         model_15mw.initialize_grid()?;
@@ -143,11 +146,13 @@ fn main() -> anyhow::Result<()> {
         model_15mw.run()?;
         let powers_15mw = model_15mw.get_turbine_powers();
 
-        println!("  {:>8.1}  {:>10.0}  {:>10.0}  {:>10.0}",
-                 ws,
-                 powers_5mw[[0, 0]] / 1000.0,
-                 powers_10mw[[0, 0]] / 1000.0,
-                 powers_15mw[[0, 0]] / 1000.0);
+        println!(
+            "  {:>8.1}  {:>10.0}  {:>10.0}  {:>10.0}",
+            ws,
+            powers_5mw[[0, 0]] / 1000.0,
+            powers_10mw[[0, 0]] / 1000.0,
+            powers_15mw[[0, 0]] / 1000.0
+        );
     }
 
     // ============================================================
@@ -175,7 +180,9 @@ fn main() -> anyhow::Result<()> {
     let flow_field_mixed = florus::core::FlowField::new(
         Array1::from_vec(vec![12.0]), // Above rated for all
         Array1::from_vec(vec![270.0]),
-        0.0, 0.14, 1.225,
+        0.0,
+        0.14,
+        1.225,
         Array1::from_vec(vec![0.06]),
         90.0,
     )?;
@@ -185,7 +192,7 @@ fn main() -> anyhow::Result<()> {
         flow_field: flow_field_mixed,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 
@@ -206,7 +213,10 @@ fn main() -> anyhow::Result<()> {
         let power = powers_mixed[[0, ti]] / 1000.0;
         println!("  Turbine {} ({}): {:.1} kW", ti, turbine_name, power);
     }
-    println!("  Total Farm Power: {:.2} MW\n", farm_power_mixed / 1_000_000.0);
+    println!(
+        "  Total Farm Power: {:.2} MW\n",
+        farm_power_mixed / 1_000_000.0
+    );
 
     // ============================================================
     // Same Capacity Comparison
@@ -223,7 +233,9 @@ fn main() -> anyhow::Result<()> {
     let flow_field_3x5mw = florus::core::FlowField::new(
         Array1::from_vec(vec![12.0]),
         Array1::from_vec(vec![270.0]),
-        0.0, 0.14, 1.225,
+        0.0,
+        0.14,
+        1.225,
         Array1::from_vec(vec![0.06]),
         90.0,
     )?;
@@ -233,7 +245,7 @@ fn main() -> anyhow::Result<()> {
         flow_field: flow_field_3x5mw,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 
@@ -254,7 +266,9 @@ fn main() -> anyhow::Result<()> {
     let flow_field_1x15mw = florus::core::FlowField::new(
         Array1::from_vec(vec![12.0]),
         Array1::from_vec(vec![270.0]),
-        0.0, 0.14, 1.225,
+        0.0,
+        0.14,
+        1.225,
         Array1::from_vec(vec![0.06]),
         150.0,
     )?;
@@ -264,7 +278,7 @@ fn main() -> anyhow::Result<()> {
         flow_field: flow_field_1x15mw,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 
@@ -286,7 +300,10 @@ fn main() -> anyhow::Result<()> {
     println!();
 
     let wake_loss_percent = (1.0 - farm_power_3x5mw / (3.0 * farm_power_1x15mw)) * 100.0;
-    println!("  Wake loss impact: {:.1}% of total capacity", wake_loss_percent);
+    println!(
+        "  Wake loss impact: {:.1}% of total capacity",
+        wake_loss_percent
+    );
 
     // ============================================================
     // Summary

@@ -4,10 +4,10 @@
 //! This corresponds to layout_optimization_pyoptsparse.py in Python FLORIS v4.6,
 //! using argmin-rs instead of pyoptsparse for the Rust implementation.
 
-use crate::floris_model::FlorisModel;
 use super::layout_optimization_base::{
     Boundary, LayoutOptimizationConfig, LayoutOptimizationResult, LayoutOptimizer,
 };
+use crate::floris_model::FlorisModel;
 use crate::types::{Array1, Float};
 use crate::Result;
 use argmin::core::{CostFunction, Error, Gradient, State};
@@ -230,15 +230,21 @@ impl LayoutOptimizer for LayoutOptimizationPyOptSparse {
 
         // Run optimization using Executor
         let result = argmin::core::Executor::new(cost_fn, solver)
-            .configure(|state| state.param(initial_params).max_iters(self.config.max_iterations as u64))
+            .configure(|state| {
+                state
+                    .param(initial_params)
+                    .max_iters(self.config.max_iterations as u64)
+            })
             .run();
 
         match result {
             Ok(opt_result) => {
                 let best_param = opt_result.state().get_best_param();
-                let best_param = best_param.as_ref()
+                let best_param = best_param
+                    .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("Optimization failed to find best parameter"))?;
-                let (opt_x, opt_y) = LayoutOptimizationPyOptSparse::from_optimization_params(best_param);
+                let (opt_x, opt_y) =
+                    LayoutOptimizationPyOptSparse::from_optimization_params(best_param);
 
                 let final_value = self.calculate_objective(&opt_x, &opt_y);
                 let improvement_pct = if self.initial_value > 0.0 {
@@ -375,7 +381,8 @@ impl LayoutOptimizer for LayoutOptimizationGoldenSection {
             // Sample points and find best using golden section-like sampling
             let n_samples = 100;
             for i in 1..n_samples {
-                let y_test = self.ymin + (self.ymax - self.ymin) * (i as Float / n_samples as Float);
+                let y_test =
+                    self.ymin + (self.ymax - self.ymin) * (i as Float / n_samples as Float);
                 let mut test_y = initial_y.clone();
                 test_y[0] = y_test;
                 let value = self.calculate_objective(&fixed, &test_y);
@@ -393,7 +400,8 @@ impl LayoutOptimizer for LayoutOptimizationGoldenSection {
 
             let n_samples = 100;
             for i in 1..n_samples {
-                let x_test = self.xmin + (self.xmax - self.xmin) * (i as Float / n_samples as Float);
+                let x_test =
+                    self.xmin + (self.xmax - self.xmin) * (i as Float / n_samples as Float);
                 let mut test_x = initial_x.clone();
                 test_x[0] = x_test;
                 let value = self.calculate_objective(&test_x, &fixed);
@@ -424,23 +432,24 @@ impl LayoutOptimizer for LayoutOptimizationGoldenSection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::Array1;
     use crate::core::Farm;
-    use crate::floris_model::FlorisModel;
     use crate::core::FlowField;
+    use crate::floris_config::SolverConfig;
+    use crate::floris_model::FlorisModel;
+    use crate::types::Array1;
 
     #[test]
     fn test_pyoptsparse_optimizer_creation() {
         let layout_x = Array1::from_vec(vec![0.0, 500.0]);
         let layout_y = Array1::from_vec(vec![0.0, 0.0]);
         let turbine_types = vec!["nrel_5MW".to_string(); 2];
-        
+
         let farm = Farm::new(layout_x, layout_y, turbine_types).unwrap();
-        
+
         let wind_speeds = Array1::from_vec(vec![8.0]);
         let wind_directions = Array1::from_vec(vec![270.0]);
         let turbulence_intensities = Array1::from_vec(vec![0.06]);
-        
+
         let flow_field = FlowField::new(
             wind_speeds,
             wind_directions,
@@ -449,24 +458,25 @@ mod tests {
             1.225,
             turbulence_intensities,
             90.0,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let model = FlorisModel {
             farm,
             flow_field,
             state: crate::core::State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
+            solver: SolverConfig::default(),
             model_manager: None,
         };
-        
+
         let boundary = Boundary::Rectangle {
             min_x: 0.0,
             max_x: 1000.0,
             min_y: 0.0,
             max_y: 1000.0,
         };
-        
+
         let optimizer = LayoutOptimizationPyOptSparse::new(&model, boundary).unwrap();
         assert_eq!(optimizer.n_turbines(), 2);
     }
@@ -476,13 +486,13 @@ mod tests {
         let layout_x = Array1::from_vec(vec![0.0, 500.0]);
         let layout_y = Array1::from_vec(vec![0.0, 0.0]);
         let turbine_types = vec!["nrel_5MW".to_string(); 2];
-        
+
         let farm = Farm::new(layout_x, layout_y, turbine_types).unwrap();
-        
+
         let wind_speeds = Array1::from_vec(vec![8.0]);
         let wind_directions = Array1::from_vec(vec![270.0]);
         let turbulence_intensities = Array1::from_vec(vec![0.06]);
-        
+
         let flow_field = FlowField::new(
             wind_speeds,
             wind_directions,
@@ -491,24 +501,25 @@ mod tests {
             1.225,
             turbulence_intensities,
             90.0,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let model = FlorisModel {
             farm,
             flow_field,
             state: crate::core::State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
+            solver: SolverConfig::default(),
             model_manager: None,
         };
-        
+
         let boundary = Boundary::Rectangle {
             min_x: 0.0,
             max_x: 1000.0,
             min_y: 0.0,
             max_y: 1000.0,
         };
-        
+
         let optimizer = LayoutOptimizationGoldenSection::new(&model, boundary).unwrap();
         assert_eq!(optimizer.n_turbines(), 2);
     }

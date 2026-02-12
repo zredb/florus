@@ -287,6 +287,14 @@ impl WindData for TimeSeries {
         self.wind_directions.len()
     }
 
+    fn frequencies(&self) -> Array2 {
+        // TimeSeries: each condition has equal frequency (1/n_conditions)
+        let n = self.n_conditions();
+        let freq = 1.0 / n as Float;
+        let n_turbines = 3; // Default, will be expanded by farm
+        Array2::from_shape_fn([n, n_turbines], |_| freq)
+    }
+
     fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig {
         HeterogeneousInflowConfig {
             x: Array1::from_vec(vec![]),

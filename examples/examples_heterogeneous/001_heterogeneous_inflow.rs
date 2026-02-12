@@ -1,3 +1,4 @@
+use florus::core::base::InterpMethod;
 /// Example 12: Heterogeneous Wind Inflow
 ///
 /// This example demonstrates FLORIS-RS heterogeneous inflow capabilities:
@@ -8,12 +9,11 @@
 ///
 /// Heterogeneous inflow represents spatial variations in wind speed
 /// across a wind farm, such as those caused by terrain or obstacles.
-
 use florus::core::{Farm, FlowField};
+use florus::floris_config::SolverConfig;
 use florus::heterogeneous_map::HeterogeneousMap;
 use florus::types::{Array1, Array2};
 use florus::wind_data::WindRose;
-use florus::core::base::InterpMethod;
 use florus::FlorisModel;
 
 fn main() -> anyhow::Result<()> {
@@ -41,18 +41,6 @@ fn main() -> anyhow::Result<()> {
     // Standard wind rose without heterogeneous map
     let wind_directions = Array1::from_vec(vec![270.0, 280.0, 290.0]);
     let wind_speeds = Array1::from_vec(vec![8.0, 10.0, 12.0]);
-    let ti_table = Array2::from_elem((3, 3), 0.06);
-
-    let wind_rose = WindRose::new(
-        wind_directions.clone(),
-        wind_speeds.clone(),
-        ti_table,
-        None,
-        None,
-        false,
-        None,
-        None,
-    )?;
 
     let flow_field = FlowField::new(
         wind_speeds.clone(),
@@ -69,7 +57,7 @@ fn main() -> anyhow::Result<()> {
         flow_field,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 
@@ -83,10 +71,17 @@ fn main() -> anyhow::Result<()> {
     println!("Homogeneous Results:");
     for fi in 0..3 {
         let findex_power: f64 = (0..4).map(|ti| homogeneous_powers[[fi, ti]]).sum();
-        println!("  Wind {:.0} m/s, {:.0} deg: {:.2} MW", 
-            wind_speeds[fi], wind_directions[fi], findex_power / 1_000_000.0);
+        println!(
+            "  Wind {:.0} m/s, {:.0} deg: {:.2} MW",
+            wind_speeds[fi],
+            wind_directions[fi],
+            findex_power / 1_000_000.0
+        );
     }
-    println!("  Total Farm Power: {:.2} MW\n", homogeneous_farm_power / 1_000_000.0);
+    println!(
+        "  Total Farm Power: {:.2} MW\n",
+        homogeneous_farm_power / 1_000_000.0
+    );
 
     // ============================================================
     // CREATE HETEROGENEOUS MAP
@@ -101,17 +96,10 @@ fn main() -> anyhow::Result<()> {
 
     // Create a grid of points for the heterogeneous map
     // This models a speed-up effect on the left side of the farm
-    let het_x = Array1::from_vec(vec![-500.0, 0.0, 500.0, 1000.0, 1500.0]);
-    let het_y = Array1::from_vec(vec![-500.0, -500.0, -500.0, -500.0, -500.0]);
 
     // Speed multipliers: 1.0 = no change, >1.0 = speed-up, <1.0 = slow-down
     // This represents a speed-up near x=0 (e.g., a hill or ridge)
-    let speed_multipliers = Array2::from_shape_vec(
-        (1, 5),
-        vec![
-            1.15, 1.10, 1.00, 0.95, 0.90,  // For 270 deg wind
-        ],
-    )?;
+
 
     // Create heterogeneous map with wind direction-specific multipliers
     let het_x_directions = Array1::from_vec(vec![-500.0, 0.0, 500.0, 1000.0, 1500.0]);
@@ -120,7 +108,7 @@ fn main() -> anyhow::Result<()> {
     let speed_multipliers_directions = Array2::from_shape_vec(
         (3, 5),
         vec![
-            1.15, 1.10, 1.00, 0.95, 0.90,  // For 270 deg
+            1.15, 1.10, 1.00, 0.95, 0.90, // For 270 deg
             1.12, 1.08, 1.02, 0.97, 0.92, // For 280 deg
             1.10, 1.05, 1.00, 0.98, 0.95, // For 290 deg
         ],
@@ -131,8 +119,8 @@ fn main() -> anyhow::Result<()> {
         het_y_directions.clone(),
         speed_multipliers_directions,
         None,
-        Some(Array1::from_vec(vec![270.0, 280.0, 290.0])),  // Wind directions
-        None,  // No wind speed dependence
+        Some(Array1::from_vec(vec![270.0, 280.0, 290.0])), // Wind directions
+        None,                                              // No wind speed dependence
         InterpMethod::Linear,
     )?;
 
@@ -151,16 +139,6 @@ fn main() -> anyhow::Result<()> {
     // ============================================================
     println!("--- Wind Rose with Heterogeneous Map ---\n");
 
-    let wind_rose_het = WindRose::new(
-        wind_directions.clone(),
-        wind_speeds.clone(),
-        Array2::from_elem((3, 3), 0.06),
-        None,
-        None,
-        false,
-        Some(heterogeneous_map),
-        None,
-    )?;
 
     let flow_field_het = FlowField::new(
         wind_speeds.clone(),
@@ -177,7 +155,7 @@ fn main() -> anyhow::Result<()> {
         flow_field: flow_field_het,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 
@@ -191,10 +169,17 @@ fn main() -> anyhow::Result<()> {
     println!("Heterogeneous Results:");
     for fi in 0..3 {
         let findex_power: f64 = (0..4).map(|ti| heterogeneous_powers[[fi, ti]]).sum();
-        println!("  Wind {:.0} m/s, {:.0} deg: {:.2} MW", 
-            wind_speeds[fi], wind_directions[fi], findex_power / 1_000_000.0);
+        println!(
+            "  Wind {:.0} m/s, {:.0} deg: {:.2} MW",
+            wind_speeds[fi],
+            wind_directions[fi],
+            findex_power / 1_000_000.0
+        );
     }
-    println!("  Total Farm Power: {:.2} MW\n", heterogeneous_farm_power / 1_000_000.0);
+    println!(
+        "  Total Farm Power: {:.2} MW\n",
+        heterogeneous_farm_power / 1_000_000.0
+    );
 
     // ============================================================
     // COMPARISON
@@ -210,21 +195,29 @@ fn main() -> anyhow::Result<()> {
 
     println!("{:>25} {:>15} {:>15}", "", "Homogeneous", "Heterogeneous");
     println!("{}", "-".repeat(55));
-    println!("{:>25} {:>15.2} {:>15.2}", "Total Farm Power (MW):", 
-        homogeneous_farm_power / 1_000_000.0, 
-        heterogeneous_farm_power / 1_000_000.0);
+    println!(
+        "{:>25} {:>15.2} {:>15.2}",
+        "Total Farm Power (MW):",
+        homogeneous_farm_power / 1_000_000.0,
+        heterogeneous_farm_power / 1_000_000.0
+    );
 
     for fi in 0..3 {
         let homo_power: f64 = (0..4).map(|ti| homogeneous_powers[[fi, ti]]).sum();
         let het_power: f64 = (0..4).map(|ti| heterogeneous_powers[[fi, ti]]).sum();
-        println!("{:>25} {:>15.2} {:>15.2}", 
+        println!(
+            "{:>25} {:>15.2} {:>15.2}",
             format!("Findex {} ({} m/s):", fi, wind_speeds[fi]),
             homo_power / 1_000_000.0,
-            het_power / 1_000_000.0);
+            het_power / 1_000_000.0
+        );
     }
 
-    println!("\nPower Change: {:+.2} MW ({:+.1}%)\n", 
-        power_change / 1_000_000.0, percent_change);
+    println!(
+        "\nPower Change: {:+.2} MW ({:+.1}%)\n",
+        power_change / 1_000_000.0,
+        percent_change
+    );
 
     // ============================================================
     // TURBINE-LEVEL COMPARISON
@@ -236,7 +229,10 @@ fn main() -> anyhow::Result<()> {
     println!("  Turbine 2 (x=10D): Near neutral zone");
     println!("  Turbine 3 (x=15D): May experience slight slow-down\n");
 
-    println!("{:>10} {:>12} {:>12} {:>12}", "Turbine", "Homo (kW)", "Het (kW)", "Change (%)");
+    println!(
+        "{:>10} {:>12} {:>12} {:>12}",
+        "Turbine", "Homo (kW)", "Het (kW)", "Change (%)"
+    );
     println!("{}", "-".repeat(50));
 
     for ti in 0..4 {
@@ -247,8 +243,13 @@ fn main() -> anyhow::Result<()> {
         } else {
             0.0
         };
-        println!("{:>10} {:>12.1} {:>12.1} {:>+12.1}", 
-            format!("T{}", ti), homo_power / 1000.0, het_power / 1000.0, change_pct);
+        println!(
+            "{:>10} {:>12.1} {:>12.1} {:>+12.1}",
+            format!("T{}", ti),
+            homo_power / 1000.0,
+            het_power / 1000.0,
+            change_pct
+        );
     }
 
     // ============================================================
@@ -317,10 +318,8 @@ fn main() -> anyhow::Result<()> {
     println!("Example: 2D grid with spatial variation");
     let grid_x = Array1::from_vec(vec![0.0, 500.0, 1000.0, 0.0, 500.0, 1000.0]);
     let grid_y = Array1::from_vec(vec![0.0, 0.0, 0.0, 500.0, 500.0, 500.0]);
-    let grid_multipliers = Array2::from_shape_vec(
-        (1, 6),
-        vec![1.20, 1.10, 1.00, 1.15, 1.08, 0.95],
-    )?;
+    let grid_multipliers =
+        Array2::from_shape_vec((1, 6), vec![1.20, 1.10, 1.00, 1.15, 1.08, 0.95])?;
 
     let grid_het_map = HeterogeneousMap::new(
         grid_x,

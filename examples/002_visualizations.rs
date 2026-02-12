@@ -15,8 +15,8 @@
 ///
 /// Note: Full visualization capabilities require a plotting library like plotters.
 /// This example demonstrates the data structures and flow calculations needed for visualization.
-
 use florus::core::Farm;
+use florus::floris_config::SolverConfig;
 use florus::types::Array1;
 
 fn main() -> anyhow::Result<()> {
@@ -82,11 +82,11 @@ fn main() -> anyhow::Result<()> {
     let flow_field = florus::core::FlowField::new(
         wind_speeds.clone(),
         wind_directions.clone(),
-        0.0,    // wind_veer
-        0.14,   // wind_shear
-        1.225,  // air_density
+        0.0,   // wind_veer
+        0.14,  // wind_shear
+        1.225, // air_density
         turbulence_intensities.clone(),
-        90.0,   // reference_wind_height
+        90.0, // reference_wind_height
     )?;
 
     let mut model = florus::FlorisModel {
@@ -94,7 +94,7 @@ fn main() -> anyhow::Result<()> {
         flow_field,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 

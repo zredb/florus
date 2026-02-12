@@ -143,9 +143,9 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
         x: Array4,
         y: Array4,
         z: Array4,
-        axial_induction: Float,
+        _axial_induction: Float,
         deflection_field: Array2,
-        yaw_angle: Float,
+        _yaw_angle: Float,
         turbulence_intensity: Float,
         thrust_coefficient: Float,
         hub_height: Float,
@@ -153,8 +153,6 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
         turbine_index: usize,
         _model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4> {
-        let r0 = rotor_diameter / 2.0;
-
         let shape = x.shape();
         let n_findex = shape[0];
         let n_turbines = shape[1];
@@ -173,7 +171,7 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
         }
 
         // Convert yaw angle to radians
-        let yaw_rad = yaw_angle.to_radians();
+        let yaw_rad = _yaw_angle.to_radians();
 
         for fi in 0..n_findex {
             // Get deflection at the wake source turbine

@@ -5,8 +5,8 @@
 //! and field data when available.
 
 use florus::core::Farm;
+use florus::floris_config::SolverConfig;
 use florus::types::Array1;
-use florus::FlorisModel;
 
 fn main() -> anyhow::Result<()> {
     println!("FLORIS-RS Example 20: Validation Studies");
@@ -51,7 +51,7 @@ fn main() -> anyhow::Result<()> {
         flow_field,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 
@@ -64,8 +64,14 @@ fn main() -> anyhow::Result<()> {
 
     println!("--- Wake-Free Reference ---\n");
     println!("With no wake interaction (turbines side-by-side):");
-    println!("  Upstream turbine power: {:.2} MW", powers[[0, 0]] / 1_000_000.0);
-    println!("  Downstream turbine power: {:.2} MW", powers[[0, 1]] / 1_000_000.0);
+    println!(
+        "  Upstream turbine power: {:.2} MW",
+        powers[[0, 0]] / 1_000_000.0
+    );
+    println!(
+        "  Downstream turbine power: {:.2} MW",
+        powers[[0, 1]] / 1_000_000.0
+    );
     println!("  Total farm power: {:.2} MW", total_power / 1_000_000.0);
 
     // Now test with aligned turbines (wakes present)
@@ -80,16 +86,27 @@ fn main() -> anyhow::Result<()> {
 
     println!("\n--- Wake Interaction Test ---\n");
     println!("With aligned turbines (wake present):");
-    println!("  Upstream turbine power: {:.2} MW", powers_aligned[[0, 0]] / 1_000_000.0);
-    println!("  Downstream turbine power: {:.2} MW", powers_aligned[[0, 1]] / 1_000_000.0);
-    println!("  Total farm power: {:.2} MW", total_power_aligned / 1_000_000.0);
+    println!(
+        "  Upstream turbine power: {:.2} MW",
+        powers_aligned[[0, 0]] / 1_000_000.0
+    );
+    println!(
+        "  Downstream turbine power: {:.2} MW",
+        powers_aligned[[0, 1]] / 1_000_000.0
+    );
+    println!(
+        "  Total farm power: {:.2} MW",
+        total_power_aligned / 1_000_000.0
+    );
 
     let wake_loss = (total_power - total_power_aligned) / total_power * 100.0;
 
     println!("\nWake Loss Analysis:");
     println!("  Wake-induced power loss: {:.1}%", wake_loss);
-    println!("  Downstream receives {:.1}% of upstream power",
-        powers_aligned[[0, 1]] / powers_aligned[[0, 0]] * 100.0);
+    println!(
+        "  Downstream receives {:.1}% of upstream power",
+        powers_aligned[[0, 1]] / powers_aligned[[0, 0]] * 100.0
+    );
 
     println!("\n--- Expected Values (Validation) ---\n");
 
@@ -98,17 +115,30 @@ fn main() -> anyhow::Result<()> {
     let expected_wake_loss_percent = 10.0; // Typically 5-15% for 5D spacing
 
     println!("Validation Criteria:");
-    println!("  Upstream power should be ~{:.1} MW", expected_upstream_power / 1_000_000.0);
-    println!("  Expected wake loss: {:.0}-{:.0}% for 5D spacing",
-        expected_wake_loss_percent - 5.0, expected_wake_loss_percent + 5.0);
+    println!(
+        "  Upstream power should be ~{:.1} MW",
+        expected_upstream_power / 1_000_000.0
+    );
+    println!(
+        "  Expected wake loss: {:.0}-{:.0}% for 5D spacing",
+        expected_wake_loss_percent - 5.0,
+        expected_wake_loss_percent + 5.0
+    );
 
-    let upstream_ok = (powers_aligned[[0, 0]] - expected_upstream_power).abs() < expected_upstream_power * 0.2;
-    let wake_loss_ok = wake_loss > (expected_wake_loss_percent - 10.0) &&
-                       wake_loss < (expected_wake_loss_percent + 15.0);
+    let upstream_ok =
+        (powers_aligned[[0, 0]] - expected_upstream_power).abs() < expected_upstream_power * 0.2;
+    let wake_loss_ok = wake_loss > (expected_wake_loss_percent - 10.0)
+        && wake_loss < (expected_wake_loss_percent + 15.0);
 
     println!("\nValidation Results:");
-    println!("  Upstream power valid: {}", if upstream_ok { "PASS" } else { "CHECK" });
-    println!("  Wake loss within expected range: {}", if wake_loss_ok { "PASS" } else { "CHECK" });
+    println!(
+        "  Upstream power valid: {}",
+        if upstream_ok { "PASS" } else { "CHECK" }
+    );
+    println!(
+        "  Wake loss within expected range: {}",
+        if wake_loss_ok { "PASS" } else { "CHECK" }
+    );
 
     println!("\n--- Cross-Validation with Python FLORIS ---\n");
 

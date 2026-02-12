@@ -3,6 +3,7 @@
 /// Demonstrates wake interactions in a larger wind farm with 5 turbines
 
 use florus::core::Farm;
+use florus::floris_config::SolverConfig;
 use florus::types::Array1;
 
 fn main() -> anyhow::Result<()> {
@@ -57,7 +58,7 @@ fn main() -> anyhow::Result<()> {
         flow_field,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
     

@@ -48,7 +48,7 @@ fn create_test_model(
         flow_field,
         state: crate::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     }
 }

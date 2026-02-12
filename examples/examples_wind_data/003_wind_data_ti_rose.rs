@@ -1,5 +1,5 @@
 use florus::core::Farm;
-use florus::types::{Array1, Array2, Array3};
+use florus::types::{Array1};
 use florus::wind_data::WindTIRose;
 
 fn main() -> anyhow::Result<()> {

@@ -23,6 +23,7 @@
 /// This is the Rust equivalent of demonstrating different wake modeling approaches.
 
 use florus::core::{Farm, FlowField};
+use florus::floris_config::SolverConfig;
 use florus::FlorisModel;
 use florus::types::Array1;
 
@@ -73,7 +74,7 @@ fn main() -> anyhow::Result<()> {
         flow_field,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 
@@ -106,12 +107,12 @@ fn main() -> anyhow::Result<()> {
         90.0,  // reference_wind_height
     )?;
 
-    let mut model_jensen = FlorisModel {
+    let mut model_jensen: FlorisModel = FlorisModel {
         farm,
         flow_field,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 

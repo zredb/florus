@@ -9,8 +9,8 @@
 /// 3. Grid pattern
 /// 4. Cluster pattern
 /// 5. Optimal spacing analysis
-
 use florus::core::Farm;
+use florus::floris_config::SolverConfig;
 use florus::types::Array1;
 
 fn main() -> anyhow::Result<()> {
@@ -40,7 +40,9 @@ fn main() -> anyhow::Result<()> {
     let flow_field = florus::core::FlowField::new(
         Array1::from_vec(vec![rated_ws]),
         Array1::from_vec(vec![270.0]),
-        0.0, 0.14, 1.225,
+        0.0,
+        0.14,
+        1.225,
         Array1::from_vec(vec![0.06]),
         90.0,
     )?;
@@ -50,7 +52,7 @@ fn main() -> anyhow::Result<()> {
         flow_field,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 
@@ -88,7 +90,9 @@ fn main() -> anyhow::Result<()> {
     let flow_field = florus::core::FlowField::new(
         Array1::from_vec(vec![rated_ws]),
         Array1::from_vec(vec![270.0]),
-        0.0, 0.14, 1.225,
+        0.0,
+        0.14,
+        1.225,
         Array1::from_vec(vec![0.06]),
         90.0,
     )?;
@@ -98,7 +102,7 @@ fn main() -> anyhow::Result<()> {
         flow_field,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 
@@ -113,7 +117,10 @@ fn main() -> anyhow::Result<()> {
     for ti in 0..model.farm.n_turbines() {
         println!("  Turbine {}: {:.1} kW", ti, powers[[0, ti]] / 1000.0);
     }
-    println!("  Total Farm Power: {:.2} MW\n", farm_power_staggered / 1_000_000.0);
+    println!(
+        "  Total Farm Power: {:.2} MW\n",
+        farm_power_staggered / 1_000_000.0
+    );
 
     // ============================================================
     // Layout 3: 3x3 Grid Pattern
@@ -137,7 +144,11 @@ fn main() -> anyhow::Result<()> {
     for (i, (x, y)) in layout_x.iter().zip(layout_y.iter()).enumerate() {
         println!("  Turbine {}: ({:.0}, {:.0})", i, x, y);
     }
-    println!("  Grid spacing: {:.0} m ({:.1}D)\n", grid_spacing, grid_spacing / d);
+    println!(
+        "  Grid spacing: {:.0} m ({:.1}D)\n",
+        grid_spacing,
+        grid_spacing / d
+    );
 
     let farm_grid = Farm::new(
         Array1::from_vec(layout_x.clone()),
@@ -147,7 +158,9 @@ fn main() -> anyhow::Result<()> {
     let flow_field = florus::core::FlowField::new(
         Array1::from_vec(vec![rated_ws]),
         Array1::from_vec(vec![270.0]),
-        0.0, 0.14, 1.225,
+        0.0,
+        0.14,
+        1.225,
         Array1::from_vec(vec![0.06]),
         90.0,
     )?;
@@ -157,7 +170,7 @@ fn main() -> anyhow::Result<()> {
         flow_field,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 
@@ -172,7 +185,10 @@ fn main() -> anyhow::Result<()> {
     for ti in 0..model.farm.n_turbines() {
         println!("  Turbine {}: {:.1} kW", ti, powers[[0, ti]] / 1000.0);
     }
-    println!("  Total Farm Power: {:.2} MW\n", farm_power_grid / 1_000_000.0);
+    println!(
+        "  Total Farm Power: {:.2} MW\n",
+        farm_power_grid / 1_000_000.0
+    );
 
     // ============================================================
     // Layout 4: Cluster Pattern
@@ -217,7 +233,9 @@ fn main() -> anyhow::Result<()> {
     let flow_field = florus::core::FlowField::new(
         Array1::from_vec(vec![rated_ws]),
         Array1::from_vec(vec![270.0]),
-        0.0, 0.14, 1.225,
+        0.0,
+        0.14,
+        1.225,
         Array1::from_vec(vec![0.06]),
         90.0,
     )?;
@@ -227,7 +245,7 @@ fn main() -> anyhow::Result<()> {
         flow_field,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 
@@ -242,7 +260,10 @@ fn main() -> anyhow::Result<()> {
     for ti in 0..model.farm.n_turbines() {
         println!("  Turbine {}: {:.1} kW", ti, powers[[0, ti]] / 1000.0);
     }
-    println!("  Total Farm Power: {:.2} MW\n", farm_power_cluster / 1_000_000.0);
+    println!(
+        "  Total Farm Power: {:.2} MW\n",
+        farm_power_cluster / 1_000_000.0
+    );
 
     // ============================================================
     // Spacing Analysis
@@ -250,7 +271,10 @@ fn main() -> anyhow::Result<()> {
     println!("--- Spacing Analysis ---\n");
 
     println!("Testing different spacing ratios:");
-    println!("  {:>8}  {:>12}  {:>12}", "Spacing", "Farm Power", "Wake Loss");
+    println!(
+        "  {:>8}  {:>12}  {:>12}",
+        "Spacing", "Farm Power", "Wake Loss"
+    );
     println!("  {}", "-".repeat(40));
 
     let spacing_ratios = vec![3.0, 5.0, 7.0, 10.0, 15.0];
@@ -268,7 +292,9 @@ fn main() -> anyhow::Result<()> {
         let flow_field_test = florus::core::FlowField::new(
             Array1::from_vec(vec![rated_ws]),
             Array1::from_vec(vec![270.0]),
-            0.0, 0.14, 1.225,
+            0.0,
+            0.14,
+            1.225,
             Array1::from_vec(vec![0.06]),
             90.0,
         )?;
@@ -278,7 +304,7 @@ fn main() -> anyhow::Result<()> {
             flow_field: flow_field_test,
             state: florus::core::State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
+            solver: SolverConfig::default(),
             model_manager: None,
         };
 
@@ -293,7 +319,12 @@ fn main() -> anyhow::Result<()> {
         let no_wake_power = 3.0 * 5_000_000.0; // 3 turbines × 5 MW
         let wake_loss = (1.0 - farm_power_test / no_wake_power) * 100.0;
 
-        println!("  {:>6.0}D  {:>10.2} MW  {:>10.1}%", ratio, farm_power_test / 1_000_000.0, wake_loss);
+        println!(
+            "  {:>6.0}D  {:>10.2} MW  {:>10.1}%",
+            ratio,
+            farm_power_test / 1_000_000.0,
+            wake_loss
+        );
 
         if farm_power_test > best_power {
             best_power = farm_power_test;
@@ -311,10 +342,26 @@ fn main() -> anyhow::Result<()> {
     println!("Layout Comparison (9 m/s wind, 270° direction):");
     println!("  {:>20}  {:>12}", "Layout", "Farm Power");
     println!("  {}", "-".repeat(35));
-    println!("  {:>20}  {:>10.2} MW", "Linear (4 turbines)", farm_power / 1_000_000.0);
-    println!("  {:>20}  {:>10.2} MW", "Staggered (4 turbines)", farm_power_staggered / 1_000_000.0);
-    println!("  {:>20}  {:>10.2} MW", "3x3 Grid (9 turbines)", farm_power_grid / 1_000_000.0);
-    println!("  {:>20}  {:>10.2} MW", "Cluster (6 turbines)", farm_power_cluster / 1_000_000.0);
+    println!(
+        "  {:>20}  {:>10.2} MW",
+        "Linear (4 turbines)",
+        farm_power / 1_000_000.0
+    );
+    println!(
+        "  {:>20}  {:>10.2} MW",
+        "Staggered (4 turbines)",
+        farm_power_staggered / 1_000_000.0
+    );
+    println!(
+        "  {:>20}  {:>10.2} MW",
+        "3x3 Grid (9 turbines)",
+        farm_power_grid / 1_000_000.0
+    );
+    println!(
+        "  {:>20}  {:>10.2} MW",
+        "Cluster (6 turbines)",
+        farm_power_cluster / 1_000_000.0
+    );
 
     println!("\nLayout Design Considerations:");
     println!("  1. Staggered layouts reduce wake interactions");

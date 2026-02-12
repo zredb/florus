@@ -13,9 +13,8 @@ pub use super::base::{
     TurbulenceModel, VelocityModel,
 };
 
-// Re-export wake manager and its types
+// Re-export wake manager
 pub use wake_manager::WakeModelManager;
-pub use wake_manager::WakeModelStrings;
 
 // Re-export wake deflection models
 pub use wake_deflection::{

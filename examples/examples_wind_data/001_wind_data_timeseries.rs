@@ -1,4 +1,5 @@
 use florus::core::Farm;
+use florus::floris_config::SolverConfig;
 use florus::types::Array1;
 use florus::wind_data::{TimeSeries, WindData};
 
@@ -77,7 +78,7 @@ fn main() -> anyhow::Result<()> {
             flow_field,
             state: florus::core::State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
+            solver: SolverConfig::default(),
             model_manager: None,
         };
 

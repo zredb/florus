@@ -2,31 +2,26 @@
 //!
 //! Manages all wake models (velocity, deflection, turbulence, combination)
 
-use crate::types::NumericDict;
-use crate::core::wake::{
-    CombinationModel, DeflectionModel, TurbulenceModel, VelocityModel,
+use crate::core::wake::{CombinationModel, DeflectionModel, TurbulenceModel, VelocityModel};
+use crate::floris_config::{
+    CombinationModelConfig, DeflectionModelConfig, TurbulenceModelConfig, VelocityModelConfig,
+    WakeConfig,
 };
-use std::collections::HashMap;
 
-/// Wake model strings for identification
-#[derive(Debug, Clone)]
-pub struct WakeModelStrings {
-    pub velocity_model: String,
-    pub deflection_model: String,
-    pub combination_model: String,
-    pub turbulence_model: String,
-}
-
-/// Wake Model Manager
+/// Wake model manager created from WakeConfig
+///
+/// This version is refactored to work directly with WakeConfig enums
+/// instead of string-based model selection.
 pub struct WakeModelManager {
     pub velocity_model: Box<dyn VelocityModel>,
     pub deflection_model: Box<dyn DeflectionModel>,
     pub turbulence_model: Box<dyn TurbulenceModel>,
     pub combination_model: Box<dyn CombinationModel>,
-    pub model_params: HashMap<String, NumericDict>,
-    pub turbine_type_params: HashMap<String, NumericDict>,
     pub enable_secondary_steering: bool,
     pub enable_yaw_added_recovery: bool,
+    pub enable_active_wake_mixing: bool,
+    pub enable_transverse_velocities: bool,
+    pub enable_wake_mixing: bool,
     pub use_parallel_calc: bool,
 }
 
@@ -37,9 +32,14 @@ impl std::fmt::Debug for WakeModelManager {
             .field("deflection_model", &"Box<dyn DeflectionModel>")
             .field("turbulence_model", &"Box<dyn TurbulenceModel>")
             .field("combination_model", &"Box<dyn CombinationModel>")
-            .field("model_params", &self.model_params.keys().collect::<Vec<_>>())
             .field("enable_secondary_steering", &self.enable_secondary_steering)
             .field("enable_yaw_added_recovery", &self.enable_yaw_added_recovery)
+            .field("enable_active_wake_mixing", &self.enable_active_wake_mixing)
+            .field(
+                "enable_transverse_velocities",
+                &self.enable_transverse_velocities,
+            )
+            .field("enable_wake_mixing", &self.enable_wake_mixing)
             .field("use_parallel_calc", &self.use_parallel_calc)
             .finish()
     }
@@ -48,247 +48,213 @@ impl std::fmt::Debug for WakeModelManager {
 impl Clone for WakeModelManager {
     fn clone(&self) -> Self {
         Self {
-            velocity_model: Box::new(crate::core::wake::GaussVelocity::new(0.38, 0.004, 0.5)),
-            deflection_model: Box::new(crate::core::wake::GaussVelocityDeflection::new(0.0, 0.0, 0.58, 0.077, 1.0)),
-            turbulence_model: Box::new(crate::core::wake::CrespoHernandez::new(0.9, 0.9)),
-            combination_model: Box::new(crate::core::wake::FLS),
-            model_params: self.model_params.clone(),
-            turbine_type_params: self.turbine_type_params.clone(),
+            velocity_model: Box::new(crate::core::wake_velocity::gauss::GaussVelocity::new(
+                0.38, 0.004, 0.5,
+            )),
+            deflection_model: Box::new(
+                crate::core::wake_deflection::gauss::GaussVelocityDeflection::new(
+                    0.05, 0.0, 0.58, 0.077, 1.0,
+                ),
+            ),
+            turbulence_model: Box::new(
+                crate::core::wake_turbulence::crespo_hernandez::CrespoHernandez::new(0.9, 0.9),
+            ),
+            combination_model: Box::new(crate::core::wake_combination::FLS),
             enable_secondary_steering: self.enable_secondary_steering,
             enable_yaw_added_recovery: self.enable_yaw_added_recovery,
+            enable_active_wake_mixing: self.enable_active_wake_mixing,
+            enable_transverse_velocities: self.enable_transverse_velocities,
+            enable_wake_mixing: self.enable_wake_mixing,
             use_parallel_calc: self.use_parallel_calc,
         }
     }
 }
 
 impl WakeModelManager {
-    /// Create a new WakeModelManager from model strings
-    pub fn new(
-        model_strings: WakeModelStrings,
-        model_params: HashMap<String, NumericDict>,
-        turbine_type_params: HashMap<String, NumericDict>,
-        _turbine_type_templates: HashMap<String, NumericDict>,
-        enable_secondary_steering: bool,
-        enable_yaw_added_recovery: bool,
-        use_parallel_calc: bool,
-    ) -> anyhow::Result<Self> {
-        let velocity_model = Self::create_velocity_model(
-            &model_strings.velocity_model,
-            &model_params,
-            &turbine_type_params,
-        )?;
-        
-        let deflection_model = Self::create_deflection_model(
-            &model_strings.deflection_model,
-            &model_params,
-        )?;
-        
-        let turbulence_model = Self::create_turbulence_model(
-            &model_strings.turbulence_model,
-            &model_params,
-        )?;
-        
-        let combination_model = Self::create_combination_model(
-            &model_strings.combination_model,
-        )?;
+    /// Create a new WakeModelManager from WakeConfig
+    pub fn from_config(config: &WakeConfig) -> anyhow::Result<Self> {
+        let velocity_model = Self::create_velocity_model(&config.model_strings.velocity_model)?;
+        let deflection_model =
+            Self::create_deflection_model(&config.model_strings.deflection_model)?;
+        let turbulence_model =
+            Self::create_turbulence_model(&config.model_strings.turbulence_model)?;
+        let combination_model =
+            Self::create_combination_model(&config.model_strings.combination_model)?;
 
         Ok(Self {
             velocity_model,
             deflection_model,
             turbulence_model,
             combination_model,
-            model_params,
-            turbine_type_params,
-            enable_secondary_steering,
-            enable_yaw_added_recovery,
-            use_parallel_calc,
+            enable_secondary_steering: config.enable_secondary_steering,
+            enable_yaw_added_recovery: config.enable_yaw_added_recovery,
+            enable_active_wake_mixing: config.enable_active_wake_mixing,
+            enable_transverse_velocities: config.enable_transverse_velocities,
+            enable_wake_mixing: config.enable_wake_mixing,
+            use_parallel_calc: config.use_parallel_calc,
         })
     }
 
-    /// Create velocity model from string identifier
+    /// Create velocity model from VelocityModelConfig enum
     fn create_velocity_model(
-        model_name: &str,
-        model_params: &HashMap<String, NumericDict>,
-        _turbine_type_params: &HashMap<String, NumericDict>,
+        config: &VelocityModelConfig,
     ) -> anyhow::Result<Box<dyn VelocityModel>> {
-        match model_name.to_lowercase().as_str() {
-            "gauss" | "gaussian" => {
-                // model_params contains nested dict like: {"gauss": {"ka": 0.38, "kb": 0.004, ...}}
-                let gauss_params = model_params.get("gauss")
-                    .cloned()
-                    .unwrap_or_else(|| NumericDict {
-                        data: std::collections::HashMap::new()
-                    });
-
-                let ka = gauss_params.data.get("ka")
-                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
-                    .unwrap_or(0.38);
-                let kb = gauss_params.data.get("kb")
-                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
-                    .unwrap_or(0.004);
-                let initial_wake_width = gauss_params.data.get("alpha")
-                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
-                    .unwrap_or(0.5);
-
+        match config {
+            VelocityModelConfig::Gauss { alpha, beta: _, ka, kb } => {
                 Ok(Box::new(
-                    crate::core::wake::GaussVelocity::new(ka, kb, initial_wake_width)
+                    crate::core::wake_velocity::gauss::GaussVelocity::new(*ka, *kb, *alpha)
                 ))
-            },
-            "jensen" => {
-                let jensen_params = model_params.get("jensen")
-                    .cloned()
-                    .unwrap_or_else(|| NumericDict {
-                        data: std::collections::HashMap::new()
-                    });
-
-                let we = jensen_params.data.get("we")
-                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
-                    .unwrap_or(0.05);
+            }
+            VelocityModelConfig::Jensen { we } => {
+                // Jensen uses we (wake expansion rate) as kd
                 Ok(Box::new(
-                    crate::core::wake::JensenVelocity::new(we, 0.0)
+                    crate::core::wake_velocity::jensen::JensenVelocity::new(*we, 0.0)
                 ))
-            },
-            "turbopark" => Ok(Box::new(
-                crate::core::wake_velocity::TurbOParkVelocityDeficit::default()
-            )),
-            "turboparkgauss" => Ok(Box::new(
-                crate::core::wake_velocity::TurbOParkGaussVelocityDeficit::default()
-            )),
-            "gauss_legacy" | "gch" => Ok(Box::new(
-                crate::core::wake_velocity::GaussLegacyVelocityDeficit::default()
-            )),
-            "empirical_gauss" | "empirical-gauss" => Ok(Box::new(
-                crate::core::wake_velocity::EmpiricalGaussVelocityDeficit::default()
-            )),
-            "cumulative_gauss_curl" => Ok(Box::new(
-                crate::core::wake_velocity::CumulativeCurlVelocityDeficit::default()
-            )),
-            "none" => Ok(Box::new(crate::core::wake::NoneVelocity::new())),
-            _ => Err(anyhow::anyhow!(
-                "Velocity model '{}' not implemented",
-                model_name
-            )),
+            }
+            VelocityModelConfig::Turbopark { kstar, cstar } => {
+                // TurbOPark parameters: a and sigma_max_rel
+                // kstar controls wake width, cstar controls decay
+                Ok(Box::new(
+                    crate::core::wake_velocity::turbopark::TurbOParkVelocityDeficit::new(*kstar, *cstar)
+                ))
+            }
+            VelocityModelConfig::TurboparkGauss { kstar, cstar: _ } => {
+                Ok(Box::new(
+                    crate::core::wake_velocity::turboparkgauss::TurbOParkGaussVelocityDeficit::new(*kstar, true)
+                ))
+            }
+            VelocityModelConfig::CC {
+                a_s,
+                b_s,
+                c_s1,
+                c_s2,
+                a_f,
+                b_f,
+                c_f,
+                alpha_mod,
+            } => {
+                Ok(Box::new(
+                    crate::core::wake_velocity::cumulative_gauss_curl::CumulativeCurlVelocityDeficit::new(
+                        *alpha_mod, *a_s, *b_s, *c_s1, *c_s2,
+                        *a_f, *b_f, *c_f,
+                    )
+                ))
+            }
+            VelocityModelConfig::CumulativeGaussCurl {
+                a_s,
+                b_s,
+                c_s1,
+                c_s2,
+                a_f,
+                b_f,
+                c_f,
+                alpha_mod,
+            } => {
+                Ok(Box::new(
+                    crate::core::wake_velocity::cumulative_gauss_curl::CumulativeCurlVelocityDeficit::new(
+                        *alpha_mod, *a_s, *b_s, *c_s1, *c_s2,
+                        *a_f, *b_f, *c_f,
+                    )
+                ))
+            }
+            VelocityModelConfig::EmpiricalGauss { ad, bd: _, alpha, beta } => {
+                Ok(Box::new(
+                    crate::core::wake_velocity::empirical_gauss::EmpiricalGaussVelocityDeficit::new(*alpha, *beta, *ad)
+                ))
+            }
         }
     }
 
-    /// Create deflection model from string identifier
-
-    /// Create deflection model from string identifier
+    /// Create deflection model from DeflectionModelConfig enum
     fn create_deflection_model(
-        model_name: &str,
-        model_params: &HashMap<String, NumericDict>,
+        config: &DeflectionModelConfig,
     ) -> anyhow::Result<Box<dyn DeflectionModel>> {
-        match model_name.to_lowercase().as_str() {
-            "gauss" | "gaussian" => {
-                // model_params contains nested dict like: {"gauss": {"ad": 0.0, "alpha": 0.58, ...}}
-                let gauss_params = model_params.get("gauss")
-                    .cloned()
-                    .unwrap_or_else(|| NumericDict {
-                        data: std::collections::HashMap::new()
-                    });
-
-                let ad = gauss_params.data.get("ad")
-                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
-                    .unwrap_or(0.0);
-                let bd = gauss_params.data.get("bd")
-                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
-                    .unwrap_or(0.0);
-                let alpha = gauss_params.data.get("alpha")
-                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
-                    .unwrap_or(0.58);
-                let beta = gauss_params.data.get("beta")
-                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
-                    .unwrap_or(0.077);
-                let dm = gauss_params.data.get("dm")
-                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
-                    .unwrap_or(1.0);
-
+        match config {
+            DeflectionModelConfig::Gauss {
+                alpha,
+                beta,
+                ad,
+                bd: _,
+                dm,
+                ka,
+                kb: _,
+            } => {
+                // Gauss deflection uses kd for wake expansion
+                // Use ka as default kd if not specified separately
+                let kd = *ka;
                 Ok(Box::new(
-                    crate::core::wake::GaussVelocityDeflection::new(ad, bd, alpha, beta, dm)
+                    crate::core::wake_deflection::gauss::GaussVelocityDeflection::new(kd, *ad, *alpha, *beta, *dm)
                 ))
-            },
-            "jimenez" => {
-                let jimenez_params = model_params.get("jimenez")
-                    .cloned()
-                    .unwrap_or_else(|| NumericDict {
-                        data: std::collections::HashMap::new()
-                    });
-
-                let ad = jimenez_params.data.get("ad")
-                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
-                    .unwrap_or(0.0);
-                let bd = jimenez_params.data.get("bd")
-                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
-                    .unwrap_or(0.0);
-                let _kd = jimenez_params.data.get("kd")
-                    .and_then(|v| match v { crate::types::ConfigValue::Float(f) => Some(*f), _ => None })
-                    .unwrap_or(0.05);
+            }
+            DeflectionModelConfig::Jimenez { ad, bd: _, kd } => {
                 Ok(Box::new(
-                    crate::core::wake::JimenezVelocityDeflection::new(ad, bd)
+                    crate::core::wake_deflection::jimenez::JimenezVelocityDeflection::new(*kd, *ad)
                 ))
-            },
-            "empirical_gauss" | "empirical-gauss" => Ok(Box::new(
-                crate::core::wake::EmpiricalGaussVelocityDeflection::new(0.01, 0.05, 0.5)
-            )),
-            "none" => Ok(Box::new(crate::core::wake::NoneVelocityDeflection::new())),
-            _ => Err(anyhow::anyhow!(
-                "Deflection model '{}' not implemented",
-                model_name
-            )),
+            }
+            DeflectionModelConfig::EmpiricalGauss { ad, bd, kd } => {
+                Ok(Box::new(
+                    crate::core::wake_deflection::empirical_gauss::EmpiricalGaussVelocityDeflection::new(*ad, *bd, *kd)
+                ))
+            }
         }
     }
 
-    /// Create turbulence model from string identifier
+    /// Create turbulence model from TurbulenceModelConfig enum
     fn create_turbulence_model(
-        model_name: &str,
-        _model_params: &HashMap<String, NumericDict>,
+        config: &TurbulenceModelConfig,
     ) -> anyhow::Result<Box<dyn TurbulenceModel>> {
-        match model_name.to_lowercase().as_str() {
-            "crespo_hernandez" | "crespo-hernandez" => Ok(Box::new(
-                crate::core::wake::CrespoHernandez::new(0.9, 0.9)
+        match config {
+            TurbulenceModelConfig::CrespoHernandez {
+                initial,
+                constant,
+                ai: _,
+                downstream: _,
+            } => Ok(Box::new(
+                crate::core::wake_turbulence::crespo_hernandez::CrespoHernandez::new(
+                    *initial, *constant,
+                ),
             )),
-            "none" => Ok(Box::new(crate::core::wake::NoneTurbulence::new())),
-            _ => Err(anyhow::anyhow!(
-                "Turbulence model '{}' not implemented",
-                model_name
+            TurbulenceModelConfig::WakeInducedMixing { .. } => {
+                // WakeInducedMixing not fully implemented yet, use CrespoHernandez as fallback
+                Ok(Box::new(
+                    crate::core::wake_turbulence::crespo_hernandez::CrespoHernandez::new(0.9, 0.9),
+                ))
+            }
+            TurbulenceModelConfig::None => Ok(Box::new(
+                crate::core::wake_turbulence::none::NoneTurbulence::new(),
             )),
         }
     }
 
-    /// Create combination model from string identifier
+    /// Create combination model from CombinationModelConfig enum
     fn create_combination_model(
-        model_name: &str,
+        config: &CombinationModelConfig,
     ) -> anyhow::Result<Box<dyn CombinationModel>> {
-        match model_name.to_lowercase().as_str() {
-            "fls" | "freestream_linear_superposition" => Ok(Box::new(
-                crate::core::wake::FLS
-            )),
-            "max" | "maximum" => Ok(Box::new(crate::core::wake::MAX)),
-            "sosfs" | "sos" => Ok(Box::new(crate::core::wake::SOSFS)),
-            _ => Err(anyhow::anyhow!(
-                "Combination model '{}' not implemented",
-                model_name
-            )),
+        match config {
+            CombinationModelConfig::FLS => Ok(Box::new(crate::core::wake_combination::FLS)),
+            CombinationModelConfig::SOSFS => Ok(Box::new(crate::core::wake_combination::SOSFS)),
+            CombinationModelConfig::Max => Ok(Box::new(crate::core::wake_combination::MAX)),
         }
     }
 
-    /// Get default model strings for common configurations
-    pub fn default_gauss() -> WakeModelStrings {
-        WakeModelStrings {
-            velocity_model: "gauss".to_string(),
-            deflection_model: "gauss".to_string(),
-            combination_model: "fls".to_string(),
-            turbulence_model: "crespo_hernandez".to_string(),
-        }
+    /// Get default WakeModelManager (Gaussian models with FLS combination)
+    pub fn default_gauss() -> anyhow::Result<Self> {
+        let config = WakeConfig::default();
+        Self::from_config(&config)
     }
 
-    pub fn default_jensen() -> WakeModelStrings {
-        WakeModelStrings {
-            velocity_model: "jensen".to_string(),
-            deflection_model: "jimenez".to_string(),
-            combination_model: "fls".to_string(),
-            turbulence_model: "none".to_string(),
-        }
+    /// Get default WakeModelManager (Jensen models with FLS combination)
+    pub fn default_jensen() -> anyhow::Result<Self> {
+        let mut config = WakeConfig::default();
+        config.model_strings.velocity_model = VelocityModelConfig::Jensen { we: 0.05 };
+        config.model_strings.deflection_model = DeflectionModelConfig::Jimenez {
+            ad: 0.0,
+            bd: 0.0,
+            kd: 0.05,
+        };
+        config.model_strings.turbulence_model = TurbulenceModelConfig::None;
+
+        Self::from_config(&config)
     }
 }
 
@@ -297,33 +263,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_wake_model_manager_creation() {
-        let model_strings = WakeModelManager::default_gauss();
-        let manager = WakeModelManager::new(
-            model_strings,
-            HashMap::new(),
-            HashMap::new(),
-            HashMap::new(),
-            false,
-            false,
-            false,
-        );
+    fn test_wake_model_manager_from_config() {
+        let config = WakeConfig::default();
+        let manager = WakeModelManager::from_config(&config);
         assert!(manager.is_ok());
     }
 
     #[test]
-    fn test_default_gauss_models() {
-        let strings = WakeModelManager::default_gauss();
-        assert_eq!(strings.velocity_model, "gauss");
-        assert_eq!(strings.deflection_model, "gauss");
-        assert_eq!(strings.combination_model, "fls");
-        assert_eq!(strings.turbulence_model, "crespo_hernandez");
+    fn test_default_gauss() {
+        let manager = WakeModelManager::default_gauss();
+        assert!(manager.is_ok());
     }
 
     #[test]
-    fn test_default_jensen_models() {
-        let strings = WakeModelManager::default_jensen();
-        assert_eq!(strings.velocity_model, "jensen");
-        assert_eq!(strings.deflection_model, "jimenez");
+    fn test_default_jensen() {
+        let manager = WakeModelManager::default_jensen();
+        assert!(manager.is_ok());
     }
 }

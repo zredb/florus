@@ -190,7 +190,7 @@ fn create_test_model(
         flow_field,
         state: crate::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     }
 }
@@ -350,7 +350,7 @@ mod turbopark_regression_tests {
             flow_field,
             state: crate::core::State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
+            solver: SolverConfig::default(),
             model_manager: None,
         };
 
@@ -492,7 +492,7 @@ mod jensen_regression_tests {
             flow_field,
             state: crate::core::State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
+            solver: SolverConfig::default(),
             model_manager: None,
         };
 
@@ -581,7 +581,7 @@ mod wake_physics_tests {
             flow_field: flow_field_close,
             state: crate::core::State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
+            solver: SolverConfig::default(),
             model_manager: None,
         };
 
@@ -617,7 +617,7 @@ mod wake_physics_tests {
         let mut model_close = FlorisModel {
             farm: farm_close, flow_field: flow_field_close,
             state: crate::core::State::new(), grid: None,
-            solver_type: "turbine_grid".to_string(), model_manager: None,
+            solver: SolverConfig::default(), model_manager: None,
         };
 
         // Far spacing (15D)
@@ -636,7 +636,7 @@ mod wake_physics_tests {
         let mut model_far = FlorisModel {
             farm: farm_far, flow_field: flow_field_far,
             state: crate::core::State::new(), grid: None,
-            solver_type: "turbine_grid".to_string(), model_manager: None,
+            solver: SolverConfig::default(), model_manager: None,
         };
 
         let (_, v_close_down, _, _) = run_solver_and_extract_results(
@@ -678,7 +678,7 @@ mod wake_physics_tests {
         let mut model_aligned = FlorisModel {
             farm: farm_aligned, flow_field: flow_field_aligned,
             state: crate::core::State::new(), grid: None,
-            solver_type: "turbine_grid".to_string(), model_manager: None,
+            solver: SolverConfig::default(), model_manager: None,
         };
 
         // Offset (y offset = 3D)
@@ -696,7 +696,7 @@ mod wake_physics_tests {
         let mut model_offset = FlorisModel {
             farm: farm_offset, flow_field: flow_field_offset,
             state: crate::core::State::new(), grid: None,
-            solver_type: "turbine_grid".to_string(), model_manager: None,
+            solver: SolverConfig::default(), model_manager: None,
         };
 
         let (_, v_aligned_down, _, _) = run_solver_and_extract_results(

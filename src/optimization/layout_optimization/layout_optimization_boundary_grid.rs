@@ -3,10 +3,10 @@
 //! Provides grid-based layout optimization within specified boundaries.
 //! This module corresponds to layout_optimization_boundary_grid.py in Python FLORIS v4.6.
 
-use crate::floris_model::FlorisModel;
 use super::layout_optimization_base::{
     Boundary, LayoutOptimizationConfig, LayoutOptimizationResult, LayoutOptimizer,
 };
+use crate::floris_model::FlorisModel;
 use crate::types::{Array1, Float};
 use crate::Result;
 use rand::prelude::SliceRandom;
@@ -158,7 +158,8 @@ impl LayoutOptimizationBoundaryGrid {
                 }
 
                 // Calculate minimum distance to already selected points
-                let min_dist_to_selected = selected_points.iter()
+                let min_dist_to_selected = selected_points
+                    .iter()
                     .map(|selected| {
                         let dx = point.0 - selected.0;
                         let dy = point.1 - selected.1;
@@ -215,7 +216,11 @@ impl LayoutOptimizationBoundaryGrid {
     }
 
     /// Find the best positions on the grid using exhaustive search
-    fn find_optimal_grid_positions(&self, initial_x: &Array1, initial_y: &Array1) -> (Array1, Array1) {
+    fn find_optimal_grid_positions(
+        &self,
+        initial_x: &Array1,
+        initial_y: &Array1,
+    ) -> (Array1, Array1) {
         let grid_points = self.generate_grid_points();
         let min_dist = self.config.base.min_dist.unwrap_or(500.0);
 
@@ -455,13 +460,17 @@ impl LayoutOptimizer for LayoutOptimizationMixedInteger {
         let min_dist = self.min_dist();
 
         // First pass: grid-based selection for discrete positions
-        let mut grid_optimizer = LayoutOptimizationBoundaryGrid::new(&self.fmodel, self.boundaries().clone(), self.config.grid_resolution)
-            .unwrap()
-            .with_min_dist(min_dist)
-            .with_smart_start(self.config.smart_start, self.config.smart_start_distance);
-        
+        let mut grid_optimizer = LayoutOptimizationBoundaryGrid::new(
+            &self.fmodel,
+            self.boundaries().clone(),
+            self.config.grid_resolution,
+        )
+        .unwrap()
+        .with_min_dist(min_dist)
+        .with_smart_start(self.config.smart_start, self.config.smart_start_distance);
+
         let grid_result = grid_optimizer.optimize()?;
-        
+
         // Second pass: continuous refinement around grid positions
         let mut best_x = grid_result.x.clone();
         let mut best_y = grid_result.y.clone();
@@ -469,30 +478,30 @@ impl LayoutOptimizer for LayoutOptimizationMixedInteger {
 
         // Small neighborhood search
         let refinement_range = (self.xmax - self.xmin) / self.config.grid_resolution as Float;
-        
+
         // Try small perturbations around best grid positions
         let n_refinements = 50;
         let mut rng = rand::thread_rng();
-        
+
         for _ in 0..n_refinements {
             let mut test_x = best_x.clone();
             let mut test_y = best_y.clone();
-            
+
             // Random turbine to move
             let turbine_idx = rng.gen_range(0..self.n_turbines);
-            
+
             // Small random displacement
             test_x[turbine_idx] += (rng.gen::<Float>() - 0.5) * 2.0 * refinement_range;
             test_y[turbine_idx] += (rng.gen::<Float>() - 0.5) * 2.0 * refinement_range;
-            
+
             // Clamp to bounds
             test_x[turbine_idx] = test_x[turbine_idx].clamp(self.xmin, self.xmax);
             test_y[turbine_idx] = test_y[turbine_idx].clamp(self.ymin, self.ymax);
-            
+
             // Check constraints
-            if self.check_boundary_constraints(&test_x, &test_y) 
-                && self.calculate_min_distance(&test_x, &test_y) >= min_dist {
-                
+            if self.check_boundary_constraints(&test_x, &test_y)
+                && self.calculate_min_distance(&test_x, &test_y) >= min_dist
+            {
                 let value = self.calculate_objective(&test_x, &test_y);
                 if value > best_value {
                     best_value = value;
@@ -515,23 +524,24 @@ impl LayoutOptimizer for LayoutOptimizationMixedInteger {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::Array1;
     use crate::core::Farm;
-    use crate::floris_model::FlorisModel;
     use crate::core::FlowField;
+    use crate::floris_config::SolverConfig;
+    use crate::floris_model::FlorisModel;
+    use crate::types::Array1;
 
     #[test]
     fn test_boundary_grid_optimizer_creation() {
         let layout_x = Array1::from_vec(vec![0.0, 500.0, 1000.0]);
         let layout_y = Array1::from_vec(vec![0.0, 0.0, 0.0]);
         let turbine_types = vec!["nrel_5MW".to_string(); 3];
-        
+
         let farm = Farm::new(layout_x, layout_y, turbine_types).unwrap();
-        
+
         let wind_speeds = Array1::from_vec(vec![8.0]);
         let wind_directions = Array1::from_vec(vec![270.0]);
         let turbulence_intensities = Array1::from_vec(vec![0.06]);
-        
+
         let flow_field = FlowField::new(
             wind_speeds,
             wind_directions,
@@ -540,24 +550,25 @@ mod tests {
             1.225,
             turbulence_intensities,
             90.0,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let model = FlorisModel {
             farm,
             flow_field,
             state: crate::core::State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
+            solver: SolverConfig::default(),
             model_manager: None,
         };
-        
+
         let boundary = Boundary::Rectangle {
             min_x: 0.0,
             max_x: 2000.0,
             min_y: 0.0,
             max_y: 2000.0,
         };
-        
+
         let optimizer = LayoutOptimizationBoundaryGrid::new(&model, boundary, 10).unwrap();
         assert_eq!(optimizer.n_turbines(), 3);
     }
@@ -567,13 +578,13 @@ mod tests {
         let layout_x = Array1::from_vec(vec![0.0, 500.0, 1000.0]);
         let layout_y = Array1::from_vec(vec![0.0, 0.0, 0.0]);
         let turbine_types = vec!["nrel_5MW".to_string(); 3];
-        
+
         let farm = Farm::new(layout_x, layout_y, turbine_types).unwrap();
-        
+
         let wind_speeds = Array1::from_vec(vec![8.0]);
         let wind_directions = Array1::from_vec(vec![270.0]);
         let turbulence_intensities = Array1::from_vec(vec![0.06]);
-        
+
         let flow_field = FlowField::new(
             wind_speeds,
             wind_directions,
@@ -582,24 +593,25 @@ mod tests {
             1.225,
             turbulence_intensities,
             90.0,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let model = FlorisModel {
             farm,
             flow_field,
             state: crate::core::State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
+            solver: SolverConfig::default(),
             model_manager: None,
         };
-        
+
         let boundary = Boundary::Rectangle {
             min_x: 0.0,
             max_x: 2000.0,
             min_y: 0.0,
             max_y: 2000.0,
         };
-        
+
         let optimizer = LayoutOptimizationMixedInteger::new(&model, boundary, 10).unwrap();
         assert_eq!(optimizer.n_turbines(), 3);
     }

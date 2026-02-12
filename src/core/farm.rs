@@ -728,19 +728,35 @@ impl Farm {
         self.layout_x = layout_x.clone();
         self.layout_y = layout_y.clone();
 
+        // Update _turbine_types to match the new number of turbines
+        if self._turbine_types.len() == 1 {
+            self._turbine_types = vec![self._turbine_types[0].clone(); n_turbines];
+        } else if self._turbine_types.len() > n_turbines {
+            self._turbine_types = self._turbine_types[..n_turbines].to_vec();
+        } else if self._turbine_types.len() < n_turbines {
+            let last_type = self._turbine_types.last().unwrap().clone();
+            self._turbine_types.extend(vec![last_type; n_turbines - self._turbine_types.len()]);
+        }
+
+        // Reconstruct turbine type definitions for the new layout
+        self.turbine_definitions = self
+            ._turbine_types
+            .iter()
+            .map(|t| {
+                self._turbine_definition_cache
+                    .get(t)
+                    .cloned()
+                    .unwrap_or_else(|| panic!("Turbine definition not found for type: {}", t))
+            })
+            .collect();
+
         // Reconstruct derived properties
+        self.construct_turbine_map();
         self.construct_hub_heights();
         self.construct_rotor_diameters();
         self.construct_turbine_tsrs();
         self.construct_turbine_ref_tilts();
         self.construct_turbine_correct_cp_ct_for_tilt();
-
-        // Reconstruct turbine map with correct number of turbines
-        if self._turbine_types.len() == 1 {
-            // Single turbine type - repeat for all positions
-            self._turbine_types = vec![self._turbine_types[0].clone(); n_turbines];
-        }
-        self.construct_turbine_map();
 
         Ok(())
     }

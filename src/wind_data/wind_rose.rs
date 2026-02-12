@@ -765,7 +765,11 @@ impl WindData for WindRose {
     }
 
     fn n_conditions(&self) -> usize {
-        self.wind_directions.len() * self.wind_speeds.len()
+        self.wind_speeds.len() * self.wind_directions.len()
+    }
+
+    fn frequencies(&self) -> Array2 {
+        self.freq_table.clone()
     }
 
     fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig {
@@ -777,7 +781,6 @@ impl WindData for WindRose {
         };
 
         if n_points > 0 {
-            // Use the heterogeneous_map if available
             let het_map = self.heterogeneous_map.as_ref().unwrap();
             het_map
                 .get_heterogeneous_inflow_config(
@@ -793,7 +796,6 @@ impl WindData for WindRose {
                     speed_multipliers: Array2::zeros((n_conditions, n_points)),
                 })
         } else {
-            // No heterogeneous map, return empty config
             HeterogeneousInflowConfig {
                 x: Array1::from_vec(vec![]),
                 y: Array1::from_vec(vec![]),
@@ -806,7 +808,6 @@ impl WindData for WindRose {
     }
 
     fn set_layout(&mut self, _layout_x: &Option<Array1>, _layout_y: &Option<Array1>) {
-        // WindRose doesn't support layout changes through this interface
     }
 
     fn unpack(

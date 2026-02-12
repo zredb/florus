@@ -593,16 +593,27 @@ impl WindData for WindRoseWRG {
         }
     }
 
+    fn frequencies(&self) -> Array2 {
+        if self.layout_x.is_empty() {
+            return Array2::from_shape_vec((0, 0), vec![]).unwrap();
+        }
+        if let Some(first_rose) = self.wind_roses.first() {
+            first_rose.freq_table.clone()
+        } else {
+            Array2::from_shape_vec((0, 0), vec![]).unwrap()
+        }
+    }
+
     fn unpack(
         &self,
     ) -> (
-        Array1,
-        Array1,
-        Array1,
-        Array2,
-        Array2,
-        HeterogeneousInflowConfig,
-    ) {
+            Array1,
+            Array1,
+            Array1,
+            Array2,
+            Array2,
+            HeterogeneousInflowConfig,
+        ) {
         if self.layout_x.is_empty() {
             // Return empty result if layout is not set
             return (
@@ -1001,6 +1012,17 @@ impl WindData for WindRoseByTurbine {
             wind_speeds: Some(self.wind_speeds.clone()),
             wind_directions: Some(self.wind_directions.clone()),
             speed_multipliers: Array2::from_shape_vec((n_conditions, 0), vec![]).unwrap(),
+        }
+    }
+
+    fn frequencies(&self) -> Array2 {
+        if let Some(ref freq_table) = self.freq_table {
+            freq_table.clone()
+        } else {
+            let n_conditions = self.n_conditions();
+            let n_turbines = self.wind_roses.len();
+            let freq = 1.0 / n_conditions as Float;
+            Array2::from_shape_fn([n_conditions, n_turbines], |_| freq)
         }
     }
 

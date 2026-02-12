@@ -1,24 +1,12 @@
-/// FLORIS Model - Main user interface
-///
-/// Corresponds to floris_model.py
+use crate::core::wake::WakeModelManager;
 use crate::core::{Farm, FlowField, GridBase, State, TurbineGrid};
-use crate::core::wake::{WakeModelManager, WakeModelStrings};
-use crate::types::{Array1, Array2, Array3, Float, NumericDict};
+use crate::floris_config::{FlorisConfig, SolverConfig};
+use crate::types::{Array1, Array2, Array3, Float};
 use crate::utilities::{cosd, load_yaml};
+use crate::wind_data::WindData;
 use ndarray::Array;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
-
-/// Wind data trait for AEP calculations
-pub trait WindData {
-    fn n_conditions(&self) -> usize;
-    fn frequencies(&self) -> &Array1;
-    fn wind_speeds(&self) -> &Array1;
-    fn wind_directions(&self) -> &Array1;
-    fn turbulence_intensities(&self) -> &Array1;
-}
 
 /// Main FLORIS Model structure
 pub struct FlorisModel {
@@ -26,8 +14,7 @@ pub struct FlorisModel {
     pub flow_field: FlowField,
     pub state: State,
     pub grid: Option<Box<dyn GridBase>>,
-    pub solver_type: String,
-    pub turbine_grid_points: usize,
+    pub solver: SolverConfig,
     pub model_manager: Option<WakeModelManager>,
 }
 
@@ -38,8 +25,7 @@ impl Clone for FlorisModel {
             flow_field: self.flow_field.clone(),
             state: self.state.clone(),
             grid: None, // Cannot clone dyn GridBase, need to reinitialize
-            solver_type: self.solver_type.clone(),
-            turbine_grid_points: self.turbine_grid_points,
+            solver: self.solver.clone(),
             model_manager: self.model_manager.as_ref().map(|m| m.clone()),
         }
     }
@@ -51,98 +37,11 @@ impl fmt::Debug for FlorisModel {
             .field("farm", &self.farm)
             .field("flow_field", &self.flow_field)
             .field("state", &self.state)
-            .field("solver_type", &self.solver_type)
-            .field("turbine_grid_points", &self.turbine_grid_points)
+            .field("solver", &self.solver)
             .field("grid", &"Box<dyn GridBase>")
             .field("model_manager", &self.model_manager.is_some())
             .finish()
     }
-}
-
-/// Configuration structures
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FlorisConfig {
-    pub flow_field: FlowFieldConfig,
-    pub farm: FarmConfig,
-    pub solver: SolverConfig,
-    #[serde(default)]
-    pub wake: Option<WakeConfig>,
-    #[serde(default)]
-    pub turbine_library: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct WakeConfig {
-    #[serde(default)]
-    pub model_strings: WakeModelStringsConfig,
-    #[serde(default)]
-    pub model_params: Option<HashMap<String, serde_yaml::Value>>,
-    #[serde(default)]
-    pub enable_secondary_steering: bool,
-    #[serde(default)]
-    pub enable_yaw_added_recovery: bool,
-    #[serde(default)]
-    pub use_parallel_calc: bool,
-}
-
-impl Default for WakeConfig {
-    fn default() -> Self {
-        Self {
-            model_strings: WakeModelStringsConfig::default(),
-            model_params: None,
-            enable_secondary_steering: false,
-            enable_yaw_added_recovery: false,
-            use_parallel_calc: false,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WakeModelStringsConfig {
-    #[serde(rename = "velocity_model")]
-    pub velocity_model: String,
-    #[serde(rename = "deflection_model")]
-    pub deflection_model: String,
-    #[serde(rename = "combination_model")]
-    pub combination_model: String,
-    #[serde(rename = "turbulence_model")]
-    pub turbulence_model: String,
-}
-
-impl Default for WakeModelStringsConfig {
-    fn default() -> Self {
-        Self {
-            velocity_model: "gauss".to_string(),
-            deflection_model: "gauss".to_string(),
-            combination_model: "fls".to_string(),
-            turbulence_model: "crespo_hernandez".to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FlowFieldConfig {
-    pub wind_speeds: Vec<Float>,
-    pub wind_directions: Vec<Float>,
-    pub turbulence_intensities: Vec<Float>,
-    pub air_density: Float,
-    pub wind_shear: Float,
-    pub wind_veer: Float,
-    pub reference_wind_height: Float,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FarmConfig {
-    pub layout_x: Vec<Float>,
-    pub layout_y: Vec<Float>,
-    pub turbine_type: Vec<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SolverConfig {
-    #[serde(rename = "type")]
-    pub solver_type: String,
-    pub turbine_grid_points: Option<usize>,
 }
 
 impl FlorisModel {
@@ -180,63 +79,16 @@ impl FlorisModel {
         let state = State::new();
 
         // Parse wake configuration
-        let wake_config = config.wake.unwrap_or_default();
-        let model_strings = WakeModelStrings {
-            velocity_model: wake_config.model_strings.velocity_model,
-            deflection_model: wake_config.model_strings.deflection_model,
-            combination_model: wake_config.model_strings.combination_model,
-            turbulence_model: wake_config.model_strings.turbulence_model,
-        };
+        let wake_config = &config.wake;
 
-        // Parse model parameters if provided
-        let model_params: HashMap<String, NumericDict> = if let Some(params) = wake_config.model_params {
-            params.into_iter()
-                .map(|(k, v)| {
-                    // Convert serde_yaml::Value to NumericDict
-                    let dict = match v {
-                        serde_yaml::Value::Mapping(m) => {
-                            let mut data = std::collections::HashMap::new();
-                            for (key, val) in m {
-                                if let Some(s) = key.as_str() {
-                                    match val {
-                                        serde_yaml::Value::Number(n) => {
-                                            data.insert(s.to_string(), crate::types::ConfigValue::Float(n.as_f64().unwrap_or(0.0)));
-                                        }
-                                        serde_yaml::Value::String(s) => {
-                                            data.insert(s.to_string(), crate::types::ConfigValue::String(s));
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
-                            crate::types::NumericDict { data }
-                        }
-                        _ => crate::types::NumericDict { data: std::collections::HashMap::new() },
-                    };
-                    (k, dict)
-                })
-                .collect()
-        } else {
-            HashMap::new()
-        };
-
-        let model_manager = WakeModelManager::new(
-            model_strings.clone(),
-            model_params,
-            HashMap::new(),
-            HashMap::new(),
-            wake_config.enable_secondary_steering,
-            wake_config.enable_yaw_added_recovery,
-            wake_config.use_parallel_calc,
-        )?;
+        let model_manager = WakeModelManager::from_config(wake_config)?;
 
         Ok(Self {
             farm,
             flow_field,
             state,
             grid: None,
-            solver_type: config.solver.solver_type,
-            turbine_grid_points: config.solver.turbine_grid_points.unwrap_or(3),
+            solver: config.solver,
             model_manager: Some(model_manager),
         })
     }
@@ -252,10 +104,8 @@ impl FlorisModel {
         // Expand farm properties using sorted indices from grid
         // This must be done before running the solver
         if let Some(ref grid) = self.grid {
-            self.farm.expand_farm_properties(
-                self.flow_field.n_findex,
-                grid.sorted_coord_indices(),
-            );
+            self.farm
+                .expand_farm_properties(self.flow_field.n_findex, grid.sorted_coord_indices());
         }
 
         // Use configured model manager or create default if not set
@@ -263,22 +113,7 @@ impl FlorisModel {
             mm.clone()
         } else {
             // Create default model manager if not configured
-            let model_strings = WakeModelStrings {
-                velocity_model: "gauss".to_string(),
-                deflection_model: "gauss".to_string(),
-                combination_model: "fls".to_string(),
-                turbulence_model: "crespo_hernandez".to_string(),
-            };
-
-            WakeModelManager::new(
-                model_strings,
-                std::collections::HashMap::new(),
-                std::collections::HashMap::new(),
-                std::collections::HashMap::new(),
-                false,
-                false,
-                false,
-            )?
+            WakeModelManager::default_gauss()?
         };
 
         crate::core::solver::sequential_solver(
@@ -300,7 +135,7 @@ impl FlorisModel {
             coords,
             self.farm.rotor_diameters.clone(),
             self.flow_field.wind_directions.clone(),
-            self.turbine_grid_points,
+            self.solver.turbine_grid_points,
         )?;
 
         self.grid = Some(Box::new(grid));
@@ -313,8 +148,12 @@ impl FlorisModel {
         let n_turbines = self.farm.n_turbines();
         let grid_resolution = 3; // Default 3x3 grid
 
-        self.flow_field
-            .initialize_flow_field((n_findex, n_turbines, grid_resolution, grid_resolution));
+        self.flow_field.initialize_flow_field((
+            n_findex,
+            n_turbines,
+            grid_resolution,
+            grid_resolution,
+        ));
 
         Ok(())
     }
@@ -357,12 +196,13 @@ impl FlorisModel {
                 let yaw_factor = cosd(yaw).powf(3.0);
                 v_avg *= yaw_factor;
 
-                let power = if v_avg < turbine.cut_in_wind_speed || v_avg > turbine.cut_out_wind_speed {
-                    0.0
-                } else {
-                    let cp = turbine.power_coefficient(v_avg);
-                    0.5 * self.flow_field.air_density * area * v_avg.powi(3) * cp
-                };
+                let power =
+                    if v_avg < turbine.cut_in_wind_speed || v_avg > turbine.cut_out_wind_speed {
+                        0.0
+                    } else {
+                        let cp = turbine.power_coefficient(v_avg);
+                        0.5 * self.flow_field.air_density * area * v_avg.powi(3) * cp
+                    };
 
                 powers[[fi, ti]] = power.min(turbine.rated_power);
             }
@@ -382,7 +222,19 @@ impl FlorisModel {
 
         farm_power
     }
+    /// Set wind conditions from WindData trait object
+    ///
+    /// This method accepts any object that implements the WindData trait,
+    /// including TimeSeries, WindRose, WindRoseRwg and custom implementations.
+    pub fn set_wind_data(&mut self, wind_data: &dyn WindData) -> crate::Result<()> {
+        self.flow_field = FlowField::from_wind_data(wind_data);
 
+        self.farm
+            .initialize_control_arrays(self.flow_field.n_findex);
+        self.grid = None;
+
+        Ok(())
+    }
     /// Set wind conditions
     pub fn set_wind_conditions(
         &mut self,
@@ -439,7 +291,8 @@ impl FlorisModel {
 
         for i in 0..n_conditions {
             let power = powers.row(i).sum();
-            total_energy += power * frequencies[i] * hours_per_year;
+            let freq = frequencies.row(i).sum();
+            total_energy += power * freq * hours_per_year;
         }
 
         total_energy
@@ -559,8 +412,7 @@ mod tests {
             flow_field,
             state: State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
-            turbine_grid_points: 3,
+            solver: SolverConfig::default(),
             model_manager: None,
         };
 
@@ -596,8 +448,7 @@ mod tests {
             flow_field,
             state: State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
-            turbine_grid_points: 3,
+            solver: SolverConfig::default(),
             model_manager: None,
         };
 
@@ -636,8 +487,7 @@ mod tests {
             flow_field,
             state: State::new(),
             grid: None,
-            solver_type: "turbine_grid".to_string(),
-            turbine_grid_points: 3,
+            solver: SolverConfig::default(),
             model_manager: None,
         };
 

@@ -5,6 +5,7 @@
 
 use florus::{FlorisModel, Array1, Result};
 use florus::core::{Farm, FlowField, State};
+use florus::floris_config::SolverConfig;
 use florus::optimization::{
     YawAngleBounds, 
     optimize_yaw_angles,
@@ -45,7 +46,7 @@ fn main() -> Result<()> {
         flow_field,
         state: State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
     

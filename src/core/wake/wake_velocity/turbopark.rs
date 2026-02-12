@@ -211,9 +211,9 @@ impl VelocityModel for TurbOParkVelocityDeficit {
         x: Array4,
         y: Array4,
         z: Array4,
-        axial_induction: Float,
+        _axial_induction: Float,
         deflection_field: Array2,
-        yaw_angle: Float,
+        _yaw_angle: Float,
         turbulence_intensity: Float,
         thrust_coefficient: Float,
         hub_height: Float,
@@ -330,7 +330,6 @@ mod tests {
     fn test_overlap_interpolation() {
         let interp = OverlapInterpolator::new();
         let center = interp.interpolate(0.0, 1.0);
-        let edge = interp.interpolate(1.0, 1.0);
         let far = interp.interpolate(5.0, 1.0);
         // Center should have higher overlap than edge
         assert!(center > 0.0);

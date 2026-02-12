@@ -96,7 +96,6 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
         let n_y = shape[2];
         let n_z = shape[3];
 
-        let r0 = rotor_diameter / 2.0;
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
         // Use the specified turbine's position as the wake source

@@ -7,6 +7,7 @@
 /// 4. Combined optimization strategies
 
 use florus::core::Farm;
+use florus::floris_config::SolverConfig;
 use florus::types::{Array1, Array2};
 use florus::optimization::{YawOptimizationConfig, yaw_cosine_loss, estimate_wake_deflection_angle};
 use florus::optimization::derating::{optimize_derating, simple_derating, derating_power_reduction};
@@ -62,7 +63,7 @@ fn main() -> anyhow::Result<()> {
         flow_field,
         state: florus::core::State::new(),
         grid: None,
-        solver_type: "turbine_grid".to_string(),
+        solver: SolverConfig::default(),
         model_manager: None,
     };
 

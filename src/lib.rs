@@ -1,5 +1,6 @@
 pub mod aep;
 pub mod core;
+pub mod floris_config;
 pub mod floris_model;
 pub mod heterogeneous_map;
 pub mod optimization;
@@ -14,6 +15,7 @@ pub mod utilities;
 pub mod wind_data;
 
 // Re-export commonly used types
+pub use floris_config::FlorisConfig;
 pub use floris_model::FlorisModel;
 pub use types::{Array1, Array2, Array3, Array4, Float};
 

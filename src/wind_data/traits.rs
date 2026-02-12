@@ -24,7 +24,12 @@ pub trait WindData {
     /// Get number of conditions
     fn n_conditions(&self) -> usize;
 
-    /// Get heterogeneous inflow configuration
+    /// Get frequencies for AEP calculations
+    ///
+    /// Returns frequency table [n_conditions, n_turbines]
+    fn frequencies(&self) -> Array2;
+
+    /// Set heterogeneous inflow configuration
     fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig;
 
     /// Set turbine layout
