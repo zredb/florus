@@ -156,7 +156,7 @@ fn thrust_coefficient(
         for ti in 0..n_turbines.min(turbines.len()) {
             if ti < turbines.len() {
                 let v = velocities[[fi, ti, 0, 0]];
-                ct_output[[fi, ti]] = turbines[ti].ct_at_speed(v);
+                ct_output[[fi, ti]] = turbines[ti].turbine_type.get_ct(v);
             }
         }
     }

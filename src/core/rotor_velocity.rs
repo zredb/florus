@@ -209,8 +209,25 @@ pub fn rotor_effective_velocity(
     Ok(avg_vel)
 }
 
-/// Compute tilt angles for floating turbines
+/// Apply air density correction to velocities
 /// 
+/// Produces equivalent velocities at the reference air density
+/// 
+/// # Arguments
+/// * `velocities` - Input velocities
+/// * `air_density` - Current air density
+/// * `ref_air_density` - Reference air density
+pub fn rotor_velocity_air_density_correction(
+    velocities: &Array2,
+    air_density: Float,
+    ref_air_density: Float,
+) -> Array2 {
+    let density_ratio = (air_density / ref_air_density).powf(1.0 / 3.0);
+    velocities.mapv(|x| x * density_ratio)
+}
+
+/// Compute tilt angles for floating turbines
+///
 /// For floating turbines, the tilt angle may change based on wind speed.
 /// This function interpolates the tilt angle based on rotor effective velocity.
 pub fn compute_tilt_angles_for_floating_turbines(

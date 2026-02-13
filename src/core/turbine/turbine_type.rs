@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 use std::fs::File;
+use std::fmt;
 
 use crate::Array1;
 
@@ -86,6 +87,12 @@ pub struct TurbineType {
     pub thrust_coefficient_values: Vec<f64>,
     #[serde(default)]
     pub controller_dependent_turbine_parameters: Option<Value>,
+}
+
+impl fmt::Display for TurbineType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)
+    }
 }
 
 impl TurbineType {
