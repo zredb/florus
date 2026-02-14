@@ -3,10 +3,10 @@
 //! Reduces thrust and power at or near rated wind speeds
 //! Based on turbulence intensity and peak_shaving_fraction parameters
 
-use crate::types::Float;
 use crate::types::Array2;
 use crate::core::turbine::operation_models::base::*;
-use crate::core::turbine::operation_models::helpers::*;
+use crate::core::turbine::operation_models::simple::SimpleTurbine;
+use ndarray::s;
 use super::SimpleTurbine;
 
 #[derive(Debug, Clone, Default)]
@@ -33,7 +33,7 @@ impl OperationModel for PeakShavingTurbine {
         let mut max_allowable_thrust = ndarray::Array::zeros((n_findex, n_turbines));
         let wind_speeds = &params.power_table.wind_speeds;
         let ct_values = &params.thrust_table.values;
-        let mut peak_normal_thrust_prime = 0.0;
+        let mut peak_normal_thrust_prime: Float = 0.0;
         for (ws, ct) in wind_speeds.iter().zip(ct_values.iter()) {
             peak_normal_thrust_prime = peak_normal_thrust_prime.max(ws * ws * ct);
         }
@@ -108,7 +108,7 @@ impl OperationModel for PeakShavingTurbine {
 
         let wind_speeds = &params.power_table.wind_speeds;
         let ct_values = &params.thrust_table.values;
-        let mut peak_normal_thrust_prime = 0.0;
+        let mut peak_normal_thrust_prime: Float = 0.0;
         for (ws, ct) in wind_speeds.iter().zip(ct_values.iter()) {
             peak_normal_thrust_prime = peak_normal_thrust_prime.max(ws * ws * ct);
         }
@@ -122,7 +122,7 @@ impl OperationModel for PeakShavingTurbine {
                 let safe_vel = vel.max(0.01);
 
                 // Calculate max allowable thrust
-                let mut max_allowable = (1.0 - params.peak_shaving_fraction)
+                let max_allowable = (1.0 - params.peak_shaving_fraction)
                     * peak_normal_thrust_prime
                     / safe_vel.powf(2.0);
 

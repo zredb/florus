@@ -346,7 +346,7 @@ pub fn optimize_power_setpoints(
     let power_setpoint_initial = if let Some(initial) = power_setpoint_initial {
         initial.clone()
     } else {
-        let max_power = fmodel.farm.turbine_map[0].rated_power;
+        let max_power = fmodel.farm.turbine_map[0].turbine_type.power_curve().values[fmodel.farm.turbine_map[0].turbine_type.power_curve().values.len() - 1] * 1000.0;
         Array::from_elem((n_findex, n_turbines), max_power)
     };
 

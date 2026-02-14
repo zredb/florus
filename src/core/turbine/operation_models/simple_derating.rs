@@ -3,10 +3,8 @@
 //! Power setpoint control that limits turbine power output
 //! When derated, thrust coefficient scales with power^(2/3)
 
-use crate::types::Float;
 use crate::types::Array2;
 use crate::core::turbine::operation_models::base::*;
-use crate::core::turbine::operation_models::helpers::*;
 use super::SimpleTurbine;
 
 /// Simple derating: limit power to specified setpoint

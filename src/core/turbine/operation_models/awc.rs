@@ -8,7 +8,6 @@
 //! - Helix power/thrust coefficient tables
 //! - Implementation of helix wake mixing model
 
-use crate::types::Float;
 use crate::types::Array2;
 use crate::core::turbine::operation_models::base::*;
 use super::CosineLossTurbine;

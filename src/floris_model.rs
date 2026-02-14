@@ -180,6 +180,12 @@ impl FlorisModel {
             let rotor_diameter = self.farm.rotor_diameters_sorted[[0, ti]];
             let area = std::f64::consts::PI * (rotor_diameter / 2.0).powi(2);
 
+            // Get cut-in and cut-out wind speeds from turbine type
+            let power_curve = turbine.turbine_type.power_curve();
+            let cut_in_wind_speed = power_curve.wind_speeds[0];
+            let cut_out_wind_speed = power_curve.wind_speeds[power_curve.wind_speeds.len() - 1];
+            let rated_power = power_curve.values[power_curve.values.len() - 1] * 1000.0; // Convert kW to W
+
             for fi in 0..n_findex {
                 // Average velocity over all grid points on the rotor
                 let mut v_sum = 0.0;
@@ -196,15 +202,23 @@ impl FlorisModel {
                 let yaw_factor = cosd(yaw).powf(3.0);
                 v_avg *= yaw_factor;
 
+                // Calculate power coefficient: cp = P / (0.5 * rho * A * v^3)
+                let cp = if v_avg >= 0.1 {
+                    let power_at_v = power_curve.interpolate(v_avg) * 1000.0; // Convert kW to W
+                    let power_theoretical = 0.5 * self.flow_field.air_density * area * v_avg.powi(3);
+                    power_at_v / power_theoretical
+                } else {
+                    0.0
+                };
+
                 let power =
-                    if v_avg < turbine.cut_in_wind_speed || v_avg > turbine.cut_out_wind_speed {
+                    if v_avg < cut_in_wind_speed || v_avg > cut_out_wind_speed {
                         0.0
                     } else {
-                        let cp = turbine.power_coefficient(v_avg);
                         0.5 * self.flow_field.air_density * area * v_avg.powi(3) * cp
                     };
 
-                powers[[fi, ti]] = power.min(turbine.rated_power);
+                powers[[fi, ti]] = power.min(rated_power);
             }
         }
 
@@ -358,7 +372,7 @@ impl FlorisModel {
                 if ti < self.farm.turbine_map.len() {
                     let turbine = &self.farm.turbine_map[ti];
                     let velocity = self.flow_field.u_sorted[[fi, ti, 0, 0]];
-                    ct_array[[fi, ti]] = turbine.ct_at_speed(velocity);
+                    ct_array[[fi, ti]] = turbine.turbine_type.get_ct(velocity);
                 }
             }
         }

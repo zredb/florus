@@ -21,14 +21,13 @@ impl Turbine {
     ///
     /// # Arguments
     /// * `velocities` - Wind velocities at turbine rotor (findex, n_turbines, n_points, n_grid)
-    /// * `air_density` - Air density [kg/m³]
     /// * `yaw_angles` - Yaw angles [degrees]
     /// * `tilt_angles` - Tilt angles [degrees]
     /// * `average_method` - Method for averaging velocities
     pub fn calculate_power(
         &self,
         velocities: &Array4,
-        air_density: Float,
+        _air_density: Float,
         yaw_angles: Option<&Array2>,
         tilt_angles: Option<&Array2>,
         average_method: AveragingMethod,
@@ -62,7 +61,6 @@ impl Turbine {
 
                 let power_table = self.turbine_type.power_curve();
                 let wind_speed = &power_table.wind_speeds;
-                let powers = &power_table.values;
 
                 if v < wind_speed[0] || v > wind_speed[wind_speed.len() - 1] {
                     power_output[[fi, ti]] = 0.0;
@@ -112,20 +110,20 @@ impl Turbine {
             None,
             Some(&correct_cp_ct_for_tilt),
         )?;
-        
+
         let shape = rotor_velocities.shape();
         let mut ct_output = Array::zeros((shape[0], shape[1]));
-        
+
         for fi in 0..shape[0] {
             for ti in 0..shape[1] {
                 let v = rotor_velocities[[fi, ti, 0]];
                 ct_output[[fi, ti]] = self.turbine_type.get_ct(v);
             }
         }
-        
+
         Ok(ct_output)
     }
-    
+
     /// Calculate axial induction factor from thrust coefficient
     pub fn calculate_axial_induction(&self, ct: Float) -> Float {
         // Using momentum theory relationship

@@ -5,11 +5,10 @@
 //! If power setpoint is set, use derating control (SimpleDeratingTurbine)
 //! Otherwise use simple control (SimpleTurbine)
 
-use crate::types::Float;
 use crate::types::Array2;
 use crate::core::turbine::operation_models::base::*;
-use crate::core::turbine::operation_models::simple::*;
-use crate::core::turbine::operation_models::simple_derating::*;
+use crate::core::turbine::operation_models::simple::SimpleTurbine;
+use crate::core::turbine::operation_models::simple_derating::SimpleDeratingTurbine;
 
 #[derive(Debug, Clone, Default)]
 pub struct MixedOperationTurbine;
@@ -34,25 +33,21 @@ impl OperationModel for MixedOperationTurbine {
         for i in 0..n_findex {
             for j in 0..n_turbines {
                 // Check if yaw angle is non-zero (use yaw control)
-                if let Some(yaw) = yaw_angles {
-                    if yaw[[i, j]] != 0.0 {
-                        yaw_mask[[i, j]] = true;
-                        derating_mask[[i, j]] = false;
-                        simple_mask[[i, j]] = false;
-                    } else {
-                        simple_mask[[i, j]] = true;
-                        derating_mask[[i, j]] = false;
-                        yaw_mask[[i, j]] = false;
-                    }
+                if yaw_angles[[i, j]] != 0.0 {
+                    yaw_mask[[i, j]] = true;
+                    derating_mask[[i, j]] = false;
+                    simple_mask[[i, j]] = false;
+                } else {
+                    simple_mask[[i, j]] = true;
+                    derating_mask[[i, j]] = false;
+                    yaw_mask[[i, j]] = false;
                 }
 
                 // Check if power setpoint is set (use derating control)
-                if let Some(power_setpoints) = power_setpoints {
-                    if power_setpoints[[i, j]] < POWER_SETPOINT_DEFAULT {
-                        yaw_mask[[i, j]] = false;
-                        derating_mask[[i, j]] = true;
-                        simple_mask[[i, j]] = false;
-                    }
+                if power_setpoints[[i, j]] < POWER_SETPOINT_DEFAULT {
+                    yaw_mask[[i, j]] = false;
+                    derating_mask[[i, j]] = true;
+                    simple_mask[[i, j]] = false;
                 }
             }
         }
@@ -126,11 +121,9 @@ impl OperationModel for MixedOperationTurbine {
         for i in 0..n_findex {
             for j in 0..n_turbines {
                 // Check if yaw angle is non-zero
-                if let Some(yaw) = yaw_angles {
-                    if yaw[[i, j]] != 0.0 {
-                        yaw_mask[[i, j]] = true;
-                        derating_mask[[i, j]] = false;
-                    }
+                if yaw_angles[[i, j]] != 0.0 {
+                    yaw_mask[[i, j]] = true;
+                    derating_mask[[i, j]] = false;
                 }
             }
 

@@ -18,11 +18,8 @@
 //! - Custom lookup tables from controller
 //! - Integration with external controller systems (ROSCO, ROSCO)
 
-use crate::types::Float;
-use crate::types::{Array2, Array3};
-use crate::core::turbine::turbine_type::LookupTable;
+use crate::types::Array2;
 use crate::core::turbine::operation_models::base::*;
-use crate::core::turbine::operation_models::helpers::*;
 use super::CosineLossTurbine;
 #[derive(Debug, Clone, Default)]
 pub struct ControllerDependentTurbine;

@@ -275,16 +275,18 @@ impl Farm {
         // 这里需要创建实际的Turbine实例，因为我们没有from_dict实现
         for (k, v) in &self._turbine_definition_cache {
             // 使用从定义中提取的参数创建TurbineType，然后创建Turbine实例
+            let operation_model_str = v
+                .get_array("operation_model")
+                .and_then(|arr| arr.first())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "cosine-loss".to_string());
+
             let turbine_type = TurbineType {
                 name: k.clone(),
                 rotor_diameter: v.get_scalar("rotor_diameter").unwrap_or(126.0),
                 hub_height: v.get_scalar("hub_height").unwrap_or(90.0),
                 tsr: v.get_scalar("TSR").unwrap_or(8.0),
-                operation_model: v
-                    .get_array("operation_model")
-                    .and_then(|arr| arr.first())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "cosine-loss".to_string()),
+                operation_model: operation_model_str.clone(),
                 ref_tilt: v.get_scalar("power_thrust_table.ref_tilt"),
                 correct_cp_ct_for_tilt: v.get_bool("correct_cp_ct_for_tilt"),
                 power_curve_wind_speeds: v
@@ -305,7 +307,7 @@ impl Farm {
 
             let turbine = Turbine {
                 turbine_type,
-                operation_model: turbine_type.operation_model.clone(),
+                operation_model: operation_model_str,
             };
 
             turbine_map_unique.insert(k.clone(), turbine);

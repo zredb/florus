@@ -3,10 +3,8 @@
 //! Actuator disk model with yaw/tilt misalignment handling
 //! Power loss to yawing is defined by cos(yaw)^p where p is cosine_loss_exponent_yaw
 
-use crate::types::Float;
-use crate::types::{Array2, Array4};
+use crate::types::Array2;
 use crate::core::turbine::operation_models::base::*;
-use crate::core::turbine::operation_models::helpers::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct CosineLossTurbine;

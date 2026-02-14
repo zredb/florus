@@ -19,14 +19,14 @@
 //! - x0 = -C'T / (2*u4) where C' captures pressure effects
 //!
 //! The model provides analytical solutions that:
-//! - Capture the monotonic increase of thrust with induction observed in experiments
+//! - Capture the monotonic increase in thrust with induction observed in experiments
 //! - Work across yaw misaligned and high thrust states
-//! - Eliminate need for empirical corrections in classical momentum theory
+//! - Eliminate the need for empirical corrections in classical momentum theory
 
 use crate::types::Float;
 use crate::types::{Array2, Array3, Array4};
 use crate::core::turbine::operation_models::base::*;
-use crate::core::turbine::operation_models::helpers::*;
+use ndarray::s;
 
 /// Unified Momentum turbine model
 #[derive(Debug, Clone, Default)]
@@ -76,7 +76,7 @@ impl OperationModel for UnifiedMomentumTurbine {
         for i in 0..n_findex {
             for j in 0..n_turbines {
                 let ct = ct_mod[[i, j]];
-                an[[i, j]] = (1.0 - (1.0 - ct)).sqrt() / (2.0 * ct.powi(2.0));
+                an[[i, j]] = (1.0 - (1.0 - ct).sqrt()) / (2.0 * ct.powf(2.0));
             }
         }
 
@@ -85,7 +85,7 @@ impl OperationModel for UnifiedMomentumTurbine {
         for i in 0..n_findex {
             for j in 0..n_turbines {
                 let one_minus_an = 1.0 - an[[i, j]];
-                u4_normalized[[i, j]] = one_minus_an * yaw_rad[[i, j]].cos().powi(2) / 2.0;
+                u4_normalized[[i, j]] = one_minus_an * yaw_rad[[i, j]].cos().powf(2.0) / 2.0;
             }
         }
 
@@ -145,16 +145,13 @@ impl OperationModel for UnifiedMomentumTurbine {
         }
 
         // Apply tilt correction if available
-        if let Some(tilt) = tilt_angles {
-            let ref_tilt_rad = params.ref_tilt.to_radians();
-            for i in 0..n_findex {
-                for j in 0..n_turbines {
-                    let tilt = tilt[[i, j]].to_radians();
-                    let cos_tilt = tilt.cos();
-                    let ref_cos = ref_tilt_rad.cos();
-                    let ct_base_ij = ct_mod[[i, j]];
-                    ct_mod[[i, j]] = ct_base_ij * cos_tilt / ref_cos;
-                }
+        let ref_tilt_rad = params.ref_tilt.to_radians();
+        for i in 0..n_findex {
+            for j in 0..n_turbines {
+                let tilt = tilt_angles[[i, j]].to_radians();
+                let cos_tilt = tilt.cos();
+                let ref_cos = ref_tilt_rad.cos();
+                ct_mod[[i, j]] = ct_mod[[i, j]] * cos_tilt / ref_cos;
             }
         }
 
@@ -163,7 +160,7 @@ impl OperationModel for UnifiedMomentumTurbine {
 
     fn axial_induction(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
         let yaw_angles = ctx.yaw_angles.ok_or_else(|| anyhow::anyhow!("Yaw angles required for UnifiedMomentumTurbine"))?;
-        let tilt_angles = ctx.tilt_angles.ok_or_else(|| anyhow::anyhow!("Tilt angles required for UnifiedMomentumTurbine"))?;
+        ctx.tilt_angles.ok_or_else(|| anyhow::anyhow!("Tilt angles required for UnifiedMomentumTurbine"))?;
 
         let n_findex = ctx.air_density.len();
         let n_turbines = ctx.velocities.shape()[1];
@@ -178,7 +175,7 @@ impl OperationModel for UnifiedMomentumTurbine {
         for i in 0..n_findex {
             for j in 0..n_turbines {
                 let gamma = yaw_rad[[i, j]];
-                let cos_gamma_sq = gamma.cos().powi(2);
+                let cos_gamma_sq = gamma.cos().powf(2.0);
                 let ct_ij = ct[[i, j]];
 
                 let sqrt_term = (1.0 - ct_ij * cos_gamma_sq).sqrt();
