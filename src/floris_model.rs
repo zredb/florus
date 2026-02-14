@@ -148,27 +148,49 @@ impl FlorisModel {
         let n_turbines = self.farm.n_turbines();
         let grid_resolution = 3; // Default 3x3 grid
 
-        self.flow_field.initialize_flow_field((
-            n_findex,
-            n_turbines,
-            grid_resolution,
-            grid_resolution,
-        ));
+        // Get z coordinates and hub heights from grid
+        if let Some(ref grid) = self.grid {
+            let z_grid = grid.z_sorted();
+            let hub_heights = self.farm.hub_heights.clone();
+            
+            self.flow_field.initialize_flow_field(
+                (n_findex, n_turbines, grid_resolution, grid_resolution),
+                z_grid,
+                &hub_heights,
+            );
+        } else {
+            // Fallback if grid not initialized
+            self.flow_field.initialize_flow_field(
+                (n_findex, n_turbines, grid_resolution, grid_resolution),
+                &ndarray::Array::zeros((n_findex, n_turbines, grid_resolution, grid_resolution)),
+                &self.farm.hub_heights,
+            );
+        }
 
         Ok(())
     }
 
     /// Get turbine powers based on calculated velocities
+    /// 
+    /// This implementation matches Python FLORIS's CosineLossTurbine.power() method:
+    /// 1. Uses cubic-mean for rotor average velocity
+    /// 2. Applies air density correction
+    /// 3. Applies yaw cosine correction
+    /// 4. Uses power curve interpolation directly
     pub fn get_turbine_powers(&self) -> Array2 {
         let n_findex = self.flow_field.n_findex;
         let n_turbines = self.farm.n_turbines();
-        // Use sorted yaw angles since we're iterating in sorted order (upstream to downstream)
-        let yaw_angles_sorted = &self.farm.yaw_angles_sorted;
-        let yaw_angles = yaw_angles_sorted; // Use sorted version
+        let yaw_angles = &self.farm.yaw_angles_sorted;
+        let tilt_angles = &self.farm.tilt_angles_sorted;
 
         let mut powers = Array::zeros((n_findex, n_turbines));
-
         let velocities = &self.flow_field.u_sorted;
+
+        // Default parameters matching Python FLORIS
+        let ref_air_density = 1.225;  // Standard air density
+        let cosine_loss_exponent_yaw = 1.88;  // Default from Python FLORIS
+        let cosine_loss_exponent_tilt = 1.88;
+        let ref_tilt = 5.0;  // Default reference tilt angle for nrel_5MW
 
         for ti in 0..n_turbines {
             if ti >= self.farm.turbine_map.len() {
@@ -176,49 +198,42 @@ impl FlorisModel {
             }
 
             let turbine = &self.farm.turbine_map[ti];
-            // Use sorted rotor diameters
-            let rotor_diameter = self.farm.rotor_diameters_sorted[[0, ti]];
-            let area = std::f64::consts::PI * (rotor_diameter / 2.0).powi(2);
-
-            // Get cut-in and cut-out wind speeds from turbine type
             let power_curve = turbine.turbine_type.power_curve();
-            let cut_in_wind_speed = power_curve.wind_speeds[0];
-            let cut_out_wind_speed = power_curve.wind_speeds[power_curve.wind_speeds.len() - 1];
-            let rated_power = power_curve.values[power_curve.values.len() - 1] * 1000.0; // Convert kW to W
+            let rated_power = power_curve.values.iter().cloned().fold(0.0, f64::max) * 1000.0;
 
             for fi in 0..n_findex {
-                // Average velocity over all grid points on the rotor
-                let mut v_sum = 0.0;
+                // Step 1: Calculate rotor average velocity using cubic mean
+                // cubic_mean = cbrt(mean(v^3))
+                let mut v_cubed_sum = 0.0;
                 let grid_points = velocities.shape()[2] * velocities.shape()[3];
                 for iy in 0..velocities.shape()[2] {
                     for iz in 0..velocities.shape()[3] {
-                        v_sum += velocities[[fi, ti, iy, iz]];
+                        v_cubed_sum += velocities[[fi, ti, iy, iz]].powi(3);
                     }
                 }
-                let mut v_avg = v_sum / grid_points as f64;
+                let rotor_avg_velocity = (v_cubed_sum / grid_points as f64).powf(1.0 / 3.0);
 
-                // Apply yaw cosine correction using sorted yaw angles
+                // Step 2: Apply air density correction
+                // rotor_effective_velocity = (air_density/ref_air_density)^(1/3) * rotor_avg_velocity
+                let density_factor = (self.flow_field.air_density / ref_air_density).powf(1.0 / 3.0);
+                let mut rotor_effective_velocity = rotor_avg_velocity * density_factor;
+
+                // Step 3: Apply yaw cosine correction
+                // rotor_effective_velocity *= cosd(yaw)^(cosine_loss_exponent_yaw/3)
                 let yaw = yaw_angles[[fi, ti]];
-                let yaw_factor = cosd(yaw).powf(3.0);
-                v_avg *= yaw_factor;
+                let yaw_correction = cosd(yaw).powf(cosine_loss_exponent_yaw / 3.0);
+                rotor_effective_velocity *= yaw_correction;
 
-                // Calculate power coefficient: cp = P / (0.5 * rho * A * v^3)
-                let cp = if v_avg >= 0.1 {
-                    let power_at_v = power_curve.interpolate(v_avg) * 1000.0; // Convert kW to W
-                    let power_theoretical = 0.5 * self.flow_field.air_density * area * v_avg.powi(3);
-                    power_at_v / power_theoretical
-                } else {
-                    0.0
-                };
+                // Step 4: Apply tilt cosine correction
+                let tilt = tilt_angles[[fi, ti]];
+                let tilt_correction = (cosd(tilt) / cosd(ref_tilt)).powf(cosine_loss_exponent_tilt / 3.0);
+                rotor_effective_velocity *= tilt_correction;
 
-                let power =
-                    if v_avg < cut_in_wind_speed || v_avg > cut_out_wind_speed {
-                        0.0
-                    } else {
-                        0.5 * self.flow_field.air_density * area * v_avg.powi(3) * cp
-                    };
+                // Step 5: Interpolate power from power curve (convert kW to W)
+                let power = power_curve.interpolate(rotor_effective_velocity) * 1000.0;
 
-                powers[[fi, ti]] = power.min(rated_power);
+                // Clip to rated power
+                powers[[fi, ti]] = power.min(rated_power).max(0.0);
             }
         }
 

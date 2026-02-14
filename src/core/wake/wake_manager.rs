@@ -49,7 +49,7 @@ impl Clone for WakeModelManager {
     fn clone(&self) -> Self {
         Self {
             velocity_model: Box::new(crate::core::wake_velocity::gauss::GaussVelocity::new(
-                0.38, 0.004, 0.5,
+                0.58, 0.077, 0.38, 0.004,
             )),
             deflection_model: Box::new(
                 crate::core::wake_deflection::gauss::GaussVelocityDeflection::new(
@@ -100,9 +100,9 @@ impl WakeModelManager {
         config: &VelocityModelConfig,
     ) -> anyhow::Result<Box<dyn VelocityModel>> {
         match config {
-            VelocityModelConfig::Gauss { alpha, beta: _, ka, kb } => {
+            VelocityModelConfig::Gauss { alpha, beta, ka, kb } => {
                 Ok(Box::new(
-                    crate::core::wake_velocity::gauss::GaussVelocity::new(*ka, *kb, *alpha)
+                    crate::core::wake_velocity::gauss::GaussVelocity::new(*alpha, *beta, *ka, *kb)
                 ))
             }
             VelocityModelConfig::Jensen { we } => {

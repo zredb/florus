@@ -39,6 +39,7 @@ pub enum ConfigValue {
     FloatArray(Vec<Float>),
     String(String),
     Bool(bool),
+    Nested(NumericDict),
 }
 
 impl NumericDict {
@@ -49,6 +50,15 @@ impl NumericDict {
     }
 
     pub fn get_scalar(&self, key: &str) -> Option<Float> {
+        // Support nested key paths like "power_thrust_table.ref_tilt"
+        if key.contains('.') {
+            let parts: Vec<&str> = key.splitn(2, '.').collect();
+            if parts.len() == 2 {
+                if let Some(ConfigValue::Nested(nested)) = self.data.get(parts[0]) {
+                    return nested.get_scalar(parts[1]);
+                }
+            }
+        }
         match self.data.get(key)? {
             ConfigValue::Float(v) => Some(*v),
             _ => None,
@@ -56,6 +66,15 @@ impl NumericDict {
     }
 
     pub fn get_array(&self, key: &str) -> Option<&[Float]> {
+        // Support nested key paths
+        if key.contains('.') {
+            let parts: Vec<&str> = key.splitn(2, '.').collect();
+            if parts.len() == 2 {
+                if let Some(ConfigValue::Nested(nested)) = self.data.get(parts[0]) {
+                    return nested.get_array(parts[1]);
+                }
+            }
+        }
         match self.data.get(key)? {
             ConfigValue::FloatArray(v) => Some(v.as_slice()),
             _ => None,
@@ -63,6 +82,15 @@ impl NumericDict {
     }
 
     pub fn get_string(&self, key: &str) -> Option<&str> {
+        // Support nested key paths
+        if key.contains('.') {
+            let parts: Vec<&str> = key.splitn(2, '.').collect();
+            if parts.len() == 2 {
+                if let Some(ConfigValue::Nested(nested)) = self.data.get(parts[0]) {
+                    return nested.get_string(parts[1]);
+                }
+            }
+        }
         match self.data.get(key)? {
             ConfigValue::String(v) => Some(v.as_str()),
             _ => None,
@@ -70,8 +98,24 @@ impl NumericDict {
     }
 
     pub fn get_bool(&self, key: &str) -> Option<bool> {
+        // Support nested key paths
+        if key.contains('.') {
+            let parts: Vec<&str> = key.splitn(2, '.').collect();
+            if parts.len() == 2 {
+                if let Some(ConfigValue::Nested(nested)) = self.data.get(parts[0]) {
+                    return nested.get_bool(parts[1]);
+                }
+            }
+        }
         match self.data.get(key)? {
             ConfigValue::Bool(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    pub fn get_nested(&self, key: &str) -> Option<&NumericDict> {
+        match self.data.get(key)? {
+            ConfigValue::Nested(v) => Some(v),
             _ => None,
         }
     }

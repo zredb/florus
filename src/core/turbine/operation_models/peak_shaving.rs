@@ -3,11 +3,10 @@
 //! Reduces thrust and power at or near rated wind speeds
 //! Based on turbulence intensity and peak_shaving_fraction parameters
 
-use crate::types::Array2;
+use crate::types::{Array2, Float};
 use crate::core::turbine::operation_models::base::*;
 use crate::core::turbine::operation_models::simple::SimpleTurbine;
 use ndarray::s;
-use super::SimpleTurbine;
 
 #[derive(Debug, Clone, Default)]
 pub struct PeakShavingTurbine;

@@ -67,7 +67,7 @@ impl LookupTable {
     }
 }
 
-// 直接反序列化的TurbineType - 支持flat格式
+// 直接反序列化的TurbineType - 支持Python FLORIS格式
 #[derive(Debug, Clone, Deserialize)]
 pub struct TurbineType {
     #[serde(rename = "turbine_type")]
@@ -76,17 +76,43 @@ pub struct TurbineType {
     pub hub_height: f64,
     #[serde(rename = "TSR")]
     pub tsr: f64,
-    pub operation_model: String, // 使用String，通过方法转换为enum
+    pub operation_model: String,
     #[serde(default)]
     pub ref_tilt: Option<f64>,
     #[serde(default)]
     pub correct_cp_ct_for_tilt: Option<bool>,
+    #[serde(default)]
+    pub power_thrust_table: Option<PowerThrustTable>,
+    // Legacy flat format support
+    #[serde(default)]
     pub power_curve_wind_speeds: Vec<f64>,
+    #[serde(default)]
     pub power_curve_powers: Vec<f64>,
+    #[serde(default)]
     pub thrust_coefficient_wind_speeds: Vec<f64>,
+    #[serde(default)]
     pub thrust_coefficient_values: Vec<f64>,
     #[serde(default)]
     pub controller_dependent_turbine_parameters: Option<Value>,
+}
+
+/// Power and thrust coefficient table matching Python FLORIS format
+#[derive(Debug, Clone, Deserialize)]
+pub struct PowerThrustTable {
+    #[serde(default)]
+    pub wind_speed: Vec<f64>,
+    #[serde(default)]
+    pub power: Vec<f64>,
+    #[serde(default)]
+    pub thrust_coefficient: Vec<f64>,
+    #[serde(default)]
+    pub ref_air_density: Option<f64>,
+    #[serde(default)]
+    pub ref_tilt: Option<f64>,
+    #[serde(default)]
+    pub cosine_loss_exponent_yaw: Option<f64>,
+    #[serde(default)]
+    pub cosine_loss_exponent_tilt: Option<f64>,
 }
 
 impl fmt::Display for TurbineType {
@@ -107,18 +133,87 @@ impl TurbineType {
         }
     }
 
+    /// Get wind speeds from either nested power_thrust_table or legacy flat format
+    fn get_wind_speeds(&self) -> Vec<f64> {
+        if let Some(ref table) = self.power_thrust_table {
+            if !table.wind_speed.is_empty() {
+                return table.wind_speed.clone();
+            }
+        }
+        if !self.power_curve_wind_speeds.is_empty() {
+            return self.power_curve_wind_speeds.clone();
+        }
+        if !self.thrust_coefficient_wind_speeds.is_empty() {
+            return self.thrust_coefficient_wind_speeds.clone();
+        }
+        vec![]
+    }
+
+    /// Get power values from either nested power_thrust_table or legacy flat format
+    fn get_powers(&self) -> Vec<f64> {
+        if let Some(ref table) = self.power_thrust_table {
+            if !table.power.is_empty() {
+                return table.power.clone();
+            }
+        }
+        self.power_curve_powers.clone()
+    }
+
+    /// Get thrust coefficient values from either nested power_thrust_table or legacy flat format
+    fn get_thrust_coefficients(&self) -> Vec<f64> {
+        if let Some(ref table) = self.power_thrust_table {
+            if !table.thrust_coefficient.is_empty() {
+                return table.thrust_coefficient.clone();
+            }
+        }
+        self.thrust_coefficient_values.clone()
+    }
+
     pub fn power_curve(&self) -> LookupTable {
         LookupTable {
-            wind_speeds: ndarray::Array1::from(self.power_curve_wind_speeds.clone()),
-            values: ndarray::Array1::from(self.power_curve_powers.clone()),
+            wind_speeds: ndarray::Array1::from(self.get_wind_speeds()),
+            values: ndarray::Array1::from(self.get_powers()),
         }
     }
 
     pub fn thrust_curve(&self) -> LookupTable {
         LookupTable {
-            wind_speeds: ndarray::Array1::from(self.thrust_coefficient_wind_speeds.clone()),
-            values: ndarray::Array1::from(self.thrust_coefficient_values.clone()),
+            wind_speeds: ndarray::Array1::from(self.get_wind_speeds()),
+            values: ndarray::Array1::from(self.get_thrust_coefficients()),
         }
+    }
+
+    /// Get cosine loss exponent for yaw
+    pub fn get_cosine_loss_exponent_yaw(&self) -> f64 {
+        self.power_thrust_table
+            .as_ref()
+            .and_then(|t| t.cosine_loss_exponent_yaw)
+            .unwrap_or(1.88)
+    }
+
+    /// Get cosine loss exponent for tilt
+    pub fn get_cosine_loss_exponent_tilt(&self) -> f64 {
+        self.power_thrust_table
+            .as_ref()
+            .and_then(|t| t.cosine_loss_exponent_tilt)
+            .unwrap_or(1.88)
+    }
+
+    /// Get reference air density
+    pub fn get_ref_air_density(&self) -> f64 {
+        self.power_thrust_table
+            .as_ref()
+            .and_then(|t| t.ref_air_density)
+            .unwrap_or(1.225)
+    }
+
+    /// Get reference tilt angle
+    pub fn get_ref_tilt(&self) -> f64 {
+        self.power_thrust_table
+            .as_ref()
+            .and_then(|t| t.ref_tilt)
+            .or(self.ref_tilt)
+            .unwrap_or(5.0)
     }
 
     pub fn get_ct(&self, wind_speed: f64) -> f64 {

@@ -268,7 +268,7 @@ impl Farm {
 
     pub fn construct_turbine_map(&mut self) {
         // 从缓存创建涡轮机映射
-        use crate::core::turbine::turbine_type::TurbineType;
+        use crate::core::turbine::turbine_type::{TurbineType, PowerThrustTable};
 
         let mut turbine_map_unique: HashMap<String, Turbine> = HashMap::new();
 
@@ -281,6 +281,26 @@ impl Farm {
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "cosine-loss".to_string());
 
+            // Try to get power_thrust_table data
+            let power_thrust_table = PowerThrustTable {
+                wind_speed: v.get_array("power_thrust_table.wind_speed")
+                    .or_else(|| v.get_array("wind_speed"))
+                    .unwrap_or(&[])
+                    .to_vec(),
+                power: v.get_array("power_thrust_table.power")
+                    .or_else(|| v.get_array("power"))
+                    .unwrap_or(&[])
+                    .to_vec(),
+                thrust_coefficient: v.get_array("power_thrust_table.thrust_coefficient")
+                    .or_else(|| v.get_array("thrust_coefficient"))
+                    .unwrap_or(&[])
+                    .to_vec(),
+                ref_air_density: v.get_scalar("power_thrust_table.ref_air_density"),
+                ref_tilt: v.get_scalar("power_thrust_table.ref_tilt"),
+                cosine_loss_exponent_yaw: v.get_scalar("power_thrust_table.cosine_loss_exponent_yaw"),
+                cosine_loss_exponent_tilt: v.get_scalar("power_thrust_table.cosine_loss_exponent_tilt"),
+            };
+
             let turbine_type = TurbineType {
                 name: k.clone(),
                 rotor_diameter: v.get_scalar("rotor_diameter").unwrap_or(126.0),
@@ -289,6 +309,8 @@ impl Farm {
                 operation_model: operation_model_str.clone(),
                 ref_tilt: v.get_scalar("power_thrust_table.ref_tilt"),
                 correct_cp_ct_for_tilt: v.get_bool("correct_cp_ct_for_tilt"),
+                power_thrust_table: Some(power_thrust_table),
+                // Legacy fields (may be empty if using nested format)
                 power_curve_wind_speeds: v
                     .get_array("power_curve_wind_speeds")
                     .unwrap_or(&[])

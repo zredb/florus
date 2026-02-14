@@ -115,6 +115,7 @@ impl SolverConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum SolverType {
     TurbineGrid,
     TurbineCubatureGrid,
@@ -481,6 +482,7 @@ impl TurbulenceModelConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
 pub enum CombinationModelConfig {
     FLS,
     SOSFS,
