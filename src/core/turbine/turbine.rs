@@ -1,9 +1,9 @@
+use crate::core::rotor_velocity::{rotor_effective_velocity, AveragingMethod};
+use crate::core::turbine::turbine_type::TurbineType;
 /// Turbine model and operations
 ///
 /// Corresponds to core/turbine/ module in Python implementation
-use crate::types::{Float, Array2, Array4};
-use crate::core::rotor_velocity::{rotor_effective_velocity, AveragingMethod};
-use crate::core::turbine::turbine_type::TurbineType;
+use crate::types::{Array2, Array4, Float};
 use ndarray::Array;
 
 /// Wind turbine representation with embedded turbine type
@@ -11,7 +11,7 @@ use ndarray::Array;
 pub struct Turbine {
     /// Turbine type containing all turbine parameters and curves
     pub turbine_type: TurbineType,
-    
+
     /// Operation model type
     pub operation_model: String,
 }
@@ -36,8 +36,14 @@ impl Turbine {
         // Create ref_tilt array for single turbine
         let n_findex = velocities.shape()[0];
         let n_turbines = velocities.shape()[1];
-        let ref_tilt = Array::from_elem((n_findex, n_turbines), self.turbine_type.ref_tilt.unwrap_or(5.0));
-        let correct_cp_ct_for_tilt = Array::from_elem((n_findex, n_turbines), self.turbine_type.correct_cp_ct_for_tilt.unwrap_or(false));
+        let ref_tilt = Array::from_elem(
+            (n_findex, n_turbines),
+            self.turbine_type.ref_tilt.unwrap_or(5.0),
+        );
+        let correct_cp_ct_for_tilt = Array::from_elem(
+            (n_findex, n_turbines),
+            self.turbine_type.correct_cp_ct_for_tilt.unwrap_or(false),
+        );
 
         let rotor_velocities = rotor_effective_velocity(
             velocities,
@@ -60,7 +66,7 @@ impl Turbine {
                 let v = rotor_velocities[[fi, ti, 0]];
 
                 let power_table = self.turbine_type.power_curve();
-                let wind_speed = &power_table.wind_speeds;
+                let wind_speed = &power_table.keys;
 
                 if v < wind_speed[0] || v > wind_speed[wind_speed.len() - 1] {
                     power_output[[fi, ti]] = 0.0;
@@ -96,8 +102,14 @@ impl Turbine {
         // Create ref_tilt array for single turbine
         let n_findex = velocities.shape()[0];
         let n_turbines = velocities.shape()[1];
-        let ref_tilt = Array::from_elem((n_findex, n_turbines), self.turbine_type.ref_tilt.unwrap_or(5.0));
-        let correct_cp_ct_for_tilt = Array::from_elem((n_findex, n_turbines), self.turbine_type.correct_cp_ct_for_tilt.unwrap_or(false));
+        let ref_tilt = Array::from_elem(
+            (n_findex, n_turbines),
+            self.turbine_type.ref_tilt.unwrap_or(5.0),
+        );
+        let correct_cp_ct_for_tilt = Array::from_elem(
+            (n_findex, n_turbines),
+            self.turbine_type.correct_cp_ct_for_tilt.unwrap_or(false),
+        );
 
         let rotor_velocities = rotor_effective_velocity(
             velocities,
@@ -138,79 +150,85 @@ impl Turbine {
 
 /// Calculate power for array of turbines
 pub fn power(
-        velocities: &Array4,
-        turbines: &[Turbine],
-        air_density: Float,
-        yaw_angles: Option<&Array2>,
-        tilt_angles: Option<&Array2>,
-        average_method: AveragingMethod,
-    ) -> crate::Result<Array2> {
-        let shape = velocities.shape();
-        let n_findex = shape[0];
-        let n_turbines = shape[1];
-        
-        let mut power_output = Array::zeros((n_findex, n_turbines));
-        
-        for ti in 0..n_turbines {
-            if ti < turbines.len() {
-                let turbine_power = turbines[ti].calculate_power(
-                    velocities,
-                    air_density,
-                    yaw_angles,
-                    tilt_angles,
-                    average_method,
-                )?;
-                
-                for fi in 0..n_findex {
-                    power_output[[fi, ti]] = turbine_power[[fi, 0]];
-                }
+    velocities: &Array4,
+    turbines: &[Turbine],
+    air_density: Float,
+    yaw_angles: Option<&Array2>,
+    tilt_angles: Option<&Array2>,
+    average_method: AveragingMethod,
+) -> crate::Result<Array2> {
+    let shape = velocities.shape();
+    let n_findex = shape[0];
+    let n_turbines = shape[1];
+
+    let mut power_output = Array::zeros((n_findex, n_turbines));
+
+    for ti in 0..n_turbines {
+        if ti < turbines.len() {
+            let turbine_power = turbines[ti].calculate_power(
+                velocities,
+                air_density,
+                yaw_angles,
+                tilt_angles,
+                average_method,
+            )?;
+
+            for fi in 0..n_findex {
+                power_output[[fi, ti]] = turbine_power[[fi, 0]];
             }
         }
+    }
 
-        Ok(power_output)
+    Ok(power_output)
 }
 
 /// Calculate thrust coefficient for array of turbines
 pub fn thrust_coefficient(
-        velocities: &Array4,
-        turbines: &[Turbine],
-        yaw_angles: Option<&Array2>,
-        tilt_angles: Option<&Array2>,
-        average_method: AveragingMethod,
-    ) -> crate::Result<Array2> {
-        let shape = velocities.shape();
-        let n_findex = shape[0];
-        let n_turbines = shape[1];
-        
-        let mut ct_output = Array::zeros((n_findex, n_turbines));
-        
-        for ti in 0..n_turbines {
-            if ti < turbines.len() {
-                let turbine_ct = turbines[ti].calculate_thrust_coefficient(
-                    velocities,
-                    yaw_angles,
-                    tilt_angles,
-                    average_method,
-                )?;
-                
-                for fi in 0..n_findex {
-                    ct_output[[fi, ti]] = turbine_ct[[fi, 0]];
-                }
+    velocities: &Array4,
+    turbines: &[Turbine],
+    yaw_angles: Option<&Array2>,
+    tilt_angles: Option<&Array2>,
+    average_method: AveragingMethod,
+) -> crate::Result<Array2> {
+    let shape = velocities.shape();
+    let n_findex = shape[0];
+    let n_turbines = shape[1];
+
+    let mut ct_output = Array::zeros((n_findex, n_turbines));
+
+    for ti in 0..n_turbines {
+        if ti < turbines.len() {
+            let turbine_ct = turbines[ti].calculate_thrust_coefficient(
+                velocities,
+                yaw_angles,
+                tilt_angles,
+                average_method,
+            )?;
+
+            for fi in 0..n_findex {
+                ct_output[[fi, ti]] = turbine_ct[[fi, 0]];
             }
         }
+    }
 
-        Ok(ct_output)
+    Ok(ct_output)
 }
 
 /// Calculate axial induction from thrust coefficient
 pub fn axial_induction(
-        velocities: &Array4,
-        turbines: &[Turbine],
-        yaw_angles: Option<&Array2>,
-        tilt_angles: Option<&Array2>,
-        average_method: AveragingMethod,
-    ) -> crate::Result<Array2> {
-    let ct = thrust_coefficient(velocities, turbines, yaw_angles, tilt_angles, average_method)?;
+    velocities: &Array4,
+    turbines: &[Turbine],
+    yaw_angles: Option<&Array2>,
+    tilt_angles: Option<&Array2>,
+    average_method: AveragingMethod,
+) -> crate::Result<Array2> {
+    let ct = thrust_coefficient(
+        velocities,
+        turbines,
+        yaw_angles,
+        tilt_angles,
+        average_method,
+    )?;
 
     let mut ai = Array::zeros(ct.dim());
 

@@ -1,3 +1,7 @@
+/// Example: Opening FLORIS and Computing Power
+///
+/// This is the Rust equivalent of Python's 001_opening_floris_computing_power.py
+/// 
 use florus::Array1;
 
 /// Example 1: Opening FLORIS and Computing Power

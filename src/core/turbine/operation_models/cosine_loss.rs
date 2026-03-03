@@ -76,12 +76,17 @@ impl OperationModel for CosineLossTurbine {
         for i in 0..n_findex {
             for j in 0..n_turbines {
                 let vel = rotor_avg_velocities[[i, j, 0]];
-                let ct = params.thrust_table.interpolate(vel);
+                
+                // Apply air density correction for thrust (uses 1/2 power because thrust ~ v²)
+                let air_density_correction = (ctx.air_density[i] / params.ref_air_density).powf(1.0 / 2.0);
+                let effective_vel = vel * air_density_correction;
+                
+                let ct = params.thrust_table.interpolate(effective_vel);
                 thrust_coeff[[i, j]] = ct.clamp(0.0001, 0.9999);
 
-                // Apply yaw correction
+                // Apply yaw correction (cos²(yaw) per FLORIS issue #132)
                 let yaw = yaw_angles[[i, j]];
-                thrust_coeff[[i, j]] *= crate::utilities::cosd(yaw);
+                thrust_coeff[[i, j]] *= crate::utilities::cosd(yaw).powi(2);
 
                 // Apply tilt correction if available
                 let tilt = tilt_angles[[i, j]].to_radians();
@@ -94,33 +99,36 @@ impl OperationModel for CosineLossTurbine {
     }
 
     fn axial_induction(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
-        let ct = self.thrust_coefficient(params, ctx)?;
-        let yaw_angles = ctx.yaw_angles.ok_or_else(|| anyhow::anyhow!("Yaw angles required for CosineLossTurbine"))?;
-        let tilt_angles = ctx.tilt_angles.ok_or_else(|| anyhow::anyhow!("Tilt angles required for CosineLossTurbine"))?;
+        // Use base Ct (without yaw/tilt corrections) for axial induction calculation
+        // The Ct returned by thrust_coefficient already has cos²(yaw) and tilt corrections applied,
+        // which is correct for thrust but would cause double-counting in axial induction formula
+        
+        let n_findex = ctx.air_density.len();
+        let n_turbines = ctx.velocities.shape()[1];
 
-        let n_findex = ct.nrows();
-        let n_turbines = ct.ncols();
+        let rotor_avg_velocities = crate::core::rotor_velocity::average_velocity(
+            ctx.velocities,
+            ctx.average_method,
+            ctx.cubature_weights,
+        )?;
 
-        // Compute misalignment loss factor
-        let mut misalignment_loss = ndarray::Array::ones((n_findex, n_turbines));
+        // Compute base Ct without yaw/tilt corrections
+        let mut base_ct = ndarray::Array::zeros((n_findex, n_turbines));
         for i in 0..n_findex {
             for j in 0..n_turbines {
-                let yaw = yaw_angles[[i, j]].to_radians();
-                let tilt = tilt_angles[[i, j]].to_radians();
-                let ref_tilt_rad = params.ref_tilt.to_radians();
-                misalignment_loss[[i, j]] = crate::utilities::cosd(yaw.to_degrees()) * crate::utilities::cosd(tilt.to_degrees()) / crate::utilities::cosd(ref_tilt_rad.to_degrees());
+                let vel = rotor_avg_velocities[[i, j, 0]];
+                
+                // Apply air density correction for thrust
+                let air_density_correction = (ctx.air_density[i] / params.ref_air_density).powf(1.0 / 2.0);
+                let effective_vel = vel * air_density_correction;
+                
+                base_ct[[i, j]] = params.thrust_table.interpolate(effective_vel).clamp(0.0001, 0.9999);
             }
         }
 
-        // Unified axial induction formula for yawed actuator disks
-        let mut ai = ndarray::Array::zeros((n_findex, n_turbines));
-        for i in 0..n_findex {
-            for j in 0..n_turbines {
-                let ct = ct[[i, j]];
-                ai[[i, j]] = 0.5 / misalignment_loss[[i, j]] * (1.0 - (ct * misalignment_loss[[i, j]]).sqrt());
-            }
-        }
+        // Compute axial induction from base Ct using classical momentum theory
+        Ok(crate::core::turbine::operation_models::helpers::axial_induction_from_ct(&base_ct))
+}
 
-        Ok(ai)
-    }
+
 }

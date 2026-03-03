@@ -10,33 +10,39 @@
 /// 3. `get_farm_aep()`: Calculates Annual Energy Production
 ///
 /// This example demonstrates:
+/// - Loading config from YAML file (matching Python FLORIS)
+/// - Setting custom wind farm layout
 /// - Wind direction sweeping using array-based conditions
 /// - Getting turbine and farm power
 /// - Computing wake losses by comparing with no-wake case
 ///
 /// This is the Rust equivalent of Python's 005_getting_power.py
+///
 
-use florus::core::Farm;
-use florus::floris_config::SolverConfig;
 use florus::types::Array1;
 
 fn main() -> anyhow::Result<()> {
     println!("FLORIS-RS Example 2: Getting Turbine and Farm Power");
     println!("=====================================================\n");
 
+    // ============================================================
+    // Load model from YAML config (matching Python FLORIS behavior)
+    // ============================================================
+    let mut model = florus::FlorisModel::from_file("examples/inputs/gch.yaml")?;
+    
     // Create a 3-turbine farm
     // In Python: fmodel.set(layout_x=[0, 126 * 5, 126 * 10], layout_y=[0, 0, 0])
     let d = 126.0; // NREL 5MW rotor diameter
     let layout_x = Array1::from_vec(vec![0.0, 5.0 * d, 10.0 * d]);
     let layout_y = Array1::from_vec(vec![0.0, 0.0, 0.0]);
-    let turbine_types = vec!["nrel_5MW".to_string(); 3];
-
+    
     println!("Creating 3-turbine wind farm:");
     for (i, x) in layout_x.iter().enumerate() {
         println!("  Turbine {}: x = {:.0} m, y = {:.0} m", i, x, layout_y[i]);
     }
-
-    let farm = Farm::new(layout_x.clone(), layout_y.clone(), turbine_types)?;
+    
+    // Set custom layout
+    model.set_layout(&layout_x, &layout_y)?;
 
     // ============================================================
     // Using array-based wind conditions (sweeping wind directions)
@@ -51,38 +57,24 @@ fn main() -> anyhow::Result<()> {
 
     // Create wind direction sweep
     let wind_directions: Vec<f64> = (250..290).map(|d| d as f64).collect();
-    let wind_speeds = vec![9.9; 40]; // Constant wind speed for all conditions
-    let turbulence_intensities = vec![0.06; 40]; // Constant TI
+    let wind_speeds = Array1::from_vec(vec![9.9; 40]); // Constant wind speed for all conditions
+    let turbulence_intensities = Array1::from_vec(vec![0.06; 40]); // Constant TI
 
-    println!("Simulating {} wind directions from {}° to {}°",
+    println!("Simulating {} wind directions from {}° to {}",
              wind_directions.len(),
              wind_directions.first().unwrap(),
              wind_directions.last().unwrap());
-
-    // Create flow field
-    let flow_field = florus::core::FlowField::new(
-        Array1::from_vec(wind_speeds.clone()),
+    
+    // Set wind conditions
+    model.set_wind_conditions(
+        wind_speeds,
         Array1::from_vec(wind_directions.clone()),
-        0.0,    // wind_veer
-        0.14,   // wind_shear
-        1.225,  // air_density
-        Array1::from_vec(turbulence_intensities.clone()),
-        90.0,   // reference_wind_height
+        turbulence_intensities,
     )?;
 
-    // Create model
-    let mut model = florus::FlorisModel {
-        farm,
-        flow_field,
-        state: florus::core::State::new(),
-        grid: None,
-        solver: SolverConfig::default(),
-        model_manager: None,
-    };
-
-    // Initialize and run
-    model.initialize_grid()?;
-    model.initialize_flow_field()?;
+    // ============================================================
+    // Run simulation
+    // ============================================================
     model.run()?;
 
     // Get powers with wake

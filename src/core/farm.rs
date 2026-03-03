@@ -325,6 +325,8 @@ impl Farm {
                     .unwrap_or(&[])
                     .to_vec(),
                 controller_dependent_turbine_parameters: None,
+                floating_tilt_table: None,
+                multi_dimensional_cp_ct: None,
             };
 
             let turbine = Turbine {

@@ -30,13 +30,16 @@ pub fn sequential_solver(
     let y_grid = grid.y_sorted().clone();
     let z_grid = grid.z_sorted().clone();
 
-    // Initialize wake field arrays (velocity deficit accumulated across turbines)
+    // Initialize wake field arrays
+    // This stores the combined wake deficit (in velocity units, not ratio)
     let mut wake_field: Array4 = Array::zeros((n_findex, n_turbines, grid_y_dim, grid_z_dim));
+
+    // Prepare combination model function arguments
+    let _combination_model_args = model_manager.combination_model.prepare_function(grid, flow_field)?;
 
     // Loop through turbines (upstream to downstream)
     for i in 0..n_turbines {
         // Get turbine properties - use sorted farm properties
-        // sorted_indices[fi, i] gives the original index in farm arrays
         let ct_i = thrust_coefficient(
             &flow_field.u_sorted,
             &farm.turbine_map,
@@ -76,7 +79,6 @@ pub fn sequential_solver(
         )?;
 
         // Broadcast deflection from wake source turbine i to all turbines
-        // deflection_field has shape [n_findex, 1] - deflection at turbine i's position
         let mut deflection_broadcast = Array::zeros((n_findex, n_turbines));
         for ti in 0..n_turbines {
             for fi in 0..n_findex {
@@ -85,7 +87,6 @@ pub fn sequential_solver(
         }
         
         // Calculate velocity deficit at ALL grid points due to turbine i
-        // Pass turbine_index=i so the velocity model uses turbine i's position as the wake source
         let velocity_deficit = model_manager.velocity_model.function(
             x_grid.clone(),
             y_grid.clone(),
@@ -101,24 +102,26 @@ pub fn sequential_solver(
             &std::collections::HashMap::new(),
         )?;
 
-        // Only apply deficit to grid points that are DOWNSTREAM of turbine i
-        // velocity_deficit[fi, ti, iy, iz] is the deficit at turbine ti's rotor caused by turbine i
+        // Convert relative deficit to absolute velocity deficit
+        // velocity_deficit is a ratio (0-1), multiply by u_initial to get velocity in m/s
+        let mut velocity_deficit_absolute = flow_field.u_initial_sorted.clone();
         for fi in 0..n_findex {
             for ti in 0..n_turbines {
-                // Check if turbine ti is downstream of turbine i
-                let x_ti_center = x_grid[[fi, ti, 0, 0]];
-                let x_i_center = x_grid[[fi, i, 0, 0]];
-                
-                if x_ti_center > x_i_center {
-                    // Turbine ti is downstream - apply the deficit
-                    for iy in 0..grid_y_dim {
-                        for iz in 0..grid_z_dim {
-                            wake_field[[fi, ti, iy, iz]] += velocity_deficit[[fi, ti, iy, iz]];
-                        }
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        velocity_deficit_absolute[[fi, ti, iy, iz]] *=
+                            velocity_deficit[[fi, ti, iy, iz]];
                     }
                 }
             }
         }
+
+        // Apply combination model to combine new deficit with existing wake field
+        // This matches Python: wake_field = combination_model.function(wake_field, velocity_deficit * u_initial)
+        wake_field = model_manager.combination_model.function(
+            &wake_field,
+            &velocity_deficit_absolute,
+        )?;
     }
 
     // Apply combined wake field to get final velocities
@@ -127,9 +130,10 @@ pub fn sequential_solver(
         for ti in 0..n_turbines {
             for iy in 0..grid_y_dim {
                 for iz in 0..grid_z_dim {
-                    let deficit = wake_field[[fi, ti, iy, iz]].min(1.0).max(0.0);
-                    flow_field.u_sorted[[fi, ti, iy, iz]] = 
-                        flow_field.u_initial_sorted[[fi, ti, iy, iz]] * (1.0 - deficit);
+                    let wake_deficit = wake_field[[fi, ti, iy, iz]];
+                    let u_initial = flow_field.u_initial_sorted[[fi, ti, iy, iz]];
+                    // Ensure we don't get negative velocities
+                    flow_field.u_sorted[[fi, ti, iy, iz]] = (u_initial - wake_deficit).max(0.0);
                 }
             }
         }

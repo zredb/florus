@@ -126,12 +126,17 @@ impl OperationModel for UnifiedMomentumTurbine {
 
         let yaw_rad = yaw_angles.mapv(|y| y.to_radians());
 
-        // Get base thrust coefficient from table
+        // Get base thrust coefficient from table with air density correction
         let mut ct_base = ndarray::Array::zeros((n_findex, n_turbines));
         for i in 0..n_findex {
             for j in 0..n_turbines {
                 let vel = rotor_avg_velocities[[i, j, 0]];
-                ct_base[[i, j]] = params.thrust_table.interpolate(vel).clamp(0.0001, 0.9999);
+                
+                // Apply air density correction for thrust (uses 1/2 power because thrust ~ v²)
+                let air_density_correction = (ctx.air_density[i] / params.ref_air_density).powf(1.0 / 2.0);
+                let effective_vel = vel * air_density_correction;
+                
+                ct_base[[i, j]] = params.thrust_table.interpolate(effective_vel).clamp(0.0001, 0.9999);
             }
         }
 

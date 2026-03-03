@@ -24,11 +24,11 @@ impl Default for TurbineParameters {
     fn default() -> Self {
         Self {
             power_table: LookupTable {
-                wind_speeds: ndarray::Array1::zeros(0),
+                keys: ndarray::Array1::zeros(0),
                 values: ndarray::Array1::zeros(0),
             },
             thrust_table: LookupTable {
-                wind_speeds: ndarray::Array1::zeros(0),
+                keys: ndarray::Array1::zeros(0),
                 values: ndarray::Array1::zeros(0),
             },
             ref_air_density: 1.225,

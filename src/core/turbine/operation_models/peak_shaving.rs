@@ -30,7 +30,7 @@ impl OperationModel for PeakShavingTurbine {
 
         // Calculate peak shaving thrust limit
         let mut max_allowable_thrust = ndarray::Array::zeros((n_findex, n_turbines));
-        let wind_speeds = &params.power_table.wind_speeds;
+        let wind_speeds = &params.power_table.keys;
         let ct_values = &params.thrust_table.values;
         let mut peak_normal_thrust_prime: Float = 0.0;
         for (ws, ct) in wind_speeds.iter().zip(ct_values.iter()) {
@@ -105,7 +105,7 @@ impl OperationModel for PeakShavingTurbine {
             ctx.cubature_weights,
         )?;
 
-        let wind_speeds = &params.power_table.wind_speeds;
+        let wind_speeds = &params.power_table.keys;
         let ct_values = &params.thrust_table.values;
         let mut peak_normal_thrust_prime: Float = 0.0;
         for (ws, ct) in wind_speeds.iter().zip(ct_values.iter()) {
@@ -116,9 +116,13 @@ impl OperationModel for PeakShavingTurbine {
         for i in 0..n_findex {
             for j in 0..n_turbines {
                 let vel = rotor_avg_velocities[[i, j, 0]];
-
+                
+                // Apply air density correction for thrust (uses 1/2 power because thrust ~ v²)
+                let air_density_correction = (ctx.air_density[i] / params.ref_air_density).powf(1.0 / 2.0);
+                let effective_vel = vel * air_density_correction;
+                
                 // Replace zeros with small value to avoid division
-                let safe_vel = vel.max(0.01);
+                let safe_vel = effective_vel.max(0.01);
 
                 // Calculate max allowable thrust
                 let max_allowable = (1.0 - params.peak_shaving_fraction)
@@ -126,7 +130,7 @@ impl OperationModel for PeakShavingTurbine {
                     / safe_vel.powf(2.0);
 
                 // Get base thrust coefficient
-                let base_ct = params.thrust_table.interpolate(vel);
+                let base_ct = params.thrust_table.interpolate(effective_vel);
 
                 // Check if turbulence threshold is met
                 let ti = if turbulence_intensities.shape()[0] > i && turbulence_intensities.shape()[1] > j {

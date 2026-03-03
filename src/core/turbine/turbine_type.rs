@@ -1,22 +1,23 @@
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
-use std::fs::File;
 use std::fmt;
+use std::fs::File;
 
 use crate::Array1;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LookupTable {
-    pub wind_speeds: Array1,
+    pub keys: Array1,
     pub values: Array1,
 }
 
 pub type PowerTable = LookupTable;
 pub type ThrustTable = LookupTable;
+pub type TiltTable = LookupTable;
 
 impl LookupTable {
     pub fn interpolate(&self, wind_speed: f64) -> f64 {
-        let ws = &self.wind_speeds;
+        let ws = &self.keys;
         let n = ws.len();
 
         if n == 0 {
@@ -94,6 +95,11 @@ pub struct TurbineType {
     pub thrust_coefficient_values: Vec<f64>,
     #[serde(default)]
     pub controller_dependent_turbine_parameters: Option<Value>,
+
+    #[serde(default)]
+    pub floating_tilt_table: Option<TiltTable>,
+
+    pub multi_dimensional_cp_ct: Option<bool>,
 }
 
 /// Power and thrust coefficient table matching Python FLORIS format
@@ -171,14 +177,14 @@ impl TurbineType {
 
     pub fn power_curve(&self) -> LookupTable {
         LookupTable {
-            wind_speeds: ndarray::Array1::from(self.get_wind_speeds()),
+            keys: ndarray::Array1::from(self.get_wind_speeds()),
             values: ndarray::Array1::from(self.get_powers()),
         }
     }
 
     pub fn thrust_curve(&self) -> LookupTable {
         LookupTable {
-            wind_speeds: ndarray::Array1::from(self.get_wind_speeds()),
+            keys: ndarray::Array1::from(self.get_wind_speeds()),
             values: ndarray::Array1::from(self.get_thrust_coefficients()),
         }
     }
@@ -233,6 +239,15 @@ impl TurbineType {
             .as_ref()?
             .get(key)
     }
+    pub fn get_roter_radius(&self) -> f64 {
+        self.rotor_diameter / 2.0
+    }   
+
+    pub fn get_rotor_area(&self) -> f64 {
+        std::f64::consts::PI * (self.get_roter_radius()).powi(2)
+    }
+
+    
 }
 
 pub fn load_turbine_type(path: &str) -> Result<TurbineType, Box<dyn std::error::Error>> {
@@ -319,6 +334,9 @@ mod tests {
             ref_tilt: None,
             correct_cp_ct_for_tilt: None,
             controller_dependent_turbine_parameters: None,
+            floating_tilt_table: None,
+            multi_dimensional_cp_ct: None,
+            power_thrust_table: None,
         };
 
         let power = turbine.get_power(10.0, 0.0);
@@ -340,6 +358,9 @@ mod tests {
             ref_tilt: None,
             correct_cp_ct_for_tilt: None,
             controller_dependent_turbine_parameters: None,
+            floating_tilt_table: None,
+            multi_dimensional_cp_ct: None,
+            power_thrust_table: None,
         };
 
         let ct = turbine.get_ct(10.0);
@@ -361,6 +382,9 @@ mod tests {
             ref_tilt: None,
             correct_cp_ct_for_tilt: None,
             controller_dependent_turbine_parameters: None,
+            floating_tilt_table: None,
+            multi_dimensional_cp_ct: None,
+            power_thrust_table: None,
         };
 
         let power = turbine.get_power(10.0, 20.0f64.to_radians());

@@ -52,7 +52,12 @@ impl OperationModel for SimpleTurbine {
         for i in 0..n_findex {
             for j in 0..n_turbines {
                 let vel = rotor_avg_velocities[[i, j, 0]];
-                let ct = params.thrust_table.interpolate(vel);
+                
+                // Apply air density correction for thrust (uses 1/2 power because thrust ~ v²)
+                let air_density_correction = (ctx.air_density[i] / params.ref_air_density).powf(1.0 / 2.0);
+                let effective_vel = vel * air_density_correction;
+                
+                let ct = params.thrust_table.interpolate(effective_vel);
                 thrust_coeff[[i, j]] = ct.clamp(0.0001, 0.9999);
             }
         }
