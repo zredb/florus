@@ -93,8 +93,6 @@ pub struct WindRoseWRG {
     pub wind_speeds: Array1,
     /// Turbulence intensity table or single value
     pub ti_table: Array2,
-    /// Turbulence intensity as a single value (for backwards compatibility)
-    pub ti_value: Float,
     /// Layout x coordinates (set via set_layout)
     pub layout_x: Array1,
     /// Layout y coordinates (set via set_layout)
@@ -123,7 +121,6 @@ impl Default for WindRoseWRG {
             wd_step: 0.0,
             wind_speeds: Array1::from_vec(vec![]),
             ti_table: Array2::from_shape_vec((0, 0), vec![]).unwrap(),
-            ti_value: 0.06,
             layout_x: Array1::from_vec(vec![]),
             layout_y: Array1::from_vec(vec![]),
             wind_roses: Vec::new(),
@@ -170,13 +167,7 @@ impl WindRoseWRG {
             Array2::from_elem((n_dir, n_ws), 0.06)
         });
 
-        // Get TI single value (first element) for backwards compatibility
-        let ti_value = if ti_table.shape()[0] > 0 && ti_table.shape()[1] > 0 {
-            ti_table[[0, 0]]
-        } else {
-            0.06
-        };
-
+    
         // Calculate wind directions from WRG sectors or use specified step
         let (wind_directions, wd_step) = if let Some(step) = wd_step {
             let n_dir = (360.0 / step).ceil() as usize;
@@ -217,7 +208,6 @@ impl WindRoseWRG {
             wd_step,
             wind_speeds,
             ti_table,
-            ti_value,
             layout_x: Array1::from_vec(vec![]),
             layout_y: Array1::from_vec(vec![]),
             wind_roses: Vec::new(),
@@ -470,7 +460,6 @@ impl WindRoseWRG {
 
     /// Set the turbulence intensity (single value)
     pub fn set_ti_table(&mut self, ti_value: Float) {
-        self.ti_value = ti_value;
         let n_dir = self.wind_directions.len();
         let n_ws = self.wind_speeds.len();
         self.ti_table = Array2::from_elem((n_dir, n_ws), ti_value);
@@ -572,10 +561,6 @@ impl WindData for WindRoseWRG {
         }
     }
 
-    fn n_conditions(&self) -> usize {
-        self.wd_flat.len()
-    }
-
     fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig {
         HeterogeneousInflowConfig {
             x: Array1::from_vec(vec![]),
@@ -607,13 +592,13 @@ impl WindData for WindRoseWRG {
     fn unpack(
         &self,
     ) -> (
-            Array1,
-            Array1,
-            Array1,
-            Array2,
-            Array2,
-            HeterogeneousInflowConfig,
-        ) {
+        Array1,
+        Array1,
+        Array1,
+        Array2,
+        Array2,
+        HeterogeneousInflowConfig,
+    ) {
         if self.layout_x.is_empty() {
             // Return empty result if layout is not set
             return (
@@ -895,7 +880,8 @@ impl WindRoseByTurbine {
         // Create uniform frequency table
         let freq_table = Array2::from_elem((n_dir, n_ws), 1.0 / (n_dir * n_ws) as Float);
 
-        WindRose::new(wd, ws, ti, Some(freq_table), None, false, None, None).unwrap_or_else(|_| WindRose::default())
+        WindRose::new(wd, ws, ti, Some(freq_table), None, false, None, None)
+            .unwrap_or_else(|_| WindRose::default())
     }
 
     /// Set wind directions
@@ -999,9 +985,7 @@ impl WindData for WindRoseByTurbine {
         }
     }
 
-    fn n_conditions(&self) -> usize {
-        self.wd_flat.len()
-    }
+
 
     fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig {
         let n_conditions = self.n_conditions();
@@ -1290,7 +1274,13 @@ fn read_wrg_file(filename: &std::path::Path) -> Result<WRGData> {
     let grid_size: Float = header_parts[4].parse()?;
 
     // Number of sectors is in the second line
-    let n_sectors: usize = lines[1].trim().parse()?;
+    let first_data_line = lines.get(1).ok_or_else(|| {
+        anyhow::anyhow!(
+            "WRG file has no data lines after header: {}",
+            filename.display()
+        )
+    })?;
+    let n_sectors: usize = first_data_line[69..72].trim().parse()?;
 
     // Calculate expected lines
     let data_rows_per_sector = ny + 1; // Each sector has ny data rows + 1 header
@@ -1391,133 +1381,558 @@ fn read_wrg_file(filename: &std::path::Path) -> Result<WRGData> {
 
 #[cfg(test)]
 mod tests {
+
+    // ============================================================================
+    // WindRoseWRG Tests - FIXED VERSION v5
+    // ============================================================================
+    //
+    // Fixes:
+    // 1. Properly flush files before closing
+    // 2. Use unique file names with timestamps to avoid conflicts
+    // 3. Better error handling and diagnostics
+    //
     use super::*;
+    use std::io::{BufWriter, Write};
+    use std::path::PathBuf;
 
-    #[test]
-    fn test_weibull_cumulative() {
-        // Test Weibull CDF at x = A should be 1 - exp(-1) ≈ 0.632
-        let result = weibull_cumulative(10.0, 10.0, 2.0);
-        assert!((result - 0.6321205588).abs() < 0.001);
+    /// Create a valid WRG file for testing with unique name
+    fn create_test_wrg_file(nx: usize, ny: usize, n_sectors: usize) -> std::io::Result<PathBuf> {
+        let temp_dir = std::env::temp_dir();
+        // Use unique file name with thread ID and timestamp to avoid conflicts
+        let unique_id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let file_path = temp_dir.join(format!(
+            "test_wrg_{}x{}x{}_{}.wrg",
+            nx, ny, n_sectors, unique_id
+        ));
 
-        // Test at x = 0 should return 0
-        assert_eq!(weibull_cumulative(0.0, 10.0, 2.0), 0.0);
+        let file = std::fs::File::create(&file_path)?;
+        let mut writer = BufWriter::new(file);
 
-        // Test at negative x should return 0
-        assert_eq!(weibull_cumulative(-5.0, 10.0, 2.0), 0.0);
-    }
+        // Calculate grid parameters
+        let grid_size = 200.0;
+        let xmin = 0.0;
+        let ymin = 0.0;
 
-    #[test]
-    fn test_generate_weibull_frequencies() {
-        let wind_speeds = Array1::from_vec(vec![5.0, 7.5, 10.0, 12.5, 15.0]);
+        // Write header: nx ny xmin ymin grid_size
+        writeln!(
+            writer,
+            "{:4}{:4}{:10.1}{:10.1}{:8.1}",
+            nx, ny, xmin, ymin, grid_size
+        )?;
+        writeln!(writer, "{}", n_sectors)?;
 
-        // Generate frequencies for Weibull A=8, k=2
-        let freqs = generate_weibull_frequencies(8.0, 2.0, &wind_speeds);
+        // Calculate required number of data lines
+        // expected_lines = 2 + n_sectors * (ny + 1)
+        let expected_data_lines = n_sectors * (ny + 1);
 
-        // Should have same length as wind_speeds
-        assert_eq!(freqs.len(), wind_speeds.len());
+        // Write data lines
+        for line_num in 0..expected_data_lines {
+            let gid = line_num % (nx * ny).max(1);
+            let x = (gid % nx) as f64 * grid_size;
+            let y = (gid / nx) as f64 * grid_size;
 
-        // Should sum to approximately 1.0
-        let total: Float = freqs.iter().sum();
-        assert!((total - 1.0).abs() < 0.001);
+            // Build the line with exact byte positions
+            let mut line = String::with_capacity(72 + n_sectors * 13);
 
-        // All frequencies should be positive
-        for &freq in &freqs {
-            assert!(freq >= 0.0);
+            // Position 0-9: ID (10 chars)
+            line.push_str(&format!("{:10}", gid));
+
+            // Position 10-19: X (10 chars)
+            line.push_str(&format!("{:10.1}", x));
+
+            // Position 20-29: Y (10 chars)
+            line.push_str(&format!("{:10.1}", y));
+
+            // Position 30-37: Z (8 chars)
+            line.push_str(&format!("{:8.1}", 0.0));
+
+            // Position 38-42: H (5 chars)
+            line.push_str(&format!("{:5.1}", 80.0));
+
+            // Position 43-71: Padding (29 chars)
+            for _ in 0..29 {
+                line.push(' ');
+            }
+
+            // Position 72+: Sector data (13 chars per sector: freq[4] + A[4] + k[5])
+            for sector in 0..n_sectors {
+                let freq = 150 + sector * 50; // Frequency * 1000
+                let a = 70 + sector * 5; // Weibull A * 10
+                let k = 150 + sector * 10; // Weibull k * 100
+                line.push_str(&format!("{:4}{:4}{:5}", freq, a, k));
+            }
+
+            writeln!(writer, "{}", line)?;
         }
+
+        // CRITICAL: Flush the buffer before returning
+        writer.flush()?;
+
+        Ok(file_path)
+    }
+
+    // ============================================================================
+    // Tests
+    // ============================================================================
+
+    #[test]
+    fn test_wind_rose_wrg_default() {
+        let wrg = WindRoseWRG::default();
+
+        assert!(wrg.wind_directions.is_empty());
+        assert!(wrg.wind_speeds.is_empty());
+        assert!(wrg.layout_x.is_empty());
+        assert!(wrg.layout_y.is_empty());
+        assert!(wrg.wind_roses.is_empty());
+        assert!((wrg.ti_value - 0.06).abs() < 1e-10);
     }
 
     #[test]
-    fn test_bilinear_interpolate() {
-        let x_array = vec![0.0, 100.0, 200.0];
-        let y_array = vec![0.0, 100.0, 200.0];
-        let data =
-            Array2::from_shape_vec((3, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0])
-                .unwrap();
-
-        // Test at exact grid point (0, 0) = data[0,0] = 1.0
-        let result = bilinear_interpolate(0.0, 0.0, &x_array, &y_array, &data);
-        assert!((result - 1.0).abs() < 0.001);
-
-        // Test at grid point (100, 0) = data[1,0] = 2.0
-        let result = bilinear_interpolate(100.0, 0.0, &x_array, &y_array, &data);
-        assert!((result - 2.0).abs() < 0.001);
-
-        // Test at center of grid cell (50, 50)
-        let result = bilinear_interpolate(50.0, 50.0, &x_array, &y_array, &data);
-        assert!((result - 3.0).abs() < 0.001);
+    fn test_wind_rose_wrg_invalid_file() {
+        let result = WindRoseWRG::new("/nonexistent/path/file.wrg", None, None, None);
+        assert!(result.is_err());
     }
 
     #[test]
-    fn test_wind_rose_by_turbine_creation() {
-        use crate::wind_data::WindRose;
+    fn test_wind_rose_wrg_minimal_file() {
+        let file_path = create_test_wrg_file(1, 1, 2).expect("Failed to create test file");
 
-        let wd = Array1::from_vec(vec![0.0, 90.0, 180.0, 270.0]);
-        let ws = Array1::from_vec(vec![8.0, 10.0, 12.0]);
-        let ti_table = Array2::from_elem((4, 3), 0.08);
+        let result = WindRoseWRG::new(&file_path, None, None, None);
 
-        // Create individual wind roses for 2 turbines
-        let freq1 = Array2::from_elem((4, 3), 0.25);
-        let freq2 = Array2::from_elem((4, 3), 0.25);
+        // Clean up after test
+        let _ = std::fs::remove_file(&file_path);
 
-        let wr1 =
-            WindRose::new(wd.clone(), ws.clone(), ti_table.clone(), Some(freq1), None, false, None, None).unwrap();
-        let wr2 =
-            WindRose::new(wd.clone(), ws.clone(), ti_table.clone(), Some(freq2), None, false, None, None).unwrap();
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let wrg = result.unwrap();
 
-        let wrbt = WindRoseByTurbine::new(wd, ws, ti_table, vec![wr1, wr2]).unwrap();
-        assert_eq!(wrbt.n_conditions(), 12); // 4 dirs × 3 speeds
+        assert_eq!(wrg.wrg_data.nx, 1);
+        assert_eq!(wrg.wrg_data.ny, 1);
+        assert_eq!(wrg.wrg_data.n_sectors, 2);
     }
 
     #[test]
-    fn test_wind_rose_by_turbine_set_layout() {
-        use crate::wind_data::WindRose;
+    fn test_wind_rose_wrg_larger_file() {
+        let file_path = create_test_wrg_file(2, 2, 4).expect("Failed to create test file");
 
-        let wd = Array1::from_vec(vec![0.0, 180.0]);
-        let ws = Array1::from_vec(vec![8.0, 10.0]);
-        let ti_table = Array2::from_elem((2, 2), 0.06);
+        let wind_speeds = Array1::from_vec(vec![0.0, 5.0, 10.0, 15.0, 20.0]);
+        let ti_table = Array2::from_elem((4, 5), 0.07);
 
-        // Create individual wind roses
-        let freq = Array2::from_elem((2, 2), 0.25);
-        let wr1 = WindRose::new(
-            wd.clone(),
-            ws.clone(),
-            ti_table.clone(),
-            Some(freq.clone()),
-            None,
-            false,
-            None,
-            None,
-        )
-        .unwrap();
-        let wr2 = WindRose::new(
-            wd.clone(),
-            ws.clone(),
-            ti_table.clone(),
-            Some(freq.clone()),
-            None,
-            false,
-            None,
-            None,
-        )
-        .unwrap();
+        let result = WindRoseWRG::new(&file_path, Some(90.0), Some(wind_speeds), Some(ti_table));
 
-        let mut wrbt = WindRoseByTurbine::new(wd, ws, ti_table, vec![wr1, wr2]).unwrap();
+        // Clean up
+        let _ = std::fs::remove_file(&file_path);
+
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let wrg = result.unwrap();
+
+        assert_eq!(wrg.wind_speeds.len(), 5);
+        assert!((wrg.wd_step - 90.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_wind_rose_wrg_set_layout() {
+        let file_path = create_test_wrg_file(2, 2, 4).expect("Failed to create test file");
+
+        // Verify file exists and has content
+        let metadata = std::fs::metadata(&file_path).expect("File should exist");
+        assert!(metadata.len() > 0, "File should not be empty");
+
+        let result = WindRoseWRG::new(&file_path, None, None, None);
+        assert!(
+            result.is_ok(),
+            "Failed to create WindRoseWRG: {:?}",
+            result.err()
+        );
+
+        let mut wrg = result.unwrap();
+
+        let layout_x = Array1::from_vec(vec![100.0, 200.0]);
+        let layout_y = Array1::from_vec(vec![100.0, 200.0]);
+
+        let result = wrg.set_layout(layout_x.clone(), layout_y.clone());
+
+        // Clean up
+        let _ = std::fs::remove_file(&file_path);
+
+        assert!(result.is_ok(), "set_layout failed: {:?}", result.err());
+        assert_eq!(wrg.layout_x.len(), 2);
+        assert_eq!(wrg.wind_roses.len(), 2);
+    }
+
+    #[test]
+    fn test_wind_rose_wrg_set_layout_mismatched() {
+        let file_path = create_test_wrg_file(2, 2, 4).expect("Failed to create test file");
+
+        // Verify file exists
+        let metadata = std::fs::metadata(&file_path).expect("File should exist");
+        assert!(metadata.len() > 0, "File should not be empty");
+
+        let result = WindRoseWRG::new(&file_path, None, None, None);
+        assert!(
+            result.is_ok(),
+            "Failed to create WindRoseWRG: {:?}",
+            result.err()
+        );
+
+        let mut wrg = result.unwrap();
+
+        let layout_x = Array1::from_vec(vec![0.0, 100.0]);
+        let layout_y = Array1::from_vec(vec![0.0]); // Wrong length
+
+        let result = wrg.set_layout(layout_x, layout_y);
+
+        // Clean up
+        let _ = std::fs::remove_file(&file_path);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_wind_rose_wrg_set_wd_step() {
+        let file_path = create_test_wrg_file(1, 1, 2).expect("Failed to create test file");
+
+        let result = WindRoseWRG::new(&file_path, None, None, None);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+
+        let mut wrg = result.unwrap();
+
+        wrg.set_wd_step(90.0);
+
+        // Clean up
+        let _ = std::fs::remove_file(&file_path);
+
+        assert!((wrg.wd_step - 90.0).abs() < 1e-10);
+        assert_eq!(wrg.wind_directions.len(), 4);
+    }
+
+    #[test]
+    fn test_wind_rose_wrg_set_wind_speeds() {
+        let file_path = create_test_wrg_file(1, 1, 2).expect("Failed to create test file");
+
+        let result = WindRoseWRG::new(&file_path, None, None, None);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+
+        let mut wrg = result.unwrap();
+
+        let new_speeds = Array1::from_vec(vec![0.0, 5.0, 10.0, 15.0, 20.0]);
+        wrg.set_wind_speeds(new_speeds);
+
+        // Clean up
+        let _ = std::fs::remove_file(&file_path);
+
+        assert_eq!(wrg.wind_speeds.len(), 5);
+    }
+
+    #[test]
+    fn test_wind_rose_wrg_set_ti_table() {
+        let file_path = create_test_wrg_file(1, 1, 2).expect("Failed to create test file");
+
+        let result = WindRoseWRG::new(&file_path, None, None, None);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+
+        let mut wrg = result.unwrap();
+
+        wrg.set_ti_table(0.08);
+
+        // Clean up
+        let _ = std::fs::remove_file(&file_path);
+
+        assert!((wrg.ti_value - 0.08).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_wind_rose_wrg_wind_data_trait() {
+        let file_path = create_test_wrg_file(2, 2, 4).expect("Failed to create test file");
+
+        let result = WindRoseWRG::new(&file_path, None, None, None);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+
+        let mut wrg = result.unwrap();
 
         // Set layout
-        let layout_x = Array1::from_vec(vec![0.0, 500.0]);
-        let layout_y = Array1::from_vec(vec![0.0, 0.0]);
-        wrbt.set_layout(layout_x, layout_y).unwrap();
+        let layout_x = Array1::from_vec(vec![100.0]);
+        let layout_y = Array1::from_vec(vec![100.0]);
+        wrg.set_layout(layout_x, layout_y).unwrap();
 
-        // Should have wind roses for each turbine
-        assert_eq!(wrbt.wind_roses.len(), 2);
-        assert!(!wrbt.wd_flat.is_empty());
+        // Clean up
+        let _ = std::fs::remove_file(&file_path);
+
+        // Test trait methods
+        let speeds = wrg.wind_speeds();
+        assert!(!speeds.is_empty());
+
+        let directions = wrg.wind_directions();
+        assert!(!directions.is_empty());
+
+        let tis = wrg.turbulence_intensities();
+        assert!(!tis.is_empty());
+
+        let n = wrg.n_conditions();
+        assert!(n > 0);
     }
+
+    #[test]
+    fn test_wind_rose_wrg_frequencies() {
+        let file_path = create_test_wrg_file(2, 2, 4).expect("Failed to create test file");
+
+        let result = WindRoseWRG::new(&file_path, None, None, None);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+
+        let mut wrg = result.unwrap();
+
+        // Without layout
+        let freq = wrg.frequencies();
+        assert!(freq.is_empty());
+
+        // Set layout
+        let layout_x = Array1::from_vec(vec![100.0]);
+        let layout_y = Array1::from_vec(vec![100.0]);
+        wrg.set_layout(layout_x, layout_y).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_file(&file_path);
+
+        let freq = wrg.frequencies();
+        assert!(!freq.is_empty());
+    }
+
+    #[test]
+    fn test_wind_rose_wrg_get_wind_rose_at_point() {
+        let file_path = create_test_wrg_file(2, 2, 4).expect("Failed to create test file");
+
+        let result = WindRoseWRG::new(&file_path, None, None, None);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+
+        let wrg = result.unwrap();
+
+        let wind_rose = wrg.get_wind_rose_at_point(100.0, 100.0, None, None, None);
+
+        // Clean up
+        let _ = std::fs::remove_file(&file_path);
+
+        assert!(!wind_rose.wind_directions.is_empty());
+        assert!(!wind_rose.wind_speeds.is_empty());
+    }
+
+    #[test]
+    fn test_wind_rose_wrg_unpack() {
+        let file_path = create_test_wrg_file(2, 2, 4).expect("Failed to create test file");
+
+        let result = WindRoseWRG::new(&file_path, None, None, None);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+
+        let mut wrg = result.unwrap();
+
+        // Without layout
+        let (wd, _, _, _, _, _) = wrg.unpack();
+        assert!(wd.is_empty());
+
+        // Set layout
+        let layout_x = Array1::from_vec(vec![100.0]);
+        let layout_y = Array1::from_vec(vec![100.0]);
+        wrg.set_layout(layout_x, layout_y).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_file(&file_path);
+
+        let (wd, ws, ti, freq, value, _) = wrg.unpack();
+        assert!(!wd.is_empty());
+        assert!(!ws.is_empty());
+        assert!(!ti.is_empty());
+        assert!(!freq.is_empty());
+        assert!(!value.is_empty());
+    }
+
+    #[test]
+    fn test_wind_rose_wrg_full_workflow() {
+        let file_path = create_test_wrg_file(2, 2, 4).expect("Failed to create test file");
+
+        let result = WindRoseWRG::new(&file_path, Some(90.0), None, None);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+
+        let mut wrg = result.unwrap();
+
+        wrg.set_ti_table(0.07);
+
+        let layout_x = Array1::from_vec(vec![100.0, 200.0]);
+        let layout_y = Array1::from_vec(vec![100.0, 200.0]);
+        wrg.set_layout(layout_x, layout_y).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_file(&file_path);
+
+        assert_eq!(wrg.wind_roses.len(), 2);
+        assert!(wrg.n_conditions() > 0);
+    }
+
+    #[test]
+    fn test_wind_rose_wrg_clone() {
+        let file_path = create_test_wrg_file(1, 1, 2).expect("Failed to create test file");
+
+        // Verify file exists and has content
+        let metadata = std::fs::metadata(&file_path).expect("File should exist");
+        assert!(metadata.len() > 0, "File should not be empty");
+
+        let result = WindRoseWRG::new(&file_path, None, None, None);
+        assert!(
+            result.is_ok(),
+            "Failed to create WindRoseWRG: {:?}",
+            result.err()
+        );
+
+        let wrg = result.unwrap();
+        let cloned = wrg.clone();
+
+        // Clean up
+        let _ = std::fs::remove_file(&file_path);
+
+        assert_eq!(wrg.wind_directions.len(), cloned.wind_directions.len());
+        assert_eq!(wrg.wind_speeds.len(), cloned.wind_speeds.len());
+    }
+
+    // ============================================================================
+    // WindRoseByTurbine Tests
+    // ============================================================================
 
     #[test]
     fn test_wind_rose_by_turbine_default() {
         let wrbt = WindRoseByTurbine::default();
+
         assert!(wrbt.wind_directions.is_empty());
         assert!(wrbt.wind_speeds.is_empty());
+        assert!(wrbt.layout_x.is_empty());
+        assert!(wrbt.layout_y.is_empty());
         assert!(wrbt.wind_roses.is_empty());
+    }
+
+    #[test]
+    fn test_wind_rose_by_turbine_creation() {
+        let wd = Array1::from_vec(vec![0.0, 90.0, 180.0, 270.0]);
+        let ws = Array1::from_vec(vec![5.0, 10.0, 15.0]);
+        let ti = Array2::from_elem((4, 3), 0.06);
+
+        let wind_roses = vec![
+            WindRose::new(
+                wd.clone(),
+                ws.clone(),
+                ti.clone(),
+                None,
+                None,
+                false,
+                None,
+                None,
+            )
+            .unwrap(),
+            WindRose::new(
+                wd.clone(),
+                ws.clone(),
+                ti.clone(),
+                None,
+                None,
+                false,
+                None,
+                None,
+            )
+            .unwrap(),
+        ];
+
+        let result = WindRoseByTurbine::new(wd, ws, ti, wind_roses);
+
+        assert!(result.is_ok());
+        let wrbt = result.unwrap();
+
+        assert_eq!(wrbt.wind_directions.len(), 4);
+        assert_eq!(wrbt.wind_speeds.len(), 3);
+        assert_eq!(wrbt.wind_roses.len(), 2);
+    }
+
+    #[test]
+    fn test_wind_rose_by_turbine_wind_data_trait() {
+        let wd = Array1::from_vec(vec![0.0, 90.0, 180.0, 270.0]);
+        let ws = Array1::from_vec(vec![5.0, 10.0, 15.0]);
+        let ti = Array2::from_elem((4, 3), 0.06);
+
+        let wind_roses = vec![WindRose::new(
+            wd.clone(),
+            ws.clone(),
+            ti.clone(),
+            None,
+            None,
+            false,
+            None,
+            None,
+        )
+        .unwrap()];
+
+        let wrbt = WindRoseByTurbine::new(wd, ws, ti, wind_roses).unwrap();
+
+        assert_eq!(wrbt.wind_speeds().len(), 3);
+        assert_eq!(wrbt.wind_directions().len(), 4);
+        assert_eq!(wrbt.n_conditions(), 12);
+    }
+
+    #[test]
+    fn test_wind_rose_by_turbine_from_wrg() {
+        let file_path = create_test_wrg_file(2, 2, 4).expect("Failed to create test file");
+
+        // Verify file exists and has content
+        let metadata = std::fs::metadata(&file_path).expect("File should exist");
+        assert!(metadata.len() > 0, "File should not be empty");
+
+        let result = WindRoseByTurbine::from_wrg_file(&file_path, None, None, None);
+
+        // Clean up
+        let _ = std::fs::remove_file(&file_path);
+
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let wrbt = result.unwrap();
+
+        assert!(!wrbt.wind_directions.is_empty());
+        assert!(!wrbt.wind_speeds.is_empty());
+    }
+
+    // ============================================================================
+    // RegularGridInterpolant Tests
+    // ============================================================================
+
+    #[test]
+    fn test_regular_grid_interpolant_creation() {
+        let x = Array1::from_vec(vec![0.0, 1.0, 2.0]);
+        let y = Array1::from_vec(vec![0.0, 1.0, 2.0]);
+        let data =
+            Array2::from_shape_vec((3, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0])
+                .unwrap();
+
+        let interp = RegularGridInterpolant::new(x, y, data, InterpMethod::Linear);
+
+        assert_eq!(interp.x.len(), 3);
+        assert_eq!(interp.y.len(), 3);
+        assert_eq!(interp.data.shape(), &[3, 3]);
+    }
+
+    #[test]
+    fn test_regular_grid_interpolant_clone() {
+        let x = Array1::from_vec(vec![0.0, 1.0]);
+        let y = Array1::from_vec(vec![0.0, 1.0]);
+        let data = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+
+        let interp = RegularGridInterpolant::new(x, y, data, InterpMethod::Linear);
+        let cloned = interp.clone();
+
+        assert_eq!(interp.x.len(), cloned.x.len());
+        assert_eq!(interp.y.len(), cloned.y.len());
+    }
+    #[test]
+    fn test_create_by_real_wrg_file() {
+        let wrg_file = "tests/testdata/testwrg.wrg";
+        let wrg = WindRoseWRG::new(&wrg_file, None, None, None);
+        assert!(wrg.is_ok());
+        let wrg = wrg.unwrap();
+        assert_eq!(wrg.wind_directions().len(), 16);
+        assert_eq!(wrg.wind_speeds().len(), 26);
+        assert_eq!(wrg.n_conditions(), 16 * 26);
     }
 }

@@ -215,7 +215,12 @@ impl TimeSeries {
     /// Convert to WindTIRose
     ///
     /// Aggregates time series into wind rose bins with TI as a dimension.
-    pub fn to_wind_ti_rose(&self, wd_step: Float, ws_step: Float, ti_step: Float) -> super::WindTIRose {
+    pub fn to_wind_ti_rose(
+        &self,
+        wd_step: Float,
+        ws_step: Float,
+        ti_step: Float,
+    ) -> super::WindTIRose {
         let n_wd = (360.0 / wd_step).ceil() as usize;
         let n_ws = (50.0 / ws_step).ceil() as usize;
         let n_ti = (1.0 / ti_step).ceil() as usize; // TI from 0 to 1
@@ -279,12 +284,12 @@ impl WindData for TimeSeries {
         self.wind_directions.clone()
     }
 
-    fn turbulence_intensities(&self) -> Array1 {
-        self.turbulence_intensities.clone()
-    }
-
     fn n_conditions(&self) -> usize {
         self.wind_directions.len()
+    }
+
+    fn turbulence_intensities(&self) -> Array1 {
+        self.turbulence_intensities.clone()
     }
 
     fn frequencies(&self) -> Array2 {

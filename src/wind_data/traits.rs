@@ -22,7 +22,11 @@ pub trait WindData {
     fn turbulence_intensities(&self) -> Array1;
 
     /// Get number of conditions
-    fn n_conditions(&self) -> usize;
+    fn n_conditions(&self) -> usize {
+        self.wind_directions().len()
+            * self.wind_speeds().len()
+            * self.turbulence_intensities().len()
+    }
 
     /// Get frequencies for AEP calculations
     ///
