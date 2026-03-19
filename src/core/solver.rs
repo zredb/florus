@@ -1,14 +1,84 @@
 /// Wake solver algorithms
 ///
 /// Corresponds to core/solver.py in Python implementation
-use crate::core::turbine::Turbine;
+use crate::core::turbines::Turbine;
 use crate::core::wake::WakeModelManager;
-use crate::core::{Farm, FlowField, GridBase};
+use crate::core::{Farm, FlowField, GridBase, TurbineCubatureGrid};
 use crate::types::{Array2, Array4, Float};
-use anyhow::Result;
-use ndarray::{Array, s};
+use anyhow::{bail, Result};
+use ndarray::{s, Array};
 
-/// Sequential wake solver
+/// Solver type enum for selecting the appropriate solver algorithm
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SolverType {
+    /// Standard sequential solver for turbine grid
+    Sequential,
+    /// Solver for cumulative curl velocity model with cubature grid
+    CumulativeCurl,
+    /// Solver for empirical Gauss velocity model
+    EmpiricalGauss,
+    /// Solver for Jensen velocity model
+    Jensen,
+    /// General solver that auto-selects based on grid type
+    Auto,
+}
+
+impl Default for SolverType {
+    fn default() -> Self {
+        Self::Sequential
+    }
+}
+
+/// Select appropriate solver based on grid and model configuration
+pub fn select_solver(
+    grid: &dyn GridBase,
+    model_manager: &WakeModelManager,
+) -> SolverType {
+    if model_manager.use_parallel_calc {
+        return SolverType::Sequential;
+    }
+
+    if grid.cubature_weights().is_some() {
+        return SolverType::CumulativeCurl;
+    }
+
+    let model_name = format!(
+        "{}",
+        model_manager.velocity_model as &dyn std::any::Any
+    ).to_lowercase();
+
+    if model_name.contains("cumulative_curl") || model_name.contains("cc") {
+        SolverType::CumulativeCurl
+    } else if model_name.contains("empirical") {
+        SolverType::EmpiricalGauss
+    } else if model_name.contains("jensen") {
+        SolverType::Jensen
+    } else {
+        SolverType::Sequential
+    }
+}
+
+/// Main solver dispatch function
+pub fn solve(
+    farm: &Farm,
+    flow_field: &mut FlowField,
+    grid: &dyn GridBase,
+    model_manager: &WakeModelManager,
+    solver_type: SolverType,
+) -> Result<()> {
+    match solver_type {
+        SolverType::Sequential | SolverType::Auto => sequential_solver(farm, flow_field, grid, model_manager),
+        SolverType::CumulativeCurl => {
+            if let Some(cubature_grid) = grid.as_any().downcast_ref::<TurbineCubatureGrid>() {
+                cc_solver(farm, flow_field, cubature_grid, model_manager)
+            } else {
+                sequential_solver(farm, flow_field, grid, model_manager)
+            }
+        }
+        SolverType::EmpiricalGauss => empirical_gauss_solver(farm, flow_field, grid, model_manager),
+        SolverType::Jensen => jensen_solver(farm, flow_field, grid, model_manager),
+    }
+}
 ///
 /// Computes wakes for each turbine in upstream→downstream order
 /// applying deflection, velocity deficit, turbulence, and wake superposition models
@@ -35,7 +105,9 @@ pub fn sequential_solver(
     let mut wake_field: Array4 = Array::zeros((n_findex, n_turbines, grid_y_dim, grid_z_dim));
 
     // Prepare combination model function arguments
-    let _combination_model_args = model_manager.combination_model.prepare_function(grid, flow_field)?;
+    let _combination_model_args = model_manager
+        .combination_model
+        .prepare_function(grid, flow_field)?;
 
     // Loop through turbines (upstream to downstream)
     for i in 0..n_turbines {
@@ -50,20 +122,20 @@ pub fn sequential_solver(
 
         let a_i = axial_induction(&ct_i);
         let ti_i = flow_field.turbulence_intensities.slice(s![..]);
-        
+
         // Use yaw_angles_sorted with sorted index i
         let yaw_angle_i = farm.yaw_angles_sorted[[0, i]];
-        
+
         // Use rotor_diameters_sorted with sorted index i
         let rotor_diameter_i = farm.rotor_diameters_sorted[[0, i]];
-        
+
         // Use hub_heights_sorted with sorted index i
         let hub_height_i = farm.hub_heights_sorted[[0, i]];
 
         // Calculate 2D mean values for deflection at turbine i's position
-        let x_i = x_grid.slice(s![.., i..i+1, .., ..]).to_owned();
-        let y_i = y_grid.slice(s![.., i..i+1, .., ..]).to_owned();
-        
+        let x_i = x_grid.slice(s![.., i..i + 1, .., ..]).to_owned();
+        let y_i = y_grid.slice(s![.., i..i + 1, .., ..]).to_owned();
+
         let x_2d = mean_value_4d_slice(&x_i)?;
         let y_2d = mean_value_4d_slice(&y_i)?;
 
@@ -85,7 +157,7 @@ pub fn sequential_solver(
                 deflection_broadcast[[fi, ti]] = deflection_field[[fi, 0]];
             }
         }
-        
+
         // Calculate velocity deficit at ALL grid points due to turbine i
         let velocity_deficit = model_manager.velocity_model.function(
             x_grid.clone(),
@@ -98,7 +170,7 @@ pub fn sequential_solver(
             ct_i[[0, i]],
             hub_height_i,
             rotor_diameter_i,
-            i,  // turbine_index
+            i, // turbine_index
             &std::collections::HashMap::new(),
         )?;
 
@@ -118,10 +190,9 @@ pub fn sequential_solver(
 
         // Apply combination model to combine new deficit with existing wake field
         // This matches Python: wake_field = combination_model.function(wake_field, velocity_deficit * u_initial)
-        wake_field = model_manager.combination_model.function(
-            &wake_field,
-            &velocity_deficit_absolute,
-        )?;
+        wake_field = model_manager
+            .combination_model
+            .function(&wake_field, &velocity_deficit_absolute)?;
     }
 
     // Apply combined wake field to get final velocities
@@ -140,6 +211,165 @@ pub fn sequential_solver(
     }
 
     Ok(())
+}
+
+/// Cumulative Curl solver for cubature grid
+///
+/// Uses cubature integration for accurate rotor average velocity calculation.
+/// The CC model includes Wake Expansion Continuation (WEC) for deep array effects.
+pub fn cc_solver(
+    farm: &Farm,
+    flow_field: &mut FlowField,
+    grid: &TurbineCubatureGrid,
+    model_manager: &WakeModelManager,
+) -> Result<()> {
+    let n_turbines = grid.n_turbines();
+    let n_findex = grid.n_findex();
+
+    let shape = grid.x_sorted().shape();
+    let n_points = shape[2];
+
+    let x_grid = grid.x_sorted().clone();
+    let y_grid = grid.y_sorted().clone();
+    let z_grid = grid.z_sorted().clone();
+
+    let weights = grid.cubature_weights();
+
+    let mut wake_field: Array4 = Array::zeros((n_findex, n_turbines, n_points, 1));
+
+    model_manager
+        .combination_model
+        .prepare_function(grid, flow_field)?;
+
+    for i in 0..n_turbines {
+        let ct_i = thrust_coefficient_cc(
+            &flow_field.u_sorted,
+            &farm.turbine_map,
+            weights,
+            grid.average_method(),
+        )?;
+
+        let a_i = axial_induction(&ct_i);
+        let ti_i = flow_field.turbulence_intensities.slice(s![..]);
+
+        let yaw_angle_i = farm.yaw_angles_sorted[[0, i]];
+        let rotor_diameter_i = farm.rotor_diameters_sorted[[0, i]];
+        let hub_height_i = farm.hub_heights_sorted[[0, i]];
+
+        let x_i = x_grid.slice(s![.., i..i + 1, .., ..]).to_owned();
+        let y_i = y_grid.slice(s![.., i..i + 1, .., ..]).to_owned();
+
+        let x_2d = mean_value_4d_slice(&x_i)?;
+        let y_2d = mean_value_4d_slice(&y_i)?;
+
+        let deflection_field = model_manager.deflection_model.function(
+            x_2d.clone(),
+            y_2d.clone(),
+            yaw_angle_i,
+            ti_i[0],
+            ct_i[[0, i]],
+            rotor_diameter_i,
+            &std::collections::HashMap::new(),
+        )?;
+
+        let mut deflection_broadcast = Array::zeros((n_findex, n_turbines));
+        for ti in 0..n_turbines {
+            for fi in 0..n_findex {
+                deflection_broadcast[[fi, ti]] = deflection_field[[fi, 0]];
+            }
+        }
+
+        let velocity_deficit = model_manager.velocity_model.function(
+            x_grid.clone(),
+            y_grid.clone(),
+            z_grid.clone(),
+            a_i[[0, i]],
+            deflection_broadcast,
+            yaw_angle_i,
+            ti_i[0],
+            ct_i[[0, i]],
+            hub_height_i,
+            rotor_diameter_i,
+            i,
+            &std::collections::HashMap::new(),
+        )?;
+
+        let mut velocity_deficit_absolute = flow_field.u_initial_sorted.clone();
+        for fi in 0..n_findex {
+            for ti in 0..n_turbines {
+                for ip in 0..n_points {
+                    velocity_deficit_absolute[[fi, ti, ip, 0]] *= velocity_deficit[[fi, ti, ip, 0]];
+                }
+            }
+        }
+
+        wake_field = model_manager
+            .combination_model
+            .function(&wake_field, &velocity_deficit_absolute)?;
+    }
+
+    for fi in 0..n_findex {
+        for ti in 0..n_turbines {
+            for ip in 0..n_points {
+                let wake_deficit = wake_field[[fi, ti, ip, 0]];
+                let u_initial = flow_field.u_initial_sorted[[fi, ti, ip, 0]];
+                flow_field.u_sorted[[fi, ti, ip, 0]] = (u_initial - wake_deficit).max(0.0);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Thrust coefficient for cubature grid with weighted averaging
+fn thrust_coefficient_cc(
+    velocities: &Array4,
+    turbines: &[Turbine],
+    _weights: Option<&Array2>,
+    _average_method: crate::core::AveragingMethod,
+) -> Result<Array2> {
+    let shape = velocities.shape();
+    let n_findex = shape[0];
+    let n_turbines = shape[1];
+
+    let mut ct_output = Array::zeros((n_findex, n_turbines));
+
+    for fi in 0..n_findex {
+        for ti in 0..n_turbines.min(turbines.len()) {
+            if ti < turbines.len() {
+                let v = velocities[[fi, ti, 0, 0]];
+                ct_output[[fi, ti]] = turbines[ti].turbine_type.get_ct(v);
+            }
+        }
+    }
+
+    Ok(ct_output)
+}
+
+/// Empirical Gauss solver
+///
+/// Solver optimized for the Empirical Gaussian velocity deficit model.
+/// This model uses data-driven wake expansion parameters.
+pub fn empirical_gauss_solver(
+    farm: &Farm,
+    flow_field: &mut FlowField,
+    grid: &dyn GridBase,
+    model_manager: &WakeModelManager,
+) -> Result<()> {
+    sequential_solver(farm, flow_field, grid, model_manager)
+}
+
+/// Jensen solver
+///
+/// Solver optimized for the Jensen velocity deficit model.
+/// Uses a simple top-hat wake profile with linear expansion.
+pub fn jensen_solver(
+    farm: &Farm,
+    flow_field: &mut FlowField,
+    grid: &dyn GridBase,
+    model_manager: &WakeModelManager,
+) -> Result<()> {
+    sequential_solver(farm, flow_field, grid, model_manager)
 }
 
 /// Calculate thrust coefficient for all turbines
@@ -174,7 +404,6 @@ pub fn axial_induction(ct_values: &Array2) -> Array2 {
         if ct < 0.96 {
             0.5 * (1.0 - (1.0 - ct).sqrt())
         } else {
-            // High thrust region - empirical relationship
             0.143 + (0.0203 - 0.6427 * (0.889 - ct).sqrt()).max(0.0)
         }
     })
@@ -232,14 +461,14 @@ mod tests {
             (1, 2, 2, 2),
             vec![
                 // Turbine 0: values 1, 2, 3, 4 -> mean = 2.5
-                1.0, 2.0, 3.0, 4.0,
-                // Turbine 1: values 5, 6, 7, 8 -> mean = 6.5
+                1.0, 2.0, 3.0, 4.0, // Turbine 1: values 5, 6, 7, 8 -> mean = 6.5
                 5.0, 6.0, 7.0, 8.0,
-            ]
-        ).unwrap();
-        
+            ],
+        )
+        .unwrap();
+
         let result = mean_value_4d_slice(&arr).unwrap();
-        
+
         assert_eq!(result.shape()[0], 1);
         assert_eq!(result.shape()[1], 2);
         assert_relative_eq!(result[[0, 0]], 2.5);
@@ -248,13 +477,10 @@ mod tests {
 
     #[test]
     fn test_mean_value_4d_slice_single_value() {
-        let arr = Array::from_shape_vec(
-            (1, 1, 1, 1),
-            vec![5.0]
-        ).unwrap();
-        
+        let arr = Array::from_shape_vec((1, 1, 1, 1), vec![5.0]).unwrap();
+
         let result = mean_value_4d_slice(&arr).unwrap();
-        
+
         assert_eq!(result.shape()[0], 1);
         assert_eq!(result.shape()[1], 1);
         assert_relative_eq!(result[[0, 0]], 5.0);
@@ -266,14 +492,14 @@ mod tests {
             (2, 2, 1, 1),
             vec![
                 // findex 0: turbine 0 = 10.0, turbine 1 = 20.0
-                10.0, 20.0,
-                // findex 1: turbine 0 = 30.0, turbine 1 = 40.0
+                10.0, 20.0, // findex 1: turbine 0 = 30.0, turbine 1 = 40.0
                 30.0, 40.0,
-            ]
-        ).unwrap();
-        
+            ],
+        )
+        .unwrap();
+
         let result = mean_value_4d_slice(&arr).unwrap();
-        
+
         assert_eq!(result.shape()[0], 2);
         assert_eq!(result.shape()[1], 2);
         assert_relative_eq!(result[[0, 0]], 10.0);

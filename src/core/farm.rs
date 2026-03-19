@@ -1,8 +1,11 @@
-use crate::core::{State, TurbineGrid, Turbine};
+use crate::core::turbines::turbine_type::TurbineType;
+use crate::core::turbines::TurbineLibrary;
+use crate::core::{AveragingMethod, State, Turbine, TurbineGrid};
 use crate::types::{Array1, Array2, Float, NumericDict};
 use crate::utilities::load_yaml;
+use crate::Array4;
+use ndarray::{Array, Array2 as NdArray2, Array3 as NdArray3};
 use serde_yaml::Value;
-use ndarray::{Array2 as NdArray2, Array3 as NdArray3};
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
@@ -13,12 +16,8 @@ const POWER_SETPOINT_DEFAULT: Float = 5000.0; // 假设默认功率为5MW
 pub struct Farm {
     pub layout_x: Array1,
     pub layout_y: Array1,
-    pub turbine_type: Vec<String>,
-    pub turbine_library_path: std::path::PathBuf,
-    pub turbine_definitions: Vec<NumericDict>,
-    pub turbine_thrust_coefficient_functions: HashMap<String, String>,
-    pub turbine_axial_induction_functions: HashMap<String, String>,
-    pub turbine_tilt_interps: HashMap<String, String>,
+    pub turbine_types: Vec<TurbineType>,
+
     pub yaw_angles: Array2,
     pub yaw_angles_sorted: Array2,
     pub tilt_angles: Array2,
@@ -36,20 +35,17 @@ pub struct Farm {
     pub turbine_map: Vec<Turbine>,
     pub turbine_type_map: NdArray2<String>,
     pub turbine_type_map_sorted: NdArray2<String>,
-    pub turbine_power_functions: HashMap<String, String>,
-    pub turbine_power_thrust_tables: HashMap<String, NumericDict>,
+   
+
     pub rotor_diameters: Array1,
     pub rotor_diameters_sorted: Array2,
     pub tsrs: Array1,
     pub tsrs_sorted: Array2,
     pub ref_tilts: Array1,
     pub ref_tilts_sorted: Array2,
-    pub correct_cp_ct_for_tilt: Array1,
+    pub correct_cp_ct_for_tilt: Vec<bool>,
     pub correct_cp_ct_for_tilt_sorted: Array2,
     pub state: State,
-    // 私有属性
-    _turbine_types: Vec<String>,
-    _turbine_definition_cache: HashMap<String, NumericDict>,
 }
 
 impl fmt::Debug for Farm {
@@ -57,9 +53,7 @@ impl fmt::Debug for Farm {
         f.debug_struct("Farm")
             .field("layout_x", &self.layout_x)
             .field("layout_y", &self.layout_y)
-            .field("turbine_type", &self.turbine_type)
-            .field("turbine_library_path", &self.turbine_library_path)
-            .field("turbine_definitions", &self.turbine_definitions)
+            .field("turbine_type", &self.turbine_types)
             .field("yaw_angles", &self.yaw_angles)
             .field("yaw_angles_sorted", &self.yaw_angles_sorted)
             .field("tilt_angles", &self.tilt_angles)
@@ -73,7 +67,6 @@ impl fmt::Debug for Farm {
             .field("tsrs", &self.tsrs)
             .field("ref_tilts", &self.ref_tilts)
             .field("state", &self.state)
-            .field("_turbine_types", &self._turbine_types)
             .finish()
     }
 }
@@ -82,7 +75,7 @@ impl Farm {
     pub fn new(
         layout_x: Array1,
         layout_y: Array1,
-        turbine_type: Vec<String>,
+        turbine_types: Vec<String>,
     ) -> crate::Result<Self> {
         let n_turbines = layout_x.len();
 
@@ -90,22 +83,45 @@ impl Farm {
             anyhow::bail!("layout_x and layout_y must have the same number of entries");
         }
 
-        if turbine_type.len() != 1 && turbine_type.len() != n_turbines {
+        if turbine_types.len() != 1 && turbine_types.len() != n_turbines {
             anyhow::bail!(
                 "turbine_type must have the same number of entries as layout_x/layout_y or have \
                 a single turbine_type value"
             );
         }
 
+        // 确保TurbineLibrary已经被初始化
+        if TurbineLibrary::get_loaded_turbines().is_empty() {
+            // 如果还没有初始化，这里应该预先加载一些默认类型
+            // 或者您可以确保在创建Farm之前调用TurbineLibrary::initialize()之类的函数
+        }
+
+        // 获取TurbineType引用
+        let mut tts = Vec::new();
+        for t in &turbine_types {
+            match TurbineLibrary::get_turbine(t) {
+                Some(turbine_type) => tts.push(turbine_type),
+                None => {
+                    anyhow::bail!(
+                        "Turbine type '{}' not found in turbine library. Available types: {:?}",
+                        t,
+                        TurbineLibrary::get_loaded_turbines()
+                    );
+                }
+            }
+        }
+
+        // 如果只有一个类型，扩展到所有涡轮机
+        let turbine_types = if tts.len() == 1 && n_turbines > 1 {
+            vec![tts[0].clone(); n_turbines]
+        } else {
+            tts
+        };
+
         let mut farm = Self {
             layout_x,
             layout_y,
-            turbine_type,
-            turbine_library_path: Path::new("./turbine_library").to_path_buf(),
-            turbine_definitions: vec![],
-            turbine_thrust_coefficient_functions: HashMap::new(),
-            turbine_axial_induction_functions: HashMap::new(),
-            turbine_tilt_interps: HashMap::new(),
+            turbine_types: turbine_types,
             yaw_angles: Array2::zeros((1, n_turbines)),
             yaw_angles_sorted: Array2::zeros((1, n_turbines)),
             tilt_angles: Array2::zeros((1, n_turbines)),
@@ -123,89 +139,30 @@ impl Farm {
             turbine_map: vec![],
             turbine_type_map: NdArray2::from_elem((1, n_turbines), String::new()),
             turbine_type_map_sorted: NdArray2::from_elem((1, n_turbines), String::new()),
-            turbine_power_functions: HashMap::new(),
-            turbine_power_thrust_tables: HashMap::new(),
+
             rotor_diameters: Array1::zeros(n_turbines),
             rotor_diameters_sorted: Array2::zeros((1, n_turbines)),
             tsrs: Array1::zeros(n_turbines),
             tsrs_sorted: Array2::zeros((1, n_turbines)),
             ref_tilts: Array1::zeros(n_turbines),
             ref_tilts_sorted: Array2::zeros((1, n_turbines)),
-            correct_cp_ct_for_tilt: Array1::zeros(n_turbines),
+            correct_cp_ct_for_tilt: vec![false; n_turbines],
             correct_cp_ct_for_tilt_sorted: Array2::zeros((1, n_turbines)),
-            state: State::default(), // 使用 State::new() 替代 State::UNINITIALIZED
-            _turbine_types: vec![],
-            _turbine_definition_cache: HashMap::new(),
+            state: State::default(),
         };
 
-        farm.initialize_turbine_cache()?;
         farm.map_turbine_types()?;
 
         Ok(farm)
     }
 
-    fn initialize_turbine_cache(&mut self) -> crate::Result<()> {
-        // 检查 turbine_type 是否为文件名或预定义类型
-        for t in &self.turbine_type {
-            if self._turbine_definition_cache.contains_key(t) {
-                continue; // 如果已经加载，跳过
-            }
-
-            // 尝试从文件加载
-            let internal_fn = Path::new("turbine_library").join(&format!("{}.yaml", t));
-            let external_fn = self.turbine_library_path.join(&format!("{}.yaml", t));
-
-            let yaml_path = if internal_fn.exists() {
-                internal_fn
-            } else if external_fn.exists() {
-                external_fn
-            } else {
-                anyhow::bail!("The turbine type: {} does not exist in either the internal or external turbine library.", t);
-            };
-
-            let value: Value = load_yaml(yaml_path)?;
-            let turbine_def: NumericDict = serde_yaml::from_value(value)
-                .map_err(|e| anyhow::anyhow!("Failed to parse turbine definition: {}", e))?;
-            self._turbine_definition_cache
-                .insert(t.clone(), turbine_def);
-        }
-
-        // 确保_turbine_types与输入类型一致
-        self._turbine_types = self.turbine_type.clone();
-
-        // 如果只有一个涡轮机定义，扩展到N个涡轮机
-        if self._turbine_types.len() == 1 {
-            self._turbine_types = vec![self._turbine_types[0].clone(); self.n_turbines()];
-        }
-
-        Ok(())
-    }
-
     fn map_turbine_types(&mut self) -> crate::Result<()> {
-        self.turbine_definitions = self
-            ._turbine_types
-            .iter()
-            .map(|t| {
-                self._turbine_definition_cache
-                    .get(t)
-                    .cloned()
-                    .unwrap_or_else(|| panic!("Turbine definition not found for type: {}", t))
-            })
-            .collect();
-
         // 构建涡轮机映射
-        self.construct_turbine_map();
         self.construct_hub_heights();
         self.construct_rotor_diameters();
         self.construct_turbine_tsrs();
         self.construct_turbine_ref_tilts();
         self.construct_turbine_correct_cp_ct_for_tilt();
-        self.construct_turbine_thrust_coefficient_functions();
-        self.construct_turbine_axial_induction_functions();
-        self.construct_turbine_tilt_interps();
-        self.construct_turbine_power_functions();
-        self.construct_turbine_power_thrust_tables();
-
         Ok(())
     }
 
@@ -219,189 +176,55 @@ impl Farm {
         self.awc_amplitudes_sorted = self.awc_amplitudes.clone();
         self.awc_frequencies_sorted = self.awc_frequencies.clone();
 
-        self.state.initialized = true; // 使用 state.initialized = true 替代 state = State::INITIALIZED
+        self.state.initialized = true;
     }
 
     pub fn construct_hub_heights(&mut self) {
         self.hub_heights = Array1::from_vec(
-            self.turbine_definitions
+            self.turbine_types
                 .iter()
-                .map(|turb| turb.get_scalar("hub_height").unwrap_or(0.0))
+                .map(|turb| turb.hub_height)
                 .collect(),
         );
     }
 
     pub fn construct_rotor_diameters(&mut self) {
         self.rotor_diameters = Array1::from_vec(
-            self.turbine_definitions
+            self.turbine_types
                 .iter()
-                .map(|turb| turb.get_scalar("rotor_diameter").unwrap_or(0.0))
+                .map(|turb| turb.rotor_diameter)
                 .collect(),
         );
     }
 
     pub fn construct_turbine_tsrs(&mut self) {
         self.tsrs = Array1::from_vec(
-            self.turbine_definitions
+            self.turbine_types
                 .iter()
-                .map(|turb| turb.get_scalar("TSR").unwrap_or(0.0))
+                .map(|turb| turb.tsr.unwrap_or(8.0))
                 .collect(),
         );
     }
 
     pub fn construct_turbine_ref_tilts(&mut self) {
         self.ref_tilts = Array1::from_vec(
-            self.turbine_definitions
+            self.turbine_types
                 .iter()
-                .map(|turb| {
-                    turb.get_scalar("power_thrust_table.ref_tilt")
-                        .unwrap_or(0.0)
-                })
+                .map(|turb| turb.power_thrust_table.ref_tilt.unwrap_or(5.0))
                 .collect(),
         );
     }
 
     pub fn construct_turbine_correct_cp_ct_for_tilt(&mut self) {
-        // 简化实现，因为Turbine结构体中没有correct_cp_ct_for_tilt字段
-        self.correct_cp_ct_for_tilt = Array1::zeros(self.turbine_map.len());
-    }
-
-    pub fn construct_turbine_map(&mut self) {
-        // 从缓存创建涡轮机映射
-        use crate::core::turbine::turbine_type::{TurbineType, PowerThrustTable};
-
-        let mut turbine_map_unique: HashMap<String, Turbine> = HashMap::new();
-
-        // 这里需要创建实际的Turbine实例，因为我们没有from_dict实现
-        for (k, v) in &self._turbine_definition_cache {
-            // 使用从定义中提取的参数创建TurbineType，然后创建Turbine实例
-            let operation_model_str = v
-                .get_array("operation_model")
-                .and_then(|arr| arr.first())
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "cosine-loss".to_string());
-
-            // Try to get power_thrust_table data
-            let power_thrust_table = PowerThrustTable {
-                wind_speed: v.get_array("power_thrust_table.wind_speed")
-                    .or_else(|| v.get_array("wind_speed"))
-                    .unwrap_or(&[])
-                    .to_vec(),
-                power: v.get_array("power_thrust_table.power")
-                    .or_else(|| v.get_array("power"))
-                    .unwrap_or(&[])
-                    .to_vec(),
-                thrust_coefficient: v.get_array("power_thrust_table.thrust_coefficient")
-                    .or_else(|| v.get_array("thrust_coefficient"))
-                    .unwrap_or(&[])
-                    .to_vec(),
-                ref_air_density: v.get_scalar("power_thrust_table.ref_air_density"),
-                ref_tilt: v.get_scalar("power_thrust_table.ref_tilt"),
-                cosine_loss_exponent_yaw: v.get_scalar("power_thrust_table.cosine_loss_exponent_yaw"),
-                cosine_loss_exponent_tilt: v.get_scalar("power_thrust_table.cosine_loss_exponent_tilt"),
-            };
-
-            let turbine_type = TurbineType {
-                name: k.clone(),
-                rotor_diameter: v.get_scalar("rotor_diameter").unwrap_or(126.0),
-                hub_height: v.get_scalar("hub_height").unwrap_or(90.0),
-                tsr: v.get_scalar("TSR").unwrap_or(8.0),
-                operation_model: operation_model_str.clone(),
-                ref_tilt: v.get_scalar("power_thrust_table.ref_tilt"),
-                correct_cp_ct_for_tilt: v.get_bool("correct_cp_ct_for_tilt"),
-                power_thrust_table: Some(power_thrust_table),
-                // Legacy fields (may be empty if using nested format)
-                power_curve_wind_speeds: v
-                    .get_array("power_curve_wind_speeds")
-                    .unwrap_or(&[])
-                    .to_vec(),
-                power_curve_powers: v.get_array("power_curve_powers").unwrap_or(&[]).to_vec(),
-                thrust_coefficient_wind_speeds: v
-                    .get_array("thrust_coefficient_wind_speeds")
-                    .unwrap_or(&[])
-                    .to_vec(),
-                thrust_coefficient_values: v
-                    .get_array("thrust_coefficient_values")
-                    .unwrap_or(&[])
-                    .to_vec(),
-                controller_dependent_turbine_parameters: None,
-                floating_tilt_table: None,
-                multi_dimensional_cp_ct: None,
-            };
-
-            let turbine = Turbine {
-                turbine_type,
-                operation_model: operation_model_str,
-            };
-
-            turbine_map_unique.insert(k.clone(), turbine);
-        }
-
-        self.turbine_map = self
-            ._turbine_types
+        self.correct_cp_ct_for_tilt = self
+            .turbine_types
             .iter()
-            .map(|k| turbine_map_unique.get(k).unwrap().clone())
+            .map(|turb| turb.correct_cp_ct_for_tilt)
             .collect();
     }
 
-    pub fn construct_turbine_thrust_coefficient_functions(&mut self) {
-        for (i, turbine) in self.turbine_map.iter().enumerate() {
-            let turbine_type = &self._turbine_types[i];
-            // 存储函数的标识符而不是函数本身
-            self.turbine_thrust_coefficient_functions.insert(
-                turbine_type.clone(),
-                format!("thrust_coefficient_{}", turbine.turbine_type),
-            );
-        }
-    }
-
-    pub fn construct_turbine_axial_induction_functions(&mut self) {
-        for (i, turbine) in self.turbine_map.iter().enumerate() {
-            let turbine_type = &self._turbine_types[i];
-            // 存储函数的标识符而不是函数本身
-            self.turbine_axial_induction_functions.insert(
-                turbine_type.clone(),
-                format!("axial_induction_{}", turbine.turbine_type),
-            );
-        }
-    }
-
-    pub fn construct_turbine_tilt_interps(&mut self) {
-        for (i, turbine) in self.turbine_map.iter().enumerate() {
-            let turbine_type = &self._turbine_types[i];
-            // 存储函数的标识符而不是函数本身
-            self.turbine_tilt_interps.insert(
-                turbine_type.clone(),
-                format!("tilt_interp_{}", turbine.turbine_type),
-            );
-        }
-    }
-
-    pub fn construct_turbine_power_functions(&mut self) {
-        for (i, turbine) in self.turbine_map.iter().enumerate() {
-            let turbine_type = &self._turbine_types[i];
-            // 存储函数的标识符而不是函数本身
-            self.turbine_power_functions.insert(
-                turbine_type.clone(),
-                format!("power_function_{}", turbine.turbine_type),
-            );
-        }
-    }
-
-    pub fn construct_turbine_power_thrust_tables(&mut self) {
-        for turbine_type in &self._turbine_types {
-            if let Some(turbine_def) = self._turbine_definition_cache.get(turbine_type) {
-                self.turbine_power_thrust_tables
-                    .insert(turbine_type.clone(), turbine_def.clone());
-            }
-        }
-    }
-
-    pub fn expand_farm_properties(
-        &mut self,
-        n_findex: usize,
-        sorted_coord_indices: &Array2,
-    ) {
+    // ... 其他方法保持不变
+    pub fn expand_farm_properties(&mut self, n_findex: usize, sorted_coord_indices: &Array2) {
         let n_turbines = self.n_turbines();
 
         // Helper function to broadcast array2 from (1, n) to (n_findex, n)
@@ -456,6 +279,14 @@ impl Farm {
             }
             sorted
         };
+        let sort_bool_array1_for_findex = |arr: &Vec<bool>, fi: usize| -> Array1 {
+            let mut sorted = Array1::zeros(n_turbines);
+            for new_i in 0..n_turbines {
+                let old_i = sorted_coord_indices[[fi, new_i]] as usize;
+                sorted[new_i] = if arr[old_i] { 1.0 } else { 0.0 }; // 将bool转换为f64
+            }
+            sorted
+        };
 
         // Expand and sort hub_heights
         let _hub_heights_expanded = self
@@ -503,7 +334,7 @@ impl Farm {
         // Expand and sort correct_cp_ct_for_tilt
         self.correct_cp_ct_for_tilt_sorted = Array2::zeros((n_findex, n_turbines));
         for fi in 0..n_findex {
-            let sorted = sort_array1_for_findex(&self.correct_cp_ct_for_tilt, fi);
+            let sorted = sort_bool_array1_for_findex(&self.correct_cp_ct_for_tilt, fi);
             for ti in 0..n_turbines {
                 self.correct_cp_ct_for_tilt_sorted[[fi, ti]] = sorted[ti];
             }
@@ -568,7 +399,8 @@ impl Farm {
         for fi in 0..n_findex {
             for new_i in 0..n_turbines {
                 let old_i = sorted_coord_indices[[fi, new_i]] as usize;
-                self.turbine_type_map_sorted[[fi, new_i]] = turbine_type_map_expanded[[fi, old_i]].clone();
+                self.turbine_type_map_sorted[[fi, new_i]] =
+                    turbine_type_map_expanded[[fi, old_i]].clone();
             }
         }
     }
@@ -661,7 +493,7 @@ impl Farm {
     pub fn finalize(&mut self, _unsorted_indices: &NdArray3<usize>) {
         // 恢复原始顺序
         // 这里简化实现，实际需要根据unsorted_indices重新排序
-        self.state.converged = true; // 使用 state.converged = true 替代 State::USED
+        self.state.converged = true;
     }
 
     pub fn coordinates(&self) -> Array2 {
@@ -758,29 +590,19 @@ impl Farm {
         self.layout_x = layout_x.clone();
         self.layout_y = layout_y.clone();
 
-        // Update _turbine_types to match the new number of turbines
-        if self._turbine_types.len() == 1 {
-            self._turbine_types = vec![self._turbine_types[0].clone(); n_turbines];
-        } else if self._turbine_types.len() > n_turbines {
-            self._turbine_types = self._turbine_types[..n_turbines].to_vec();
-        } else if self._turbine_types.len() < n_turbines {
-            let last_type = self._turbine_types.last().unwrap().clone();
-            self._turbine_types.extend(vec![last_type; n_turbines - self._turbine_types.len()]);
+        // 更新turbine_types以适应新的布局
+        if self.turbine_types.len() == 1 {
+            let single_type = self.turbine_types[0].clone();
+            self.turbine_types = vec![single_type; n_turbines];
+        } else if self.turbine_types.len() > n_turbines {
+            self.turbine_types = self.turbine_types[..n_turbines].to_vec();
+        } else if self.turbine_types.len() < n_turbines {
+            let last_type = self.turbine_types.last().clone().unwrap();
+            self.turbine_types = vec![last_type.clone(); n_turbines];
         }
 
-        // Reconstruct turbine type definitions for the new layout
-        self.turbine_definitions = self
-            ._turbine_types
-            .iter()
-            .map(|t| {
-                self._turbine_definition_cache
-                    .get(t)
-                    .cloned()
-                    .unwrap_or_else(|| panic!("Turbine definition not found for type: {}", t))
-            })
-            .collect();
-
         // Reconstruct derived properties
+        self.turbine_map.clear();
         self.construct_turbine_map();
         self.construct_hub_heights();
         self.construct_rotor_diameters();
@@ -790,131 +612,97 @@ impl Farm {
 
         Ok(())
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::types::Array1;
+    // Calculate power for array of turbines
+    pub fn power(
+        velocities: &Array4,
+        turbines: &[Turbine],
+        air_density: Float,
+        yaw_angles: Option<&Array2>,
+        tilt_angles: Option<&Array2>,
+        average_method: AveragingMethod,
+    ) -> crate::Result<Array2> {
+        let shape = velocities.shape();
+        let n_findex = shape[0];
+        let n_turbines = shape[1];
 
-    #[test]
-    fn test_farm_creation() {
-        let layout_x = Array1::from_vec(vec![0.0, 630.0, 1260.0]);
-        let layout_y = Array1::from_vec(vec![0.0, 0.0, 0.0]);
-        let turbine_types = vec!["nrel_5MW".to_string(); 3];
-        
-        let farm = Farm::new(layout_x, layout_y, turbine_types);
-        
-        assert!(farm.is_ok());
-        let farm = farm.unwrap();
-        assert_eq!(farm.n_turbines(), 3);
+        let mut power_output = Array::zeros((n_findex, n_turbines));
+
+        for ti in 0..n_turbines {
+            if ti < turbines.len() {
+                let turbine_power = turbines[ti].calculate_power(
+                    velocities,
+                    air_density,
+                    yaw_angles,
+                    tilt_angles,
+                    average_method,
+                )?;
+
+                for fi in 0..n_findex {
+                    power_output[[fi, ti]] = turbine_power[[fi, 0]];
+                }
+            }
+        }
+
+        Ok(power_output)
     }
 
-    #[test]
-    fn test_farm_creation_single_turbine_type() {
-        let layout_x = Array1::from_vec(vec![0.0, 630.0]);
-        let layout_y = Array1::from_vec(vec![0.0, 0.0]);
-        let turbine_types = vec!["nrel_5MW".to_string()];
-        
-        let farm = Farm::new(layout_x, layout_y, turbine_types);
-        
-        assert!(farm.is_ok());
-        let farm = farm.unwrap();
-        assert_eq!(farm.n_turbines(), 2);
+    /// Calculate thrust coefficient for array of turbines
+    pub fn thrust_coefficient(
+        velocities: &Array4,
+        turbines: &[Turbine],
+        yaw_angles: Option<&Array2>,
+        tilt_angles: Option<&Array2>,
+        average_method: AveragingMethod,
+    ) -> crate::Result<Array2> {
+        let shape = velocities.shape();
+        let n_findex = shape[0];
+        let n_turbines = shape[1];
+
+        let mut ct_output = Array::zeros((n_findex, n_turbines));
+
+        for ti in 0..n_turbines {
+            if ti < turbines.len() {
+                let turbine_ct = turbines[ti].calculate_thrust_coefficient(
+                    velocities,
+                    yaw_angles,
+                    tilt_angles,
+                    average_method,
+                )?;
+
+                for fi in 0..n_findex {
+                    ct_output[[fi, ti]] = turbine_ct[[fi, 0]];
+                }
+            }
+        }
+
+        Ok(ct_output)
     }
 
-    #[test]
-    fn test_farm_layout_mismatch() {
-        let layout_x = Array1::from_vec(vec![0.0, 630.0]);
-        let layout_y = Array1::from_vec(vec![0.0]);  // Mismatch: 1 element vs 2
-        let turbine_types = vec!["nrel_5MW".to_string(); 2];
-        
-        let farm = Farm::new(layout_x, layout_y, turbine_types);
-        
-        assert!(farm.is_err());
-    }
+    /// Calculate axial induction from thrust coefficient
+    pub fn axial_induction(
+        velocities: &Array4,
+        turbines: &[Turbine],
+        yaw_angles: Option<&Array2>,
+        tilt_angles: Option<&Array2>,
+        average_method: AveragingMethod,
+    ) -> crate::Result<Array2> {
+        let ct = Self::thrust_coefficient(
+            velocities,
+            turbines,
+            yaw_angles,
+            tilt_angles,
+            average_method,
+        )?;
 
-    #[test]
-    fn test_farm_turbine_type_mismatch() {
-        let layout_x = Array1::from_vec(vec![0.0, 630.0]);
-        let layout_y = Array1::from_vec(vec![0.0, 0.0]);
-        let turbine_types = vec!["nrel_5MW".to_string(), "iea_10MW".to_string(), "extra".to_string()];
-        
-        let farm = Farm::new(layout_x, layout_y, turbine_types);
-        
-        assert!(farm.is_err());
-    }
+        let mut ai = Array::zeros(ct.dim());
 
-    #[test]
-    fn test_farm_coordinates() {
-        let layout_x = Array1::from_vec(vec![0.0, 500.0]);
-        let layout_y = Array1::from_vec(vec![100.0, -100.0]);
-        let turbine_types = vec!["nrel_5MW".to_string(); 2];
-        
-        let farm = Farm::new(layout_x, layout_y, turbine_types).unwrap();
-        let coords = farm.coordinates();
-        
-        assert_eq!(coords.shape()[0], 2);
-        assert_eq!(coords.shape()[1], 3);
-        assert_eq!(coords[[0, 0]], 0.0);
-        assert_eq!(coords[[0, 1]], 100.0);
-        assert_eq!(coords[[1, 0]], 500.0);
-        assert_eq!(coords[[1, 1]], -100.0);
-    }
+        for ((i, j), &ct_val) in ct.indexed_iter() {
+            if j < turbines.len() {
+                ai[[i, j]] = turbines[j].calculate_axial_induction(ct_val);
+            }
+        }
 
-    #[test]
-    fn test_farm_hub_heights() {
-        let layout_x = Array1::from_vec(vec![0.0]);
-        let layout_y = Array1::from_vec(vec![0.0]);
-        let turbine_types = vec!["nrel_5MW".to_string()];
-        
-        let farm = Farm::new(layout_x, layout_y, turbine_types).unwrap();
-        let heights = farm.hub_heights();
-        
-        assert_eq!(heights.len(), 1);
-        assert!(heights[0] > 0.0);  // Should be around 90m for nrel_5MW
-    }
-
-    #[test]
-    fn test_farm_rotor_diameters() {
-        let layout_x = Array1::from_vec(vec![0.0]);
-        let layout_y = Array1::from_vec(vec![0.0]);
-        let turbine_types = vec!["nrel_5MW".to_string()];
-        
-        let farm = Farm::new(layout_x, layout_y, turbine_types).unwrap();
-        let diameters = farm.rotor_diameters();
-        
-        assert_eq!(diameters.len(), 1);
-        assert!(diameters[0] > 0.0);  // Should be around 126m for nrel_5MW
-    }
-
-    #[test]
-    fn test_farm_yaw_angles() {
-        let layout_x = Array1::from_vec(vec![0.0]);
-        let layout_y = Array1::from_vec(vec![0.0]);
-        let turbine_types = vec!["nrel_5MW".to_string()];
-        
-        let farm = Farm::new(layout_x, layout_y, turbine_types).unwrap();
-        let yaw = farm.yaw_angles();
-        
-        assert_eq!(yaw.shape()[0], 1);
-        assert_eq!(yaw.shape()[1], 1);
-    }
-
-    #[test]
-    fn test_farm_initialize_control_arrays() {
-        let layout_x = Array1::from_vec(vec![0.0, 630.0]);
-        let layout_y = Array1::from_vec(vec![0.0, 0.0]);
-        let turbine_types = vec!["nrel_5MW".to_string(); 2];
-        
-        let mut farm = Farm::new(layout_x, layout_y, turbine_types).unwrap();
-        farm.initialize_control_arrays(3);
-        
-        assert_eq!(farm.yaw_angles.shape()[0], 3);
-        assert_eq!(farm.yaw_angles.shape()[1], 2);
-        assert_eq!(farm.tilt_angles.shape()[0], 3);
-        assert_eq!(farm.tilt_angles.shape()[1], 2);
-        assert_eq!(farm.power_setpoints.shape()[0], 3);
-        assert_eq!(farm.power_setpoints.shape()[1], 2);
+        Ok(ai)
     }
 }

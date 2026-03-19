@@ -8,9 +8,9 @@
 //! - Helix power/thrust coefficient tables
 //! - Implementation of helix wake mixing model
 
-use crate::types::Array2;
-use crate::core::turbine::operation_models::base::*;
 use super::CosineLossTurbine;
+use crate::core::turbines::operation_models::base::*;
+use crate::types::Array2;
 
 #[derive(Debug, Clone, Default)]
 pub struct AWCTurbine;
@@ -27,12 +27,20 @@ impl OperationModel for AWCTurbine {
         cosine.power(params, ctx)
     }
 
-    fn thrust_coefficient(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
+    fn thrust_coefficient(
+        &self,
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<Array2> {
         let cosine = CosineLossTurbine;
         cosine.thrust_coefficient(params, ctx)
     }
 
-    fn axial_induction(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
+    fn axial_induction(
+        &self,
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<Array2> {
         let cosine = CosineLossTurbine;
         cosine.axial_induction(params, ctx)
     }

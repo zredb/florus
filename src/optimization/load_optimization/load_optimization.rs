@@ -1,5 +1,5 @@
-use crate::types::{Array1, Array2, Float};
 use crate::floris_model::FlorisModel;
+use crate::types::{Array1, Array2, Float};
 use ndarray::{Array, Axis};
 use std::f64::consts::PI;
 
@@ -39,7 +39,9 @@ pub fn compute_lti(
         anyhow::bail!("FlorisModel must be run before computing load turbulence intensity");
     }
 
-    let grid = fmodel.grid.as_ref()
+    let grid = fmodel
+        .grid
+        .as_ref()
         .ok_or_else(|| anyhow::anyhow!("Grid not initialized"))?;
 
     let n_findex = fmodel.flow_field.n_findex;
@@ -129,7 +131,9 @@ pub fn compute_lti(
                 }
 
                 let ws_std_wake_add = ambient_ws / (1.5 + 0.8 * (distance / d) / ct_t.sqrt());
-                let lti_update = ((ws_std_wake_add.powi(2) + (ambient_lti[fi] * ambient_ws).powi(2)).sqrt()) / ambient_ws;
+                let lti_update =
+                    ((ws_std_wake_add.powi(2) + (ambient_lti[fi] * ambient_ws).powi(2)).sqrt())
+                        / ambient_ws;
 
                 let sorted_idx = tj;
                 if lti_update > lti[[fi, sorted_idx]] {
@@ -194,7 +198,8 @@ pub fn compute_turbine_voc(
     let mut voc = Array::zeros((n_findex, n_turbines));
     for fi in 0..n_findex {
         for ti in 0..n_turbines {
-            voc[[fi, ti]] = a * ws_std[[fi, ti]].powf(exp_ws_std) * thrust[[fi, ti]].powf(exp_thrust);
+            voc[[fi, ti]] =
+                a * ws_std[[fi, ti]].powf(exp_ws_std) * thrust[[fi, ti]].powf(exp_thrust);
         }
     }
 
@@ -336,7 +341,7 @@ pub fn optimize_power_setpoints(
         );
     }
 
-    if fmodel.farm.turbine_type.len() > 1 {
+    if fmodel.farm.turbine_types.len() > 1 {
         anyhow::bail!("Only one turbine type is currently supported for optimization");
     }
 
@@ -346,14 +351,24 @@ pub fn optimize_power_setpoints(
     let power_setpoint_initial = if let Some(initial) = power_setpoint_initial {
         initial.clone()
     } else {
-        let max_power = fmodel.farm.turbine_map[0].turbine_type.power_curve().values[fmodel.farm.turbine_map[0].turbine_type.power_curve().values.len() - 1] * 1000.0;
+        let max_power = fmodel.farm.turbine_map[0].turbine_type.power_curve().values[fmodel
+            .farm
+            .turbine_map[0]
+            .turbine_type
+            .power_curve()
+            .values
+            .len()
+            - 1]
+            * 1000.0;
         Array::from_elem((n_findex, n_turbines), max_power)
     };
 
     let mut power_setpoint_test = power_setpoint_initial.clone();
     let mut power_setpoint_opt = power_setpoint_initial.clone();
 
-    let grid = fmodel.grid.as_ref()
+    let grid = fmodel
+        .grid
+        .as_ref()
         .ok_or_else(|| anyhow::anyhow!("Grid not initialized"))?;
 
     // Clone sorted_indices before mutable borrow of fmodel
@@ -364,7 +379,9 @@ pub fn optimize_power_setpoints(
     // Drop all references to grid before mutable borrow
     let _ = grid;
 
-    fmodel.farm.set_power_setpoints(power_setpoint_initial.clone());
+    fmodel
+        .farm
+        .set_power_setpoints(power_setpoint_initial.clone());
     fmodel.run()?;
 
     let mut net_revenue_opt = compute_net_revenue(
@@ -404,13 +421,15 @@ pub fn optimize_power_setpoints(
 
                 for f_idx in 0..n_findex {
                     if !update_mask[f_idx] {
-                        power_setpoint_test[[f_idx, sorted_idx]] = power_setpoint_opt[[f_idx, sorted_idx]];
+                        power_setpoint_test[[f_idx, sorted_idx]] =
+                            power_setpoint_opt[[f_idx, sorted_idx]];
                     }
                 }
 
                 for f_idx in 0..n_findex {
                     if update_mask[f_idx] {
-                        power_setpoint_opt[[f_idx, sorted_idx]] = power_setpoint_test[[f_idx, sorted_idx]];
+                        power_setpoint_opt[[f_idx, sorted_idx]] =
+                            power_setpoint_test[[f_idx, sorted_idx]];
                         net_revenue_opt[f_idx] = test_net_revenue[f_idx];
                     }
                 }

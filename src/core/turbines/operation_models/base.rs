@@ -2,10 +2,9 @@
 //!
 //! Common types and traits for turbine operation models
 
+use crate::core::turbines::operation_models::helpers::axial_induction_from_ct;
 use crate::types::Float;
-use crate::core::turbine::turbine_type::LookupTable;
 use crate::types::{Array2, Array4};
-use crate::core::turbine::operation_models::helpers::axial_induction_from_ct;
 
 /// Parameters required for turbine power/thrust calculations
 #[derive(Debug, Clone)]
@@ -57,13 +56,29 @@ pub struct TurbineContext<'a> {
 }
 
 /// Base trait for all turbine operation models
-pub trait OperationModel: Send + Sync {
+pub trait OperationModel: Send + Sync + std::fmt::Debug {
     fn model_name(&self) -> &'static str;
     fn power(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2>;
-    fn thrust_coefficient(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2>;
-    fn axial_induction(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
+    fn thrust_coefficient(
+        &self,
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<Array2>;
+    fn axial_induction(
+        &self,
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<Array2> {
         let ct = self.thrust_coefficient(params, ctx)?;
         Ok(axial_induction_from_ct(&ct))
+    }
+    fn clone_box(&self) -> Box<dyn OperationModel>;
+}
+
+// 为 trait object 实现 Clone
+impl Clone for Box<dyn OperationModel> {
+    fn clone(&self) -> Self {
+        self.as_ref().clone_box()
     }
 }
 

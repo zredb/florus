@@ -8,8 +8,8 @@ license = "BSD-3-Clause"
 
 [dependencies]
 ndarray = { version = "0.16", features = ["serde"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.9"
+serde = { version = "1.0.228", features = ["serde_derive"] }
+serde_yaml = "0.9.33"
 serde_json = "1.0"
 anyhow = "1.0"
 thiserror = "1.0"
@@ -21,106 +21,11 @@ getrandom = { version = "0.2", features = ["js"] }
 argmin = "0.11"
 argmin-math = { version = "0.5", features = ["nalgebra_latest"] }
 ordered-float = "5.1.0"
+csv = "1.4.0"
+log = "0.4"
+env_logger = "0.11"
+ndarray-npy = "0.10.0"
+derive_builder = "0.20.2"
 
 [dev-dependencies]
 criterion = "0.5"
-
-# Examples - Core (matching Python examples/ directory)
-[[example]]
-name = "001_opening_floris"
-path = "examples/001_opening_floris.rs"
-
-[[example]]
-name = "002_farm_layout"
-path = "examples/002_farm_layout.rs"
-
-[[example]]
-name = "003_set_conditions"
-path = "examples/003_set_conditions.rs"
-
-[[example]]
-name = "005_getting_power"
-path = "examples/005_getting_power.rs"
-
-[[example]]
-name = "006_get_farm_aep"
-path = "examples/006_get_farm_aep.rs"
-
-[[example]]
-name = "007_sweeping_variables"
-path = "examples/007_sweeping_variables.rs"
-
-# Examples - Wind Data (matching Python examples_wind_data/)
-[[example]]
-name = "001_wind_data_timeseries"
-path = "examples/examples_wind_data/001_wind_data_timeseries.rs"
-
-[[example]]
-name = "002_wind_data_windrose"
-path = "examples/examples_wind_data/002_wind_data_windrose.rs"
-
-[[example]]
-name = "003_wind_data_ti_rose"
-path = "examples/examples_wind_data/003_wind_data_ti_rose.rs"
-
-# Examples - Getting Started (matching Python examples_getting_started/)
-
-
-# Examples - Control Optimization (matching Python examples_control_optimization/)
-[[example]]
-name = "001_yaw_optimization"
-path = "examples/examples_control_optimization/001_yaw_optimization.rs"
-
-# Examples - Control Types (matching Python examples_control_types/)
-[[example]]
-name = "001_derating_control"
-path = "examples/examples_control_types/001_derating_control.rs"
-
-# Examples - Turbine (matching Python examples_turbine/)
-[[example]]
-name = "001_reference_turbines"
-path = "examples/examples_turbine/001_reference_turbines.rs"
-
-# Examples - Layout Optimization (matching Python examples_layout_optimization/)
-[[example]]
-name = "001_optimize_layout"
-path = "examples/examples_layout_optimization/001_optimize_layout.rs"
-
-[[example]]
-name = "002_optimize_layout_complex"
-path = "examples/examples_layout_optimization/002_optimize_layout_complex.rs"
-
-# Examples - Heterogeneous (matching Python examples_heterogeneous/)
-[[example]]
-name = "001_heterogeneous_inflow"
-path = "examples/examples_heterogeneous/001_heterogeneous_inflow.rs"
-
-# Examples - Advanced (matching Python structure)
-[[example]]
-name = "003_aep_workflow"
-path = "examples/examples_advanced/003_aep_workflow.rs"
-
-[[example]]
-name = "004_validation"
-path = "examples/examples_advanced/004_validation.rs"
-
-# Legacy examples (keep for backward compatibility)
-[[example]]
-name = "wake_effects"
-path = "examples/wake_effects.rs"
-
-[[example]]
-name = "multi_turbine"
-path = "examples/multi_turbine.rs"
-
-[[example]]
-name = "optimization_example"
-path = "examples/optimization_example.rs"
-
-[[example]]
-name = "basic_usage"
-path = "examples/basic_usage.rs"
-
-[[bin]]
-name = "florus"
-path = "src/main.rs"

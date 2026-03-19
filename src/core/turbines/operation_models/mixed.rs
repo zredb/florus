@@ -6,9 +6,9 @@
 //! Otherwise use simple control (SimpleTurbine)
 
 use crate::types::Array2;
-use crate::core::turbine::operation_models::base::*;
-use crate::core::turbine::operation_models::simple::SimpleTurbine;
-use crate::core::turbine::operation_models::simple_derating::SimpleDeratingTurbine;
+use crate::core::turbines::operation_models::base::*;
+use crate::core::turbines::operation_models::simple::SimpleTurbine;
+use crate::core::turbines::operation_models::simple_derating::SimpleDeratingTurbine;
 
 #[derive(Debug, Clone, Default)]
 pub struct MixedOperationTurbine;
@@ -60,7 +60,7 @@ impl OperationModel for MixedOperationTurbine {
             let mut yaw_ctx = ctx.clone();
             yaw_ctx.yaw_angles = Some(yaw_angles);
             yaw_ctx.power_setpoints = None;
-            let cosine = crate::core::turbine::operation_models::cosine_loss::CosineLossTurbine;
+            let cosine = crate::core::turbines::operation_models::cosine_loss::CosineLossTurbine;
             let yaw_power = cosine.power(&params, &yaw_ctx)?;
 
             for i in 0..n_findex {
@@ -78,7 +78,7 @@ impl OperationModel for MixedOperationTurbine {
             derating_ctx.power_setpoints = Some(power_setpoints);
             let zero_yaw = ndarray::Array::zeros((n_findex, n_turbines));
             derating_ctx.yaw_angles = Some(&zero_yaw);
-            let simple_derating = crate::core::turbine::operation_models::simple_derating::SimpleDeratingTurbine;
+            let simple_derating = crate::core::turbines::operation_models::simple_derating::SimpleDeratingTurbine;
             let derating_power = simple_derating.power(&params, &derating_ctx)?;
 
             for i in 0..n_findex {
@@ -92,7 +92,7 @@ impl OperationModel for MixedOperationTurbine {
 
         // Get simple power (no yaw, no derating)
         if simple_mask.iter().any(|x| *x) {
-            let simple = crate::core::turbine::operation_models::simple::SimpleTurbine;
+            let simple = crate::core::turbines::operation_models::simple::SimpleTurbine;
             let simple_power = simple.power(&params, ctx)?;
 
             for i in 0..n_findex {
@@ -136,7 +136,7 @@ impl OperationModel for MixedOperationTurbine {
         }
 
         // Get base thrust coefficient from SimpleTurbine
-        let simple = crate::core::turbine::operation_models::simple::SimpleTurbine;
+        let simple = crate::core::turbines::operation_models::simple::SimpleTurbine;
         let base_ct = simple.thrust_coefficient(params, ctx)?;
 
         // Apply derating effect if needed
@@ -160,6 +160,6 @@ impl OperationModel for MixedOperationTurbine {
 
     fn axial_induction(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
         let ct = self.thrust_coefficient(params, ctx)?;
-        Ok(crate::core::turbine::operation_models::helpers::axial_induction_from_ct(&ct))
+        Ok(crate::core::turbines::operation_models::helpers::axial_induction_from_ct(&ct))
     }
 }

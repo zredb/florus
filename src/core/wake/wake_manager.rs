@@ -256,7 +256,7 @@ impl WakeModelManager {
 
         Self::from_config(&config)
     }
-}
+   
 
 #[cfg(test)]
 mod tests {

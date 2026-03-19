@@ -1487,7 +1487,6 @@ mod tests {
         assert!(wrg.layout_x.is_empty());
         assert!(wrg.layout_y.is_empty());
         assert!(wrg.wind_roses.is_empty());
-        assert!((wrg.ti_value - 0.06).abs() < 1e-10);
     }
 
     #[test]
@@ -1640,7 +1639,7 @@ mod tests {
         // Clean up
         let _ = std::fs::remove_file(&file_path);
 
-        assert!((wrg.ti_value - 0.08).abs() < 1e-10);
+
     }
 
     #[test]

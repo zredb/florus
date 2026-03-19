@@ -4,7 +4,7 @@
 //! Power loss to yawing is defined by cos(yaw)^p where p is cosine_loss_exponent_yaw
 
 use crate::types::Array2;
-use crate::core::turbine::operation_models::base::*;
+use crate::core::turbines::operation_models::base::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct CosineLossTurbine;
@@ -127,7 +127,7 @@ impl OperationModel for CosineLossTurbine {
         }
 
         // Compute axial induction from base Ct using classical momentum theory
-        Ok(crate::core::turbine::operation_models::helpers::axial_induction_from_ct(&base_ct))
+        Ok(crate::core::turbines::operation_models::helpers::axial_induction_from_ct(&base_ct))
 }
 
 

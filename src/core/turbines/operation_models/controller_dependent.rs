@@ -19,7 +19,7 @@
 //! - Integration with external controller systems (ROSCO, ROSCO)
 
 use crate::types::Array2;
-use crate::core::turbine::operation_models::base::*;
+use crate::core::turbines::operation_models::base::*;
 use super::CosineLossTurbine;
 #[derive(Debug, Clone, Default)]
 pub struct ControllerDependentTurbine;

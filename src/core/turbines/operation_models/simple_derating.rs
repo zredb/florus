@@ -4,7 +4,7 @@
 //! When derated, thrust coefficient scales with power^(2/3)
 
 use crate::types::Array2;
-use crate::core::turbine::operation_models::base::*;
+use crate::core::turbines::operation_models::base::*;
 use super::SimpleTurbine;
 
 /// Simple derating: limit power to specified setpoint
@@ -63,6 +63,6 @@ impl OperationModel for SimpleDeratingTurbine {
 
     fn axial_induction(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
         let ct = self.thrust_coefficient(params, ctx)?;
-        Ok(crate::core::turbine::operation_models::helpers::axial_induction_from_ct(&ct))
+        Ok(crate::core::turbines::operation_models::helpers::axial_induction_from_ct(&ct))
     }
 }

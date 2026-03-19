@@ -33,6 +33,7 @@ pub struct TurbineGrid {
     pub turbine_diameters: Array1,   // (n_turbines,)
     pub wind_directions: Array1,     // (n_findex,)
     pub grid_resolution: usize,
+
     pub n_turbines: usize,
     pub n_findex: usize,
     pub x_sorted: Array4, // (n_findex, n_turbines, grid_res, grid_res)
@@ -41,11 +42,13 @@ pub struct TurbineGrid {
     pub x_sorted_inertial_frame: Array4,
     pub y_sorted_inertial_frame: Array4,
     pub z_sorted_inertial_frame: Array4,
+
     pub sorted_indices: Array2,
     pub sorted_coord_indices: Array2,
     pub unsorted_indices: Array2,
     pub x_center_of_rotation: Array2,
     pub y_center_of_rotation: Array2,
+    pub average_method: AveragingMethod,
 }
 
 impl TurbineGrid {
@@ -159,6 +162,7 @@ impl TurbineGrid {
             unsorted_indices,
             x_center_of_rotation,
             y_center_of_rotation,
+            average_method: AveragingMethod::CubicMean,
         })
     }
 }
@@ -200,6 +204,7 @@ impl GridBase for TurbineGrid {
     fn resolution(&self) -> usize {
         self.grid_resolution
     }
+
 }
 
 /// Turbine grid with cubature integration points
@@ -242,27 +247,62 @@ impl TurbineCubatureGrid {
         let n_turbines = turbine_coordinates.shape()[0];
         let n_findex = wind_directions.len();
 
-        // Get cubature coefficients
-        let _coeffs = Self::get_cubature_coefficients(grid_resolution)?;
+        // Get cubature coefficients based on resolution
+        // Using Gauss-Legendre based cubature for circular disk integration
+        let coeffs = Self::compute_cubature_points(grid_resolution)?;
+        let n_points = coeffs.len();
 
         // Rotate coordinates
-        let (_x, _y, _z, x_center_of_rotation, y_center_of_rotation) =
+        let (rotated_coords_x, rotated_coords_y, rotated_coords_z, x_center_of_rotation, y_center_of_rotation) =
             rotate_coordinates_rel_west(&wind_directions, &turbine_coordinates)?;
 
-        // Generate grid points - simplified implementation
-        let n_points = grid_resolution * grid_resolution;
-        let x_sorted = Array::ones((n_findex, n_turbines, n_points, 1));
-        let y_sorted = Array::ones((n_findex, n_turbines, n_points, 1));
-        let z_sorted = Array::ones((n_findex, n_turbines, n_points, 1));
+        // Get hub heights from turbine coordinates (z-coordinate)
+        let hub_heights = turbine_coordinates.column(2).to_owned();
 
-        let cubature_weights =
-            Array::from_elem((grid_resolution, grid_resolution), 1.0 / n_points as Float);
+        // Generate cubature grid points at rotor positions
+        // Shape: (n_findex, n_turbines, n_points, 1)
+        let mut x_sorted = Array::zeros((n_findex, n_turbines, n_points, 1));
+        let mut y_sorted = Array::zeros((n_findex, n_turbines, n_points, 1));
+        let mut z_sorted = Array::zeros((n_findex, n_turbines, n_points, 1));
+        let mut cubature_weights = Array::zeros((n_turbines, n_points));
 
-        // Placeholder for sorted indices
-        let sorted_indices = Array::zeros((n_findex, n_turbines));
-        let sorted_coord_indices = Array::zeros((n_findex, n_turbines));
-        let unsorted_indices = Array::zeros((n_findex, n_turbines));
+        for fi in 0..n_findex {
+            for ti in 0..n_turbines {
+                let rotor_radius = turbine_diameters[ti] / 2.0;
 
+                for (pi, coeff) in coeffs.iter().enumerate() {
+                    // Apply cubature point position scaled by rotor radius
+                    x_sorted[[fi, ti, pi, 0]] = rotated_coords_x[[fi, ti]];
+                    y_sorted[[fi, ti, pi, 0]] = rotated_coords_y[[fi, ti]] + coeff.y * rotor_radius;
+                    z_sorted[[fi, ti, pi, 0]] = hub_heights[ti] + coeff.z * rotor_radius;
+                }
+
+                // Store normalized weights for this turbine
+                let total_weight: Float = coeffs.iter().map(|c| c.w).sum();
+                for (pi, coeff) in coeffs.iter().enumerate() {
+                    cubature_weights[[ti, pi]] = coeff.w / total_weight;
+                }
+            }
+        }
+
+        // Sort turbines by x coordinate (upstream to downstream)
+        let mut sorted_indices = Array::zeros((n_findex, n_turbines));
+        let mut sorted_coord_indices = Array::zeros((n_findex, n_turbines));
+        let mut unsorted_indices = Array::zeros((n_findex, n_turbines));
+
+        for fi in 0..n_findex {
+            let mut indices: Vec<(usize, Float)> =
+                (0..n_turbines).map(|i| (i, rotated_coords_x[[fi, i]])).collect();
+            indices.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+            for (new_i, (old_i, _)) in indices.iter().enumerate() {
+                sorted_indices[[fi, new_i]] = *old_i as Float;
+                sorted_coord_indices[[fi, new_i]] = *old_i as Float;
+                unsorted_indices[[fi, *old_i]] = new_i as Float;
+            }
+        }
+
+        // Reverse rotate to get inertial frame coordinates
         let (x_sorted_inertial_frame, y_sorted_inertial_frame, z_sorted_inertial_frame) =
             reverse_rotate_coordinates_rel_west(
                 &wind_directions,
@@ -295,28 +335,134 @@ impl TurbineCubatureGrid {
         })
     }
 
-    pub fn get_cubature_coefficients(n: usize) -> crate::Result<CubatureCoefficients> {
+    /// Compute cubature points and weights for circular disk integration
+    ///
+    /// This implements Gauss-Legendre based cubature for integrating over a circular disk.
+    /// The points are placed optimally for numerical integration.
+    fn compute_cubature_points(n: usize) -> crate::Result<Vec<CubaturePoint>> {
         match n {
-            1 => Ok(CubatureCoefficients {
-                r: vec![0.0],
-                t: vec![0.0],
-                q: vec![1.0],
-                a: vec![1.0],
-                b: PI,
-            }),
-            2 => Ok(CubatureCoefficients {
-                r: vec![-0.7071067811865475, 0.7071067811865475],
-                t: vec![-0.7071067811865475, 0.7071067811865475],
-                q: vec![0.7071067811865475, 0.7071067811865475],
-                a: vec![0.5, 0.5],
-                b: PI / 2.0,
-            }),
-            _ => Err(anyhow::anyhow!(
-                "Cubature coefficients not implemented for N={}",
-                n
-            )),
+            1 => Ok(vec![CubaturePoint { y: 0.0, z: 0.0, w: 1.0 }]),
+            2 => {
+                // Two-point approximation
+                let r = 1.0 / std::f64::consts::SQRT_2;
+                Ok(vec![
+                    CubaturePoint { y: r, z: 0.0, w: 0.5 },
+                    CubaturePoint { y: -r, z: 0.0, w: 0.5 },
+                ])
+            }
+            3 => {
+                // Three-point approximation (vertices of equilateral triangle)
+                let r = 2.0 / 3.0;
+                Ok(vec![
+                    CubaturePoint { y: 0.0, z: r, w: 1.0 / 3.0 },
+                    CubaturePoint { y: r * std::f64::consts::SQRT_3 / 2.0, z: -r / 2.0, w: 1.0 / 3.0 },
+                    CubaturePoint { y: -r * std::f64::consts::SQRT_3 / 2.0, z: -r / 2.0, w: 1.0 / 3.0 },
+                ])
+            }
+            4 => {
+                // Four-point approximation (square vertices)
+                let r = std::f64::consts::SQRT_2 / 2.0;
+                Ok(vec![
+                    CubaturePoint { y: r, z: r, w: 0.25 },
+                    CubaturePoint { y: -r, z: r, w: 0.25 },
+                    CubaturePoint { y: r, z: -r, w: 0.25 },
+                    CubaturePoint { y: -r, z: -r, w: 0.25 },
+                ])
+            }
+            5 => {
+                // Five-point approximation (center + square)
+                let r = 2.0 / 3.0;
+                Ok(vec![
+                    CubaturePoint { y: 0.0, z: 0.0, w: 0.4 },
+                    CubaturePoint { y: r, z: r, w: 0.15 },
+                    CubaturePoint { y: -r, z: r, w: 0.15 },
+                    CubaturePoint { y: r, z: -r, w: 0.15 },
+                    CubaturePoint { y: -r, z: -r, w: 0.15 },
+                ])
+            }
+            6 => {
+                // Six-point approximation (vertices of regular hexagon)
+                let points: Vec<CubaturePoint> = (0..6)
+                    .map(|i| {
+                        let angle = (i as Float) * PI / 3.0;
+                        let r = 1.0 / std::f64::consts::SQRT_3;
+                        CubaturePoint {
+                            y: r * angle.cos(),
+                            z: r * angle.sin(),
+                            w: 1.0 / 6.0,
+                        }
+                    })
+                    .collect();
+                Ok(points)
+            }
+            8 => {
+                // Eight-point approximation (square vertices + midpoints)
+                let r = std::f64::consts::SQRT_2 / 2.0;
+                let w_corner = 1.0 / 6.0;
+                let w_edge = 1.0 / 3.0;
+                Ok(vec![
+                    CubaturePoint { y: r, z: r, w: w_corner },
+                    CubaturePoint { y: -r, z: r, w: w_corner },
+                    CubaturePoint { y: r, z: -r, w: w_corner },
+                    CubaturePoint { y: -r, z: -r, w: w_corner },
+                    CubaturePoint { y: 1.0, z: 0.0, w: w_edge },
+                    CubaturePoint { y: -1.0, z: 0.0, w: w_edge },
+                    CubaturePoint { y: 0.0, z: 1.0, w: w_edge },
+                    CubaturePoint { y: 0.0, z: -1.0, w: w_edge },
+                ])
+            }
+            _ => {
+                // For larger n, use tensor product of Gauss-Legendre points
+                let m = (n + 1) / 2;
+                let points = Self::gauss_legendre_2d(m);
+                Ok(points)
+            }
         }
     }
+
+    /// Generate Gauss-Legendre points for 2D disk integration
+    fn gauss_legendre_2d(n: usize) -> Vec<CubaturePoint> {
+        // Use n-point Gauss-Legendre quadrature
+        let mut points = Vec::new();
+        let w = 1.0 / (n * n) as Float;
+
+        for i in 0..n {
+            let y = Self::gauss_legendre_point(i, n);
+            for j in 0..n {
+                let z = Self::gauss_legendre_point(j, n);
+                // Scale to unit disk and check if inside
+                let r = (y * y + z * z).sqrt();
+                if r <= 1.0 {
+                    points.push(CubaturePoint { y, z, w });
+                }
+            }
+        }
+
+        // Normalize weights
+        if !points.is_empty() {
+            let total: Float = points.iter().map(|p| p.w).sum();
+            for p in &mut points {
+                p.w /= total;
+            }
+        }
+
+        points
+    }
+
+    /// Get Gauss-Legendre point for n-point quadrature
+    fn gauss_legendre_point(i: usize, n: usize) -> Float {
+        // Approximate Gauss-Legendre points
+        let x = (2 * i + 1) as Float / (2 * n + 1) as Float * PI;
+        x.cos() * (4.0 / (2.0 * n + 1.0) as Float).sqrt()
+    }
+}
+
+/// Cubature point for disk integration
+#[derive(Debug, Clone)]
+struct CubaturePoint {
+    y: Float,
+    z: Float,
+    w: Float,
 }
 
 impl GridBase for TurbineCubatureGrid {
@@ -369,6 +515,42 @@ pub struct CubatureCoefficients {
     pub q: Vec<Float>,
     pub a: Vec<Float>,
     pub b: Float,
+}
+
+/// Cubature point for disk integration
+#[derive(Debug, Clone)]
+struct CubaturePoint {
+    y: Float,
+    z: Float,
+    w: Float,
+}
+
+impl Default for TurbineCubatureGrid {
+    fn default() -> Self {
+        let empty_1d = Array::zeros((0,));
+        let empty_2d = Array::zeros((0, 0));
+        let empty_4d = Array::zeros((0, 0, 0, 0));
+        Self {
+            turbine_coordinates: empty_2d.clone(),
+            turbine_diameters: empty_1d.clone(),
+            wind_directions: empty_1d.clone(),
+            grid_resolution: 0,
+            n_turbines: 0,
+            n_findex: 0,
+            x_sorted: empty_4d.clone(),
+            y_sorted: empty_4d.clone(),
+            z_sorted: empty_4d.clone(),
+            x_sorted_inertial_frame: empty_4d.clone(),
+            y_sorted_inertial_frame: empty_4d.clone(),
+            z_sorted_inertial_frame: empty_4d.clone(),
+            cubature_weights: empty_2d.clone(),
+            sorted_indices: empty_2d.clone(),
+            sorted_coord_indices: empty_2d.clone(),
+            unsorted_indices: empty_2d.clone(),
+            x_center_of_rotation: empty_2d.clone(),
+            y_center_of_rotation: empty_2d.clone(),
+        }
+    }
 }
 
 /// Points grid for arbitrary point calculations

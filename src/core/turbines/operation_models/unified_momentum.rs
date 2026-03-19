@@ -25,7 +25,7 @@
 
 use crate::types::Float;
 use crate::types::{Array2, Array3, Array4};
-use crate::core::turbine::operation_models::base::*;
+use crate::core::turbines::operation_models::base::*;
 use ndarray::s;
 
 /// Unified Momentum turbine model

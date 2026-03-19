@@ -8,7 +8,7 @@ pub mod grid;
 pub mod rotor_velocity;
 pub mod solver;
 pub mod state;
-pub mod turbine;
+pub mod turbines;
 pub mod wake;
 
 pub use base::*;
@@ -18,8 +18,9 @@ pub use grid::{GridBase, TurbineGrid};
 pub use rotor_velocity::*;
 pub use solver::*;
 pub use state::State;
-pub use turbine::{
-    AWCTurbine, ControllerDependentTurbine, CosineLossTurbine, MixedOperationTurbine, OperationModel, PeakShavingTurbine,
-    SimpleDeratingTurbine, SimpleTurbine, Turbine, TurbineContext, TurbineParameters, TurbineType, UnifiedMomentumTurbine,
+pub use turbines::{
+    AWCTurbine, ControllerDependentTurbine, CosineLossTurbine, MixedOperationTurbine,
+     PeakShavingTurbine, SimpleDeratingTurbine, SimpleTurbine, Turbine,
+    TurbineContext, TurbineParameters,  UnifiedMomentumTurbine,
 };
 pub use wake::*;

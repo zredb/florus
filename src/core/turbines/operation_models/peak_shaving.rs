@@ -4,8 +4,8 @@
 //! Based on turbulence intensity and peak_shaving_fraction parameters
 
 use crate::types::{Array2, Float};
-use crate::core::turbine::operation_models::base::*;
-use crate::core::turbine::operation_models::simple::SimpleTurbine;
+use crate::core::turbines::operation_models::base::*;
+use crate::core::turbines::operation_models::simple::SimpleTurbine;
 use ndarray::s;
 
 #[derive(Debug, Clone, Default)]
@@ -26,7 +26,7 @@ impl OperationModel for PeakShavingTurbine {
         let simple = SimpleTurbine;
         let base_powers = simple.power(params, ctx)?;
         let base_thrust_coefficients = simple.thrust_coefficient(params, ctx)?;
-        let base_ais = crate::core::turbine::operation_models::helpers::axial_induction_from_ct(&base_thrust_coefficients);
+        let base_ais = crate::core::turbines::operation_models::helpers::axial_induction_from_ct(&base_thrust_coefficients);
 
         // Calculate peak shaving thrust limit
         let mut max_allowable_thrust = ndarray::Array::zeros((n_findex, n_turbines));
@@ -158,6 +158,6 @@ impl OperationModel for PeakShavingTurbine {
 
     fn axial_induction(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
         let ct = self.thrust_coefficient(params, ctx)?;
-        Ok(crate::core::turbine::operation_models::helpers::axial_induction_from_ct(&ct))
+        Ok(crate::core::turbines::operation_models::helpers::axial_induction_from_ct(&ct))
     }
 }
