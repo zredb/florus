@@ -1,0 +1,3 @@
+{"created_at_ms":1776325128633,"model":"openai/deepseek-chat","session_id":"session-1776325128634-0","type":"session_meta","updated_at_ms":1776325128633,"version":1,"workspace_root":"c:\\code\\florus"}
+{"text":"prompt  called `Result::unwrap()` on an `Err` value: UninitializedField(\"turbulence_intensity\")","timestamp_ms":1776325194488,"type":"prompt_history"}
+{"message":{"blocks":[{"text":"prompt  called `Result::unwrap()` on an `Err` value: UninitializedField(\"turbulence_intensity\")","type":"text"}],"role":"user"},"type":"message"}

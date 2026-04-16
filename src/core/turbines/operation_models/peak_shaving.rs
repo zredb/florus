@@ -3,9 +3,10 @@
 //! Reduces thrust and power at or near rated wind speeds
 //! Based on turbulence intensity and peak_shaving_fraction parameters
 
-use crate::types::{Array2, Float};
-use crate::core::turbines::operation_models::base::*;
 use crate::core::turbines::operation_models::simple::SimpleTurbine;
+use crate::core::turbines::operation_models::OperationModel;
+use crate::core::{TurbineContext, TurbineParameters};
+use crate::types::{Array2, Float};
 use ndarray::s;
 
 #[derive(Debug, Clone, Default)]
@@ -17,7 +18,9 @@ impl OperationModel for PeakShavingTurbine {
     }
 
     fn power(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
-        let turbulence_intensities = ctx.turbulence_intensities.ok_or_else(|| anyhow::anyhow!("Turbulence intensities required for PeakShavingTurbine"))?;
+        let turbulence_intensities = ctx.turbulence_intensities.ok_or_else(|| {
+            anyhow::anyhow!("Turbulence intensities required for PeakShavingTurbine")
+        })?;
 
         let n_findex = ctx.air_density.len();
         let n_turbines = ctx.velocities.shape()[1];
@@ -26,7 +29,9 @@ impl OperationModel for PeakShavingTurbine {
         let simple = SimpleTurbine;
         let base_powers = simple.power(params, ctx)?;
         let base_thrust_coefficients = simple.thrust_coefficient(params, ctx)?;
-        let base_ais = crate::core::turbines::operation_models::helpers::axial_induction_from_ct(&base_thrust_coefficients);
+        let base_ais = crate::core::turbines::operation_models::helpers::axial_induction_from_ct(
+            &base_thrust_coefficients,
+        );
 
         // Calculate peak shaving thrust limit
         let mut max_allowable_thrust = ndarray::Array::zeros((n_findex, n_turbines));
@@ -57,7 +62,9 @@ impl OperationModel for PeakShavingTurbine {
                     / safe_vel.powf(2.0);
 
                 // Check if turbulence threshold is met
-                let ti = if turbulence_intensities.shape()[0] > i && turbulence_intensities.shape()[1] > j {
+                let ti = if turbulence_intensities.shape()[0] > i
+                    && turbulence_intensities.shape()[1] > j
+                {
                     let ti_slice = turbulence_intensities.slice(s![i, j, .., ..]);
                     if ti_slice.len() > 0 {
                         ti_slice.iter().sum::<f64>() / ti_slice.len() as f64
@@ -93,8 +100,14 @@ impl OperationModel for PeakShavingTurbine {
         Ok(result)
     }
 
-    fn thrust_coefficient(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
-        let turbulence_intensities = ctx.turbulence_intensities.ok_or_else(|| anyhow::anyhow!("Turbulence intensities required for PeakShavingTurbine"))?;
+    fn thrust_coefficient(
+        &self,
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<Array2> {
+        let turbulence_intensities = ctx.turbulence_intensities.ok_or_else(|| {
+            anyhow::anyhow!("Turbulence intensities required for PeakShavingTurbine")
+        })?;
 
         let n_findex = ctx.air_density.len();
         let n_turbines = ctx.velocities.shape()[1];
@@ -116,24 +129,26 @@ impl OperationModel for PeakShavingTurbine {
         for i in 0..n_findex {
             for j in 0..n_turbines {
                 let vel = rotor_avg_velocities[[i, j, 0]];
-                
+
                 // Apply air density correction for thrust (uses 1/2 power because thrust ~ v²)
-                let air_density_correction = (ctx.air_density[i] / params.ref_air_density).powf(1.0 / 2.0);
+                let air_density_correction =
+                    (ctx.air_density[i] / params.ref_air_density).powf(1.0 / 2.0);
                 let effective_vel = vel * air_density_correction;
-                
+
                 // Replace zeros with small value to avoid division
                 let safe_vel = effective_vel.max(0.01);
 
                 // Calculate max allowable thrust
-                let max_allowable = (1.0 - params.peak_shaving_fraction)
-                    * peak_normal_thrust_prime
+                let max_allowable = (1.0 - params.peak_shaving_fraction) * peak_normal_thrust_prime
                     / safe_vel.powf(2.0);
 
                 // Get base thrust coefficient
                 let base_ct = params.thrust_table.interpolate(effective_vel);
 
                 // Check if turbulence threshold is met
-                let ti = if turbulence_intensities.shape()[0] > i && turbulence_intensities.shape()[1] > j {
+                let ti = if turbulence_intensities.shape()[0] > i
+                    && turbulence_intensities.shape()[1] > j
+                {
                     let ti_slice = turbulence_intensities.slice(s![i, j, .., ..]);
                     if ti_slice.len() > 0 {
                         ti_slice.iter().sum::<f64>() / ti_slice.len() as f64
@@ -156,8 +171,16 @@ impl OperationModel for PeakShavingTurbine {
         Ok(thrust_coeff)
     }
 
-    fn axial_induction(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
+    fn axial_induction(
+        &self,
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<Array2> {
         let ct = self.thrust_coefficient(params, ctx)?;
         Ok(crate::core::turbines::operation_models::helpers::axial_induction_from_ct(&ct))
+    }
+
+    fn clone_box(&self) -> Box<dyn OperationModel> {
+        Box::new(self.clone())
     }
 }

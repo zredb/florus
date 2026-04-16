@@ -1,5 +1,5 @@
 use super::cp_ct_table::{CpCtTable, CsvDataLoader, InterpolationMethod, OneDimTable};
-use crate::core::turbines::operation_models::OperationModel;
+use crate::core::turbines::operation_models::{self, OperationModel};
 use crate::core::turbines::TurbineTypeError;
 use crate::types::{Array1, Float};
 use log::warn;
@@ -153,8 +153,47 @@ impl<'de> Deserialize<'de> for TurbineType {
             #[serde(rename = "power_thrust_data_file")]
             power_thrust_data_file: Option<String>,
         }
-
         let helper = Helper::deserialize(deserializer)?;
+        let operation_model = helper
+            .operation_model
+            .unwrap_or_else(|| "cosine-loss".to_string());
+        let om = match operation_model.as_str() {
+            "simple" => {
+                let simple_turbine: Box<dyn OperationModel + 'static> =
+                    Box::new(operation_models::simple::SimpleTurbine);
+                simple_turbine
+            }
+            "cosine-loss" | _ => Box::new(operation_models::cosine_loss::CosineLossTurbine)
+                as Box<dyn OperationModel>,
+            "simple-derating" => Box::new(operation_models::simple_derating::SimpleDeratingTurbine)
+                as Box<dyn OperationModel>,
+            "peak-shaving" => Box::new(operation_models::peak_shaving::PeakShavingTurbine)
+                as Box<dyn OperationModel>,
+
+            "mixed" => {
+                Box::new(operation_models::mixed::MixedOperationTurbine) as Box<dyn OperationModel>
+            }
+            "awc" => Box::new(operation_models::awc::AWCTurbine) as Box<dyn OperationModel>,
+
+            "unified-momentum" => {
+                Box::new(operation_models::unified_momentum::UnifiedMomentumTurbine)
+                    as Box<dyn OperationModel>
+            }
+            "controller-dependent" => {
+                Box::new(operation_models::controller_dependent::ControllerDependentTurbine)
+                    as Box<dyn OperationModel>
+            }
+
+            _ => {
+                warn!(
+                    "Unknown operation model specified: {}. Defaulting to CosineLossTurbine.",
+                    operation_model
+                );
+                Box::new(operation_models::cosine_loss::CosineLossTurbine)
+                    as Box<dyn OperationModel>
+            }
+        };
+
         Ok(TurbineType {
             name: helper.turbine_type,
             rotor_diameter: helper.rotor_diameter,
@@ -173,9 +212,7 @@ impl<'de> Deserialize<'de> for TurbineType {
             power_thrust_table: helper.power_thrust_table,
             floating_tilt_table: helper.floating_tilt_table,
             correct_cp_ct_for_tilt: helper.correct_cp_ct_for_tilt.unwrap_or(false),
-            operation_model: helper
-                .operation_model
-                .unwrap_or_else(|| "cosine-loss".to_string()),
+            operation_model: om,
         })
     }
 }

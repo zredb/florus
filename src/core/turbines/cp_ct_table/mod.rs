@@ -640,6 +640,12 @@ pub struct TableConditions {
     pub custom_dimensions: HashMap<String, f64>,
 }
 
+impl TableConditions {
+    pub fn builder() -> TableConditionsBuilder {
+        TableConditionsBuilder::default()
+    }
+}
+
 impl Default for TableConditions {
     fn default() -> Self {
         Self {

@@ -11,10 +11,11 @@
 //! - Downstream turbines experience lower velocities
 //! - Wake superposition follows expected patterns
 
-use crate::core::{Farm, FlowField, TurbineGrid};
+use crate::core::TurbineGrid;
 use crate::core::wake::{WakeModelManager, WakeModelStrings};
+use crate::floris_config::{FarmConfig, FlorisConfig, FlowFieldConfig, SolverConfig, WakeConfig};
+use crate::floris_model::FlorisModel;
 use crate::types::{Array1, Array2};
-use crate::FlorisModel;
 use ndarray::Array;
 
 /// Helper to create a basic FlorisModel for testing
@@ -27,30 +28,39 @@ fn create_test_model(
 ) -> FlorisModel {
     let turbine_types = vec!["nrel_5MW".to_string(); layout_x.len()];
 
-    let farm = Farm::new(
-        Array1::from_vec(layout_x),
-        Array1::from_vec(layout_y),
-        turbine_types,
-    ).expect("Failed to create farm");
+    let farm_config = FarmConfig {
+        layout_x,
+        layout_y,
+        turbine_type: turbine_types,
+    };
 
-    let flow_field = FlowField::new(
-        Array1::from_vec(vec![wind_speed]),
-        Array1::from_vec(vec![wind_direction]),
-        0.0,    // wind_veer
-        0.12,   // wind_shear
-        1.225,  // air_density
-        Array1::from_vec(vec![turbulence_intensity]),
-        90.0,   // reference_wind_height
-    ).expect("Failed to create flow field");
+    let flow_field_config = FlowFieldConfig {
+        wind_speeds: vec![wind_speed],
+        wind_directions: vec![wind_direction],
+        turbulence_intensities: vec![turbulence_intensity],
+        wind_shear: 0.12,
+        wind_veer: 0.0,
+        air_density: 1.225,
+        reference_wind_height: 90.0,
+        multidim_conditions: None,
+    };
 
-    FlorisModel {
-        farm,
-        flow_field,
-        state: crate::core::State::new(),
-        grid: None,
-        solver: SolverConfig::default(),
-        model_manager: None,
-    }
+    let solver_config = SolverConfig::default();
+    let wake_config = WakeConfig::default();
+
+    let config = FlorisConfig {
+        name: "test".to_string(),
+        description: Some("test".to_string()),
+        floris_version: "v4".to_string(),
+        logging: Default::default(),
+        solver: solver_config,
+        farm: farm_config,
+        flow_field: flow_field_config,
+        wake: wake_config,
+        turbine_library: "turbine_library".to_string(),
+    };
+
+    FlorisModel::from_config(config).expect("Failed to create FlorisModel")
 }
 
 /// Helper to create a model manager with specific wake models

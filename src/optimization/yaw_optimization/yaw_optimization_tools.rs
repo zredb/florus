@@ -76,23 +76,25 @@ pub fn derive_downstream_turbines(
     wake_slope: Float,
     _sort_turbines: bool,
 ) -> anyhow::Result<Vec<usize>> {
-    if !fmodel.state.initialized {
+    if !fmodel.state().initialized {
         anyhow::bail!("FlorisModel must be run before deriving downstream turbines");
     }
 
-    let grid = fmodel.grid.as_ref()
+    let grid_option = fmodel.grid();
+    let grid = grid_option.as_ref()
         .ok_or_else(|| anyhow::anyhow!("Grid not initialized"))?;
 
-    let n_turbines = fmodel.farm.n_turbines();
+    let n_turbines = fmodel.farm().n_turbines();
     let x_sorted = grid.x_sorted();
     let y_sorted = grid.y_sorted();
 
     let mut downstream_indices = Vec::new();
+    let rotor_d = fmodel.farm().rotor_diameters[0];
 
     for ui in 0..n_turbines {
         for ti in 0..n_turbines {
             if ui != ti {
-                if is_turbine_in_wake(ui, ti, x_sorted, y_sorted, fmodel.farm.rotor_diameters[0], wake_slope) {
+                if is_turbine_in_wake(ui, ti, x_sorted, y_sorted, rotor_d, wake_slope) {
                     if !downstream_indices.contains(&ti) {
                         downstream_indices.push(ti);
                     }
@@ -120,7 +122,7 @@ pub fn optimize_yaw_single_findex(
     turbine_weights: &[Float],
     yaw_bounds: (Float, Float),
 ) -> anyhow::Result<()> {
-    let n_turbines = fmodel.farm.n_turbines();
+    let n_turbines = fmodel.farm().n_turbines();
     let (min_yaw, max_yaw) = yaw_bounds;
 
     for ti in 0..n_turbines {

@@ -1,5 +1,5 @@
 use crate::core::wake::CombinationModel;
-use crate::core::{FlowField, GridBase};
+use crate::core::{FlowField, Grid};
 /// MAX model - Maximum wake velocity deficit
 ///
 /// Takes maximum wake velocity deficit to add to base flow field
@@ -12,7 +12,7 @@ pub struct MAX;
 impl CombinationModel for MAX {
     fn prepare_function(
         &self,
-        _grid: &dyn GridBase,
+        _grid: &dyn Grid,
         _flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array4>> {
         Ok(HashMap::new())
@@ -117,7 +117,7 @@ mod tests {
 
     // Fake implementations for testing
     struct FakeGrid;
-    impl crate::core::GridBase for FakeGrid {
+    impl crate::core::Grid for FakeGrid {
         fn n_turbines(&self) -> usize {
             1
         }
@@ -158,6 +158,9 @@ mod tests {
         }
         fn resolution(&self) -> usize {
             1
+        }
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
         }
     }
 }

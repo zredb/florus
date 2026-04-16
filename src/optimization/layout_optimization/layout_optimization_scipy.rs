@@ -34,7 +34,7 @@ impl LayoutOptimizationScipy {
     /// Create new scipy-style layout optimizer
     pub fn new(fmodel: &FlorisModel, boundaries: Boundary) -> Result<Self> {
         let config = LayoutOptimizationConfig::default();
-        let n_turbines = fmodel.farm.n_turbines();
+        let n_turbines = fmodel.farm().n_turbines();
         let (xmin, xmax, ymin, ymax) = boundaries.bounds();
 
         // Use 0.0 as initial value if model hasn't been run yet
@@ -73,7 +73,7 @@ impl LayoutOptimizationScipy {
 
     /// Get farm layout x coordinates
     fn farm_layout_x(&self) -> Array1 {
-        let coords = self.fmodel.farm.coordinates();
+        let coords = self.fmodel.farm().coordinates();
         let n_turbines = coords.nrows();
         let mut x = Array1::zeros(n_turbines);
 
@@ -86,7 +86,7 @@ impl LayoutOptimizationScipy {
 
     /// Get farm layout y coordinates
     fn farm_layout_y(&self) -> Array1 {
-        let coords = self.fmodel.farm.coordinates();
+        let coords = self.fmodel.farm().coordinates();
         let n_turbines = coords.nrows();
         let mut y = Array1::zeros(n_turbines);
 
@@ -254,36 +254,41 @@ mod tests {
 
     #[test]
     fn test_scipy_optimizer_creation() {
-        // Create a simple farm for testing
-        let layout_x = Array1::from_vec(vec![0.0, 500.0]);
-        let layout_y = Array1::from_vec(vec![0.0, 0.0]);
-        let turbine_types = vec!["nrel_5MW".to_string(); 2];
+        use crate::floris_config::{FarmConfig, FlorisConfig, FlowFieldConfig, SolverConfig, WakeConfig};
 
-        let farm = Farm::new(layout_x, layout_y, turbine_types).unwrap();
-
-        let wind_speeds = Array1::from_vec(vec![8.0]);
-        let wind_directions = Array1::from_vec(vec![270.0]);
-        let turbulence_intensities = Array1::from_vec(vec![0.06]);
-
-        let flow_field = FlowField::new(
-            wind_speeds,
-            wind_directions,
-            0.0,
-            0.14,
-            1.225,
-            turbulence_intensities,
-            90.0,
-        )
-        .unwrap();
-
-        let model = FlorisModel {
-            farm,
-            flow_field,
-            state: crate::core::State::new(),
-            grid: None,
-            solver: SolverConfig::default(),
-            model_manager: None,
+        let farm_config = FarmConfig {
+            layout_x: vec![0.0, 500.0],
+            layout_y: vec![0.0, 0.0],
+            turbine_type: vec!["nrel_5MW".to_string(); 2],
         };
+
+        let flow_field_config = FlowFieldConfig {
+            wind_speeds: vec![8.0],
+            wind_directions: vec![270.0],
+            turbulence_intensities: vec![0.06],
+            wind_shear: 0.14,
+            wind_veer: 0.0,
+            air_density: 1.225,
+            reference_wind_height: 90.0,
+            multidim_conditions: None,
+        };
+
+        let solver_config = SolverConfig::default();
+        let wake_config = WakeConfig::default();
+
+        let config = FlorisConfig {
+            name: "test".to_string(),
+            description: Some("test".to_string()),
+            floris_version: "v4".to_string(),
+            logging: Default::default(),
+            solver: solver_config,
+            farm: farm_config,
+            flow_field: flow_field_config,
+            wake: wake_config,
+            turbine_library: "turbine_library".to_string(),
+        };
+
+        let model = FlorisModel::from_config(config).unwrap();
 
         let boundary = Boundary::Rectangle {
             min_x: 0.0,

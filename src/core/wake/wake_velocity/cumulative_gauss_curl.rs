@@ -11,7 +11,7 @@
 //! - Curl terms for yawed turbine wake deformation
 
 use crate::core::wake::{BaseModel, VelocityModel};
-use crate::core::{FlowField, GridBase};
+use crate::core::{FlowField, Grid};
 use crate::types::{Array2, Array4, Float};
 use ndarray::Array;
 use std::collections::HashMap;
@@ -36,8 +36,13 @@ pub struct CumulativeCurlVelocityDeficit {
 impl CumulativeCurlVelocityDeficit {
     pub fn new(
         wec_factor: Float,
-        a_s: Float, b_s: Float, c_s1: Float, c_s2: Float,
-        a_f: Float, b_f: Float, c_f: Float,
+        a_s: Float,
+        b_s: Float,
+        c_s1: Float,
+        c_s2: Float,
+        a_f: Float,
+        b_f: Float,
+        c_f: Float,
     ) -> Self {
         let mut params = HashMap::new();
         params.insert("wec_factor".to_string(), wec_factor);
@@ -52,8 +57,13 @@ impl CumulativeCurlVelocityDeficit {
         Self {
             base: BaseModel::new(params, "cumulative_gauss_curl"),
             wec_factor,
-            a_s, b_s, c_s1, c_s2,
-            a_f, b_f, c_f,
+            a_s,
+            b_s,
+            c_s1,
+            c_s2,
+            a_f,
+            b_f,
+            c_f,
         }
     }
 
@@ -99,40 +109,39 @@ fn calculate_wake_spread(
         // Far-field (continued expansion with WEC)
         let sigma_near = calculate_wake_spread(
             x_transition * rotor_diameter,
-            ti, ct, rotor_diameter, params
+            ti,
+            ct,
+            rotor_diameter,
+            params,
         );
-        
+
         // Wake expansion continuation
         let sigma_far = params.wec_factor * (params.a_f * x_d.powf(params.b_f) + params.c_f);
-        
+
         sigma_near + sigma_far * (x_d - x_transition)
     }
 }
 
 /// Calculate Gaussian wake deficit
-fn gaussian_deficit(
-    r: Float,
-    sigma: Float,
-    ct: Float,
-) -> Float {
+fn gaussian_deficit(r: Float, sigma: Float, ct: Float) -> Float {
     if sigma <= 0.0 {
         return 0.0;
     }
-    
+
     // Gaussian profile
     let exponent = -r.powi(2) / (2.0 * sigma.powi(2));
     let profile = (-exponent).exp();
-    
+
     // Maximum deficit based on actuator disk theory
     let deficit_max = 0.5 * (1.0 - (1.0 - ct).sqrt());
-    
+
     deficit_max * profile
 }
 
 impl VelocityModel for CumulativeCurlVelocityDeficit {
     fn prepare_function(
         &self,
-        _grid: &dyn GridBase,
+        _grid: &dyn Grid,
         _flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array4>> {
         Ok(HashMap::new())
@@ -190,7 +199,8 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
                         let z_point = z[[fi, ti, iy, iz]];
 
                         // Wake center with deflection
-                        let wake_center_y = y_wake_source + deflection_at_source * (x_point - x_wake_source);
+                        let wake_center_y =
+                            y_wake_source + deflection_at_source * (x_point - x_wake_source);
                         let dy = y_point - wake_center_y;
                         let dz = z_point - hub_height;
 
@@ -249,17 +259,17 @@ impl CumulativeCurlVelocityDeficit {
         }
 
         let x_d = x / rotor_diameter;
-        
+
         // Curl effect parameters
         // The curl effect is stronger near the turbine and decreases downstream
         let curl_strength = 0.5 * (1.0 - (-x_d / 5.0).exp());
-        
+
         // Yaw-induced curl
         let yaw_curl = yaw_rad * ct.sqrt() * curl_strength;
-        
+
         // Apply curl correction - increases deficit on one side, decreases on other
         let curl_factor = 1.0 + yaw_curl * (dz / (x + 1.0));
-        
+
         curl_factor.max(0.1)
     }
 }
@@ -271,10 +281,8 @@ mod tests {
 
     #[test]
     fn test_cumulative_curl_creation() {
-        let curl = CumulativeCurlVelocityDeficit::new(
-            1.0, 0.179, 0.012, 0.056, 0.133,
-            3.11, -0.68, 2.41,
-        );
+        let curl =
+            CumulativeCurlVelocityDeficit::new(1.0, 0.179, 0.012, 0.056, 0.133, 3.11, -0.68, 2.41);
         assert_eq!(curl.wec_factor, 1.0);
         assert_eq!(curl.a_s, 0.179);
     }
@@ -309,9 +317,9 @@ mod tests {
         assert!(deficit < 0.5);
     }
 
-    fn fake_grid() -> impl crate::core::GridBase {
+    fn fake_grid() -> impl crate::core::Grid {
         struct FakeGrid;
-        impl crate::core::GridBase for FakeGrid {
+        impl crate::core::Grid for FakeGrid {
             fn n_turbines(&self) -> usize {
                 1
             }
@@ -352,6 +360,9 @@ mod tests {
             }
             fn resolution(&self) -> usize {
                 1
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
             }
         }
         FakeGrid

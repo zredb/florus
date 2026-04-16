@@ -2,8 +2,10 @@
 //!
 //! Basic actuator disk turbine model with no yaw or tilt handling
 
-use crate::core::turbines::operation_models::base::*;
 use crate::core::turbines::operation_models::helpers::*;
+use crate::core::turbines::operation_models::OperationModel;
+use crate::core::TurbineContext;
+use crate::core::TurbineParameters;
 use crate::types::Array2;
 use crate::types::Float;
 
@@ -80,5 +82,9 @@ impl OperationModel for SimpleTurbine {
     ) -> crate::Result<Array2> {
         let ct = self.thrust_coefficient(params, ctx)?;
         Ok(axial_induction_from_ct(&ct))
+    }
+
+    fn clone_box(&self) -> Box<dyn OperationModel> {
+        Box::new(self.clone())
     }
 }

@@ -23,9 +23,10 @@
 //! - Work across yaw misaligned and high thrust states
 //! - Eliminate the need for empirical corrections in classical momentum theory
 
+use crate::core::turbines::operation_models::OperationModel;
+use crate::core::{TurbineContext, TurbineParameters};
 use crate::types::Float;
 use crate::types::{Array2, Array3, Array4};
-use crate::core::turbines::operation_models::base::*;
 use ndarray::s;
 
 /// Unified Momentum turbine model
@@ -38,7 +39,9 @@ impl OperationModel for UnifiedMomentumTurbine {
     }
 
     fn power(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
-        let yaw_angles = ctx.yaw_angles.ok_or_else(|| anyhow::anyhow!("Yaw angles required for UnifiedMomentumTurbine"))?;
+        let yaw_angles = ctx
+            .yaw_angles
+            .ok_or_else(|| anyhow::anyhow!("Yaw angles required for UnifiedMomentumTurbine"))?;
 
         let n_findex = ctx.air_density.len();
         let n_turbines = ctx.velocities.shape()[1];
@@ -104,16 +107,25 @@ impl OperationModel for UnifiedMomentumTurbine {
                 let pw = params.cosine_loss_exponent_yaw / 3.0;
                 effective_vel *= yaw.cos().powf(pw);
 
-                power[[i, j]] = params.power_table.interpolate(effective_vel) * u4_normalized[[i, j]] * 1000.0;
+                power[[i, j]] =
+                    params.power_table.interpolate(effective_vel) * u4_normalized[[i, j]] * 1000.0;
             }
         }
 
         Ok(power)
     }
 
-    fn thrust_coefficient(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
-        let yaw_angles = ctx.yaw_angles.ok_or_else(|| anyhow::anyhow!("Yaw angles required for UnifiedMomentumTurbine"))?;
-        let tilt_angles = ctx.tilt_angles.ok_or_else(|| anyhow::anyhow!("Tilt angles required for UnifiedMomentumTurbine"))?;
+    fn thrust_coefficient(
+        &self,
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<Array2> {
+        let yaw_angles = ctx
+            .yaw_angles
+            .ok_or_else(|| anyhow::anyhow!("Yaw angles required for UnifiedMomentumTurbine"))?;
+        let tilt_angles = ctx
+            .tilt_angles
+            .ok_or_else(|| anyhow::anyhow!("Tilt angles required for UnifiedMomentumTurbine"))?;
 
         let n_findex = ctx.air_density.len();
         let n_turbines = ctx.velocities.shape()[1];
@@ -131,12 +143,16 @@ impl OperationModel for UnifiedMomentumTurbine {
         for i in 0..n_findex {
             for j in 0..n_turbines {
                 let vel = rotor_avg_velocities[[i, j, 0]];
-                
+
                 // Apply air density correction for thrust (uses 1/2 power because thrust ~ v²)
-                let air_density_correction = (ctx.air_density[i] / params.ref_air_density).powf(1.0 / 2.0);
+                let air_density_correction =
+                    (ctx.air_density[i] / params.ref_air_density).powf(1.0 / 2.0);
                 let effective_vel = vel * air_density_correction;
-                
-                ct_base[[i, j]] = params.thrust_table.interpolate(effective_vel).clamp(0.0001, 0.9999);
+
+                ct_base[[i, j]] = params
+                    .thrust_table
+                    .interpolate(effective_vel)
+                    .clamp(0.0001, 0.9999);
             }
         }
 
@@ -163,9 +179,16 @@ impl OperationModel for UnifiedMomentumTurbine {
         Ok(ct_mod)
     }
 
-    fn axial_induction(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
-        let yaw_angles = ctx.yaw_angles.ok_or_else(|| anyhow::anyhow!("Yaw angles required for UnifiedMomentumTurbine"))?;
-        ctx.tilt_angles.ok_or_else(|| anyhow::anyhow!("Tilt angles required for UnifiedMomentumTurbine"))?;
+    fn axial_induction(
+        &self,
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<Array2> {
+        let yaw_angles = ctx
+            .yaw_angles
+            .ok_or_else(|| anyhow::anyhow!("Yaw angles required for UnifiedMomentumTurbine"))?;
+        ctx.tilt_angles
+            .ok_or_else(|| anyhow::anyhow!("Tilt angles required for UnifiedMomentumTurbine"))?;
 
         let n_findex = ctx.air_density.len();
         let n_turbines = ctx.velocities.shape()[1];
@@ -189,5 +212,9 @@ impl OperationModel for UnifiedMomentumTurbine {
         }
 
         Ok(an)
+    }
+
+    fn clone_box(&self) -> Box<dyn OperationModel> {
+        Box::new(self.clone())
     }
 }

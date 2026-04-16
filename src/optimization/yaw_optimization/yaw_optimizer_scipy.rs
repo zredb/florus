@@ -55,12 +55,12 @@ impl YawOptimization for YawOptimizationScipy {
             self.config = cfg;
         }
 
-        if !fmodel.state.initialized {
+        if !fmodel.state().initialized {
             anyhow::bail!("FlorisModel must be run before optimization");
         }
 
-        let n_findex = fmodel.flow_field.n_findex;
-        let n_turbines = fmodel.farm.n_turbines();
+        let n_findex = fmodel.flow_field().n_findex;
+        let n_turbines = fmodel.farm().n_turbines();
 
         let baseline_yaw_angles = self.config.yaw_angles_baseline.clone()
             .unwrap_or_else(|| Array2::zeros((n_findex, n_turbines)));

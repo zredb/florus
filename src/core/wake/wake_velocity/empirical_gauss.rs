@@ -4,7 +4,7 @@
 //! This is a more tunable version of the Gaussian wake model.
 
 use crate::core::wake::{BaseModel, VelocityModel};
-use crate::core::{FlowField, GridBase};
+use crate::core::{FlowField, Grid};
 use crate::types::{Array2, Array4, Float};
 use ndarray::Array;
 use std::collections::HashMap;
@@ -50,7 +50,7 @@ impl Default for EmpiricalGaussVelocityDeficit {
 impl VelocityModel for EmpiricalGaussVelocityDeficit {
     fn prepare_function(
         &self,
-        _grid: &dyn GridBase,
+        _grid: &dyn Grid,
         _flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array4>> {
         Ok(HashMap::new())
@@ -106,21 +106,30 @@ impl VelocityModel for EmpiricalGaussVelocityDeficit {
                         let y_point = y[[fi, ti, iy, iz]];
                         let z_point = z[[fi, ti, iy, iz]];
 
-                        let wake_center_y = y_wake_source + deflection_at_source * (x_point - x_wake_source);
+                        let wake_center_y =
+                            y_wake_source + deflection_at_source * (x_point - x_wake_source);
                         let dy = y_point - wake_center_y;
                         let dz = z_point - hub_height;
 
                         // Empirical sigma calculation
                         let downstream_x = x_point - x_wake_source;
-                        let sigma_y = self.calculate_sigma_y(downstream_x, r0, turbulence_intensity);
-                        let sigma_z = self.calculate_sigma_z(downstream_x, r0, turbulence_intensity);
+                        let sigma_y =
+                            self.calculate_sigma_y(downstream_x, r0, turbulence_intensity);
+                        let sigma_z =
+                            self.calculate_sigma_z(downstream_x, r0, turbulence_intensity);
 
                         // Gaussian profile
-                        let exponent = -0.5 * (dy.powi(2) / sigma_y.powi(2) + dz.powi(2) / sigma_z.powi(2));
+                        let exponent =
+                            -0.5 * (dy.powi(2) / sigma_y.powi(2) + dz.powi(2) / sigma_z.powi(2));
                         let profile = (-exponent).exp();
 
                         // Maximum deficit with empirical corrections
-                        let deficit_0 = self.calculate_deficit(axial_induction, downstream_x, r0, turbulence_intensity);
+                        let deficit_0 = self.calculate_deficit(
+                            axial_induction,
+                            downstream_x,
+                            r0,
+                            turbulence_intensity,
+                        );
 
                         if profile > 1e-10 {
                             velocity_deficit[[fi, ti, iy, iz]] = deficit_0 * profile;
@@ -192,9 +201,9 @@ mod tests {
         assert!(result.unwrap().is_empty());
     }
 
-    fn fake_grid() -> impl crate::core::GridBase {
+    fn fake_grid() -> impl crate::core::Grid {
         struct FakeGrid;
-        impl crate::core::GridBase for FakeGrid {
+        impl crate::core::Grid for FakeGrid {
             fn n_turbines(&self) -> usize {
                 1
             }
@@ -235,6 +244,9 @@ mod tests {
             }
             fn resolution(&self) -> usize {
                 1
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
             }
         }
         FakeGrid

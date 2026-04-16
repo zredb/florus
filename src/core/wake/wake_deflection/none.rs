@@ -3,7 +3,7 @@
 /// No wake deflection - wakes propagate straight downstream
 use crate::types::{Float, Array1, Array2};
 use crate::core::wake::{BaseModel, DeflectionModel};
-use crate::core::{GridBase, FlowField};
+use crate::core::{Grid, FlowField};
 use std::collections::HashMap;
 use ndarray::Array;
 
@@ -30,7 +30,7 @@ impl Default for NoneVelocityDeflection {
 impl DeflectionModel for NoneVelocityDeflection {
     fn prepare_function(
         &self,
-        _grid: &dyn GridBase,
+        _grid: &dyn Grid,
         _flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array1>> {
         Ok(HashMap::new())

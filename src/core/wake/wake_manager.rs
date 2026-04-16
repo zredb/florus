@@ -23,6 +23,7 @@ pub struct WakeModelManager {
     pub enable_transverse_velocities: bool,
     pub enable_wake_mixing: bool,
     pub use_parallel_calc: bool,
+    pub velocity_model_name: String,
 }
 
 impl std::fmt::Debug for WakeModelManager {
@@ -41,6 +42,7 @@ impl std::fmt::Debug for WakeModelManager {
             )
             .field("enable_wake_mixing", &self.enable_wake_mixing)
             .field("use_parallel_calc", &self.use_parallel_calc)
+            .field("velocity_model_name", &self.velocity_model_name)
             .finish()
     }
 }
@@ -66,6 +68,7 @@ impl Clone for WakeModelManager {
             enable_transverse_velocities: self.enable_transverse_velocities,
             enable_wake_mixing: self.enable_wake_mixing,
             use_parallel_calc: self.use_parallel_calc,
+            velocity_model_name: self.velocity_model_name.clone(),
         }
     }
 }
@@ -92,6 +95,7 @@ impl WakeModelManager {
             enable_transverse_velocities: config.enable_transverse_velocities,
             enable_wake_mixing: config.enable_wake_mixing,
             use_parallel_calc: config.use_parallel_calc,
+            velocity_model_name: config.model_strings.velocity_model.model_name(),
         })
     }
 
@@ -256,7 +260,7 @@ impl WakeModelManager {
 
         Self::from_config(&config)
     }
-   
+}
 
 #[cfg(test)]
 mod tests {

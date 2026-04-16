@@ -1,4 +1,4 @@
-use crate::core::base::InterpMethod;
+use crate::core::models::InterpMethod;
 use crate::types::{Array1, Array2, Float};
 use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};

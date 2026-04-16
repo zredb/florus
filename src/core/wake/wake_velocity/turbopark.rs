@@ -4,7 +4,7 @@
 //! Uses pre-computed overlap lookup table
 
 use crate::core::wake::{BaseModel, VelocityModel};
-use crate::core::{FlowField, GridBase};
+use crate::core::{FlowField, Grid};
 use crate::types::{Array2, Array4, Float};
 use ndarray::Array;
 use std::collections::HashMap;
@@ -56,7 +56,11 @@ impl OverlapInterpolator {
     fn new() -> Self {
         // Compute lookup table at runtime
         let (dist, radius_down, overlap_gauss) = create_overlap_lookup_table();
-        Self { dist, radius_down, overlap_gauss }
+        Self {
+            dist,
+            radius_down,
+            overlap_gauss,
+        }
     }
 
     fn interpolate(&self, normalized_r: Float, normalized_radius_down: Float) -> Float {
@@ -68,14 +72,22 @@ impl OverlapInterpolator {
         let j = Self::find_index(&self.radius_down, normalized_radius_down);
 
         let (i0, i1, f_r) = if i + 1 < self.dist.len() {
-            (i, i + 1, (normalized_r - self.dist[i]) / (self.dist[i + 1] - self.dist[i]))
+            (
+                i,
+                i + 1,
+                (normalized_r - self.dist[i]) / (self.dist[i + 1] - self.dist[i]),
+            )
         } else {
             (i.saturating_sub(1), i, 0.0)
         };
 
         let (j0, j1, f_rd) = if j + 1 < self.radius_down.len() {
-            (j, j + 1, (normalized_radius_down - self.radius_down[j])
-                / (self.radius_down[j + 1] - self.radius_down[j]))
+            (
+                j,
+                j + 1,
+                (normalized_radius_down - self.radius_down[j])
+                    / (self.radius_down[j + 1] - self.radius_down[j]),
+            )
         } else {
             (j.saturating_sub(1), j, 0.0)
         };
@@ -149,7 +161,13 @@ fn calculate_overlap_integral(dist: Float, radius_down: Float) -> Float {
         let r = k as Float * dr;
         let decay = (-(r.powi(2) + dist.powi(2) - 2.0 * dist * r).max(0.0) / 2.0).exp();
         let integrand = r * decay;
-        let weight = if k == 0 || k == n_points - 1 { 1.0 } else if k % 2 == 0 { 2.0 } else { 4.0 };
+        let weight = if k == 0 || k == n_points - 1 {
+            1.0
+        } else if k % 2 == 0 {
+            2.0
+        } else {
+            4.0
+        };
         integral += weight * integrand;
     }
 
@@ -180,7 +198,9 @@ fn characteristic_wake_width(x_dist: Float, ti: Float, ct: Float, a: Float) -> F
     let term2 = (1.0 + alpha.powi(2)).sqrt();
 
     let dw = a * ti / beta
-        * (term1 - term2 - ((term1 + 1.0) * alpha / ((term2 + 1.0) * (alpha + beta * x_dist))).ln());
+        * (term1
+            - term2
+            - ((term1 + 1.0) * alpha / ((term2 + 1.0) * (alpha + beta * x_dist))).ln());
 
     dw.max(0.0)
 }
@@ -200,7 +220,7 @@ fn calculate_peak_deficit(ct: Float, sigma_over_d: Float) -> Float {
 impl VelocityModel for TurbOParkVelocityDeficit {
     fn prepare_function(
         &self,
-        _grid: &dyn GridBase,
+        _grid: &dyn Grid,
         _flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array4>> {
         Ok(HashMap::new())
@@ -258,18 +278,27 @@ impl VelocityModel for TurbOParkVelocityDeficit {
                         let y_point = y[[fi, ti, iy, iz]];
                         let z_point = z[[fi, ti, iy, iz]];
 
-                        let wake_center_y = y_wake_source + deflection_at_source * (x_point - x_wake_source);
+                        let wake_center_y =
+                            y_wake_source + deflection_at_source * (x_point - x_wake_source);
                         let dy = y_point - wake_center_y;
                         let dz = z_point - hub_height;
                         let r = (dy.powi(2) + dz.powi(2)).sqrt();
 
                         let x_dist = (x_point - x_wake_source) / rotor_diameter;
-                        let dw = characteristic_wake_width(x_dist, turbulence_intensity, thrust_coefficient, self.a);
-                        let sigma_downstream = (self.a * turbulence_intensity + epsilon + dw).max(epsilon);
+                        let dw = characteristic_wake_width(
+                            x_dist,
+                            turbulence_intensity,
+                            thrust_coefficient,
+                            self.a,
+                        );
+                        let sigma_downstream =
+                            (self.a * turbulence_intensity + epsilon + dw).max(epsilon);
 
                         let normalized_r = r / (sigma_downstream * rotor_diameter);
                         let normalized_radius_down = r0 / (sigma_downstream * rotor_diameter);
-                        let overlap = self.overlap_gauss_interp.interpolate(normalized_r, normalized_radius_down);
+                        let overlap = self
+                            .overlap_gauss_interp
+                            .interpolate(normalized_r, normalized_radius_down);
 
                         velocity_deficit[[fi, ti, iy, iz]] = (c * overlap).max(0.0);
                     }
@@ -347,18 +376,36 @@ mod tests {
         assert!(overlap_large < overlap_zero);
     }
 
-    fn fake_grid() -> impl crate::core::GridBase {
+    fn fake_grid() -> impl crate::core::Grid {
         struct FakeGrid;
-        impl crate::core::GridBase for FakeGrid {
-            fn n_turbines(&self) -> usize { 1 }
-            fn n_findex(&self) -> usize { 1 }
-            fn x_sorted(&self) -> &Array4 { panic!() }
-            fn y_sorted(&self) -> &Array4 { panic!() }
-            fn z_sorted(&self) -> &Array4 { panic!() }
-            fn x_sorted_inertial_frame(&self) -> &Array4 { panic!() }
-            fn y_sorted_inertial_frame(&self) -> &Array4 { panic!() }
-            fn z_sorted_inertial_frame(&self) -> &Array4 { panic!() }
-            fn cubature_weights(&self) -> Option<&Array2> { None }
+        impl crate::core::Grid for FakeGrid {
+            fn n_turbines(&self) -> usize {
+                1
+            }
+            fn n_findex(&self) -> usize {
+                1
+            }
+            fn x_sorted(&self) -> &Array4 {
+                panic!()
+            }
+            fn y_sorted(&self) -> &Array4 {
+                panic!()
+            }
+            fn z_sorted(&self) -> &Array4 {
+                panic!()
+            }
+            fn x_sorted_inertial_frame(&self) -> &Array4 {
+                panic!()
+            }
+            fn y_sorted_inertial_frame(&self) -> &Array4 {
+                panic!()
+            }
+            fn z_sorted_inertial_frame(&self) -> &Array4 {
+                panic!()
+            }
+            fn cubature_weights(&self) -> Option<&Array2> {
+                None
+            }
             fn average_method(&self) -> crate::core::AveragingMethod {
                 crate::core::AveragingMethod::CubicMean
             }
@@ -370,7 +417,12 @@ mod tests {
                 static COORD_INDICES: std::sync::OnceLock<Array2> = std::sync::OnceLock::new();
                 COORD_INDICES.get_or_init(|| Array2::zeros((1, 1)))
             }
-            fn resolution(&self) -> usize { 1 }
+            fn resolution(&self) -> usize {
+                1
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
         }
         FakeGrid
     }

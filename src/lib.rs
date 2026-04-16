@@ -1,4 +1,3 @@
-pub mod aep;
 pub mod core;
 pub mod floris_config;
 pub mod floris_model;

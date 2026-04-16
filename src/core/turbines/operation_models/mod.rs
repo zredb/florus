@@ -1,4 +1,3 @@
-pub mod awc;
 /// Turbine operation models
 ///
 /// Modular turbine operation models organized by functionality:
@@ -12,7 +11,7 @@ pub mod awc;
 /// - mixed.rs: MixedOperationTurbine model
 /// - unified_momentum.rs: UnifiedMomentumTurbine model (full implementation)
 /// - controller_dependent.rs: ControllerDependentTurbine model (framework for custom controls)
-pub mod base;
+pub mod awc;
 pub mod controller_dependent;
 pub mod cosine_loss;
 pub mod helpers;
@@ -21,12 +20,6 @@ pub mod peak_shaving;
 pub mod simple;
 pub mod simple_derating;
 pub mod unified_momentum;
-
-// Re-export main types
-pub use base::{
-    OperationModel, TurbineContext, TurbineParameters, POWER_SETPOINT_DEFAULT,
-    POWER_SETPOINT_DISABLED,
-};
 
 // Re-export operation models
 pub use awc::AWCTurbine;
@@ -37,6 +30,135 @@ pub use peak_shaving::PeakShavingTurbine;
 pub use simple::SimpleTurbine;
 pub use simple_derating::SimpleDeratingTurbine;
 pub use unified_momentum::UnifiedMomentumTurbine;
+
+use crate::core::turbines::operation_models::helpers::axial_induction_from_ct;
+use crate::types::Float;
+use crate::types::{Array2, Array4};
+use crate::Array1;
+
+/// Parameters required for turbine power/thrust calculations
+#[derive(Debug, Clone)]
+pub struct TurbineParameters {
+    pub power_table: LookupTable,
+    pub thrust_table: LookupTable,
+    pub ref_air_density: Float,
+    pub cosine_loss_exponent_yaw: Float,
+    pub cosine_loss_exponent_tilt: Float,
+    pub ref_tilt: Float,
+    pub peak_shaving_fraction: Float,
+    pub peak_shaving_ti_threshold: Float,
+}
+
+/// Input context for turbine power/thrust calculations
+#[derive(Debug, Clone)]
+pub struct TurbineContext<'a> {
+    pub velocities: &'a Array4,
+    pub air_density: &'a crate::Array1,
+    pub yaw_angles: Option<&'a Array2>,
+    pub tilt_angles: Option<&'a Array2>,
+    pub power_setpoints: Option<&'a Array2>,
+    pub turbulence_intensities: Option<&'a Array4>,
+    pub awc_amplitudes: Option<&'a Array2>,
+    pub cubature_weights: Option<&'a Array2>,
+    pub correct_cp_ct_for_tilt: Option<&'a ndarray::Array2<bool>>,
+    pub average_method: crate::core::rotor_velocity::AveragingMethod,
+}
+
+/// Base trait for all turbine operation models
+pub trait OperationModel: Send + Sync + std::fmt::Debug {
+    fn model_name(&self) -> &'static str;
+    fn power(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2>;
+    fn thrust_coefficient(
+        &self,
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<Array2>;
+    fn axial_induction(
+        &self,
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<Array2> {
+        let ct = self.thrust_coefficient(params, ctx)?;
+        Ok(axial_induction_from_ct(&ct))
+    }
+
+    fn power_loss_factor(&self, yaw_rad: Float, exponent: Float) -> Float {
+        crate::utilities::cosd(yaw_rad.to_degrees()).powf(exponent)
+    }
+    fn clone_box(&self) -> Box<dyn OperationModel>;
+}
+
+// 为 trait object 实现 Clone
+impl Clone for Box<dyn OperationModel> {
+    fn clone(&self) -> Self {
+        self.as_ref().clone_box()
+    }
+}
+
+pub const POWER_SETPOINT_DEFAULT: Float = 1e12;
+pub const POWER_SETPOINT_DISABLED: Float = 0.001;
+
+#[derive(Debug, Clone)]
+pub struct LookupTable {
+    pub keys: Array1,
+    pub values: Array1,
+}
+
+pub type PowerTable = LookupTable;
+pub type ThrustTable = LookupTable;
+
+impl LookupTable {
+    pub fn interpolate(&self, wind_speed: f64) -> f64 {
+        let ws = &self.keys;
+        let n = ws.len();
+
+        if n == 0 {
+            return 0.0;
+        }
+
+        if wind_speed <= ws[0] {
+            return self.values[0];
+        }
+
+        if wind_speed >= ws[n - 1] {
+            return self.values[n - 1];
+        }
+
+        let mut lo = 0;
+        let mut hi = n - 1;
+
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if wind_speed < ws[mid] {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+
+        if lo >= n {
+            return self.values[n - 1];
+        }
+
+        let lo_val = if lo > 0 {
+            self.values[lo - 1]
+        } else {
+            self.values[0]
+        };
+        let _hi_val = self.values[lo];
+
+        if hi == lo {
+            return lo_val;
+        }
+
+        let x0 = ws[lo];
+        let x1 = ws[hi];
+        let y0 = self.values[lo];
+        let y1 = self.values[hi];
+
+        y0 + (y1 - y0) * (wind_speed - x0) / (x1 - x0)
+    }
+}
 
 /// 检查功率曲线是否存在非物理的“波动” (wiggles)。
 ///

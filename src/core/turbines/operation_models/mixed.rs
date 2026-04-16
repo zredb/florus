@@ -5,10 +5,12 @@
 //! If power setpoint is set, use derating control (SimpleDeratingTurbine)
 //! Otherwise use simple control (SimpleTurbine)
 
-use crate::types::Array2;
-use crate::core::turbines::operation_models::base::*;
+use crate::core::turbines::POWER_SETPOINT_DEFAULT;
 use crate::core::turbines::operation_models::simple::SimpleTurbine;
 use crate::core::turbines::operation_models::simple_derating::SimpleDeratingTurbine;
+use crate::core::turbines::operation_models::OperationModel;
+use crate::core::{TurbineContext, TurbineParameters};
+use crate::types::Array2;
 
 #[derive(Debug, Clone, Default)]
 pub struct MixedOperationTurbine;
@@ -19,8 +21,12 @@ impl OperationModel for MixedOperationTurbine {
     }
 
     fn power(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
-        let yaw_angles = ctx.yaw_angles.ok_or_else(|| anyhow::anyhow!("Yaw angles required for MixedOperationTurbine"))?;
-        let power_setpoints = ctx.power_setpoints.ok_or_else(|| anyhow::anyhow!("Power setpoints required for MixedOperationTurbine"))?;
+        let yaw_angles = ctx
+            .yaw_angles
+            .ok_or_else(|| anyhow::anyhow!("Yaw angles required for MixedOperationTurbine"))?;
+        let power_setpoints = ctx
+            .power_setpoints
+            .ok_or_else(|| anyhow::anyhow!("Power setpoints required for MixedOperationTurbine"))?;
 
         let n_findex = ctx.air_density.len();
         let n_turbines = ctx.velocities.shape()[1];
@@ -78,7 +84,8 @@ impl OperationModel for MixedOperationTurbine {
             derating_ctx.power_setpoints = Some(power_setpoints);
             let zero_yaw = ndarray::Array::zeros((n_findex, n_turbines));
             derating_ctx.yaw_angles = Some(&zero_yaw);
-            let simple_derating = crate::core::turbines::operation_models::simple_derating::SimpleDeratingTurbine;
+            let simple_derating =
+                crate::core::turbines::operation_models::simple_derating::SimpleDeratingTurbine;
             let derating_power = simple_derating.power(&params, &derating_ctx)?;
 
             for i in 0..n_findex {
@@ -107,9 +114,17 @@ impl OperationModel for MixedOperationTurbine {
         Ok(result)
     }
 
-    fn thrust_coefficient(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
-        let yaw_angles = ctx.yaw_angles.ok_or_else(|| anyhow::anyhow!("Yaw angles required for MixedOperationTurbine"))?;
-        let power_setpoints = ctx.power_setpoints.ok_or_else(|| anyhow::anyhow!("Power setpoints required for MixedOperationTurbine"))?;
+    fn thrust_coefficient(
+        &self,
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<Array2> {
+        let yaw_angles = ctx
+            .yaw_angles
+            .ok_or_else(|| anyhow::anyhow!("Yaw angles required for MixedOperationTurbine"))?;
+        let power_setpoints = ctx
+            .power_setpoints
+            .ok_or_else(|| anyhow::anyhow!("Power setpoints required for MixedOperationTurbine"))?;
 
         let n_findex = ctx.air_density.len();
         let n_turbines = ctx.velocities.shape()[1];
@@ -158,8 +173,16 @@ impl OperationModel for MixedOperationTurbine {
         Ok(result)
     }
 
-    fn axial_induction(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
+    fn axial_induction(
+        &self,
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<Array2> {
         let ct = self.thrust_coefficient(params, ctx)?;
         Ok(crate::core::turbines::operation_models::helpers::axial_induction_from_ct(&ct))
+    }
+
+    fn clone_box(&self) -> Box<dyn OperationModel> {
+        Box::new(self.clone())
     }
 }

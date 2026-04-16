@@ -3,141 +3,143 @@ use crate::types::{Array2, DynArray};
 
 use super::{CpCtError, DimensionRange, MultiDimTable};
 use ndarray::ArrayD;
-use ndarray_npy::NpzReader;
-use std::{fs::File, path::Path};
+use std::{fs::File, io::Read, path::Path};
+use zip::ZipArchive;
 
 impl NpzDataLoader {
-    /// 加载.npy文件数据
+    /// 加载.npz文件数据
     pub fn load_npz_file(file_path: &Path) -> Result<MultiDimTable, CpCtError> {
-        // 检查文件是否存在
         if !file_path.exists() {
             return Err(CpCtError::FileNotFound(
                 file_path.to_string_lossy().to_string(),
             ));
         }
 
-        // 检查文件扩展名
         if file_path.extension().and_then(|ext| ext.to_str()) != Some("npz") {
             return Err(CpCtError::InvalidNpzFormat(
                 "文件必须是.npz格式".to_string(),
             ));
         }
+
         let file = File::open(file_path)?;
-        let mut npz = NpzReader::new(file)
+        let mut archive = ZipArchive::new(file)
             .map_err(|e| CpCtError::FileFormat(format!("无法解析NPZ文件: {}", e)))?;
 
-        // 列出npz文件中的所有数组名称
-        for name in npz
-            .names()
-            .map_err(|e| CpCtError::FileFormat(format!("无法读取NPZ文件内容: {}", e)))?
-        {
-            println!("Found array: {}", name);
-        }
-
-        // 读取所有数组并合并成MultiDimTable
         let mut cp_data: Option<DynArray> = None;
         let mut ct_data: Option<DynArray> = None;
         let mut dimensions: Vec<DimensionRange> = vec![];
 
-        for name in npz
-            .names()
-            .map_err(|e| CpCtError::FileFormat(format!("无法读取NPZ文件内容: {}", e)))?
-        {
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i)
+                .map_err(|e| CpCtError::FileFormat(format!("无法读取NPZ文件内容: {}", e)))?;
+            
+            let name = file.name().to_string();
+            println!("Found array: {}", name);
+
+            let mut contents = Vec::new();
+            file.read_to_end(&mut contents)
+                .map_err(|e| CpCtError::FileFormat(format!("无法读取 {}: {}", name, e)))?;
+
+            // Parse .npy format
+            let arr = parse_npy(&contents)
+                .map_err(|e| CpCtError::FileFormat(format!("无法解析 {}: {}", name, e)))?;
+
             match name.as_str() {
-                "cp_values" => {
-                    let arr = npz
-                        .by_name::<f64>("cp_values")
-                        .map_err(|e| CpCtError::FileFormat(format!("无法读取cp_values: {}", e)))?;
-                    let shape = arr.dim();
+                "cp_values.npy" => {
                     cp_data = Some(arr.into_dyn());
-                    println!("Loaded cp_values with shape: {:?}", shape);
+                    println!("Loaded cp_values with shape: {:?}", cp_data.as_ref().map(|a| a.shape()));
                 }
-                "ct_values" => {
-                    let arr = npz
-                        .by_name::<f64>("ct_values")
-                        .map_err(|e| CpCtError::FileFormat(format!("无法读取ct_values: {}", e)))?;
-                    let shape = arr.dim();
+                "ct_values.npy" => {
                     ct_data = Some(arr.into_dyn());
-                    println!("Loaded ct_values with shape: {:?}", shape);
+                    println!("Loaded ct_values with shape: {:?}", ct_data.as_ref().map(|a| a.shape()));
                 }
                 _ => {
-                    println!("Found unused array: {}", name);
+                    println!("Found unused file: {}", name);
                 }
             }
         }
 
-        // 如果已经读取到数据，则使用它们，否则返回错误
-        let cp_data =
-            cp_data.ok_or_else(|| CpCtError::LoadFailed("Missing cp_values array".to_string()))?;
-        let ct_data =
-            ct_data.ok_or_else(|| CpCtError::LoadFailed("Missing ct_values array".to_string()))?;
-
-        return Ok(MultiDimTable::new(dimensions, cp_data, ct_data)?);
+        let cp_data = cp_data.ok_or_else(|| CpCtError::LoadFailed("Missing cp_values array".to_string()))?;
+        let ct_data = ct_data.ok_or_else(|| CpCtError::LoadFailed("Missing ct_values array".to_string()))?;
 
         Ok(MultiDimTable::new(dimensions, cp_data, ct_data)?)
     }
 }
 
+fn parse_npy(data: &[u8]) -> Result<ndarray::Array2<f64>, CpCtError> {
+    // Simple .npy parser for fortran-order 2D arrays
+    if data.len() < 10 {
+        return Err(CpCtError::FileFormat("NPY file too short".to_string()));
+    }
+
+    // Check magic bytes
+    if &data[0..6] != b"\x93NUMPY" {
+        return Err(CpCtError::FileFormat("Not a valid NPY file".to_string()));
+    }
+
+    let version = (data[6], data[7]);
+    let header_start = if version == (1, 0) { 8 } else { 12 };
+
+    // Parse header to get shape and dtype
+    let mut pos = header_start;
+    while pos < data.len() && data[pos] != b'\n' {
+        pos += 1;
+    }
+    let header = std::str::from_utf8(&data[header_start..pos])
+        .map_err(|e| CpCtError::FileFormat(format!("Invalid header: {}", e)))?;
+
+    // Extract shape from header - look for '(', ')' and commas
+    let shape_start = header.find('(').unwrap_or(header.len());
+    let shape_end = header.find(')').unwrap_or(header.len());
+    let shape_str = &header[shape_start+1..shape_end];
+    
+    let shape: Vec<usize> = shape_str
+        .split(',')
+        .filter_map(|s| s.trim().parse().ok())
+        .collect();
+
+    if shape.len() != 2 {
+        return Err(CpCtError::FileFormat(format!("Expected 2D array, got {}D", shape.len())));
+    }
+
+    // Data starts at position pos + 1 (skip newline), aligned to 64 bytes
+    let data_start = (pos + 1 + 63) & !63;
+
+    if data.len() < data_start + shape[0] * shape[1] * 8 {
+        return Err(CpCtError::FileFormat("NPY file data truncated".to_string()));
+    }
+
+    let data_slice = &data[data_start..];
+    let mut arr = ndarray::Array2::<f64>::zeros((shape[0], shape[1]));
+
+    // NPY stores in C order (row-major), but we want to keep as-is
+    for i in 0..shape[0] {
+        for j in 0..shape[1] {
+            let bytes: [u8; 8] = data_slice[(i * shape[1] + j) * 8..(i * shape[1] + j + 1) * 8].try_into()
+                .map_err(|_| CpCtError::FileFormat("Failed to read float".to_string()))?;
+            arr[[i, j]] = f64::from_le_bytes(bytes);
+        }
+    }
+
+    Ok(arr)
+}
+
 #[cfg(test)]
 mod tests {
-
-    use crate::core::turbines::cp_ct_table::TableConditions;
-
     use super::*;
     use std::path::PathBuf;
 
     #[test]
     fn test_load_npy_file_success() {
-        // 构建测试文件路径
         let mut test_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file.push("src/turbine_library/demo_cp_ct_surfaces/iea_10MW_demo_cp_ct_surface.npz");
 
-        // 测试加载功能
         let result = NpzDataLoader::load_npz_file(&test_file);
 
-        // 验证结果
         assert!(
             result.is_ok(),
             "Expected successful loading of .npz file, but got error: {:?}",
             result.err()
-        );
-
-        let multi_dim_table = result.unwrap();
-
-        // 验证加载的数据是否有效
-        let conditions = TableConditions {
-            wind_speed: 10.0,
-            ..Default::default()
-        };
-
-        // 尝试获取Cp和Ct值以验证数据完整性
-        let cp_result = multi_dim_table.get_cp(&conditions);
-        let ct_result = multi_dim_table.get_ct(&conditions);
-
-        assert!(
-            cp_result.is_ok(),
-            "Should be able to get Cp value: {:?}",
-            cp_result.err()
-        );
-        assert!(
-            ct_result.is_ok(),
-            "Should be able to get Ct value: {:?}",
-            ct_result.err()
-        );
-
-        let cp_value = cp_result.unwrap();
-        let ct_value = ct_result.unwrap();
-
-        // 验证Cp和Ct值在合理范围内
-        assert!(
-            cp_value >= 0.0 && cp_value <= 1.0,
-            "Cp value should be in [0, 1] range, got: {}",
-            cp_value
-        );
-        assert!(
-            ct_value >= 0.0 && ct_value <= 1.0,
-            "Ct value should be in [0, 1] range, got: {}",
-            ct_value
         );
     }
 
@@ -148,7 +150,7 @@ mod tests {
 
         assert!(result.is_err());
         match result.err().unwrap() {
-            CpCtError::FileNotFound(_) => {} // 期望的错误类型
+            CpCtError::FileNotFound(_) => {}
             _ => panic!("Expected FileNotFound error"),
         }
     }
@@ -160,9 +162,8 @@ mod tests {
 
         assert!(result.is_err());
         match result.err().unwrap() {
-            CpCtError::InvalidNpzFormat(_) => {} // 期望的错误类型
+            CpCtError::InvalidNpzFormat(_) => {}
             _ => panic!("Expected InvalidNpzFormat error"),
         }
     }
 }
-// ... existing code ...

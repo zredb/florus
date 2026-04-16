@@ -36,17 +36,17 @@ impl YawOptimization for YawOptimizationGeometric {
             self.config = cfg;
         }
 
-        if !fmodel.state.initialized {
+        if !fmodel.state().initialized {
             anyhow::bail!("FlorisModel must be run before optimization");
         }
 
-        let n_findex = fmodel.flow_field.n_findex;
-        let n_turbines = fmodel.farm.n_turbines();
-        let rotor_diameter = fmodel.farm.rotor_diameters[0];
+        let n_findex = fmodel.flow_field().n_findex;
+        let n_turbines = fmodel.farm().n_turbines();
+        let rotor_diameter = fmodel.farm().rotor_diameters[0];
 
-        let layout_x = fmodel.farm.layout_x.clone();
-        let layout_y = fmodel.farm.layout_y.clone();
-        let wind_directions = fmodel.flow_field.wind_directions.clone();
+        let layout_x = fmodel.farm().layout_x.clone();
+        let layout_y = fmodel.farm().layout_y.clone();
+        let wind_directions = fmodel.flow_field().wind_directions.clone();
 
         let mut yaw_angles = Array2::zeros((n_findex, n_turbines));
         let bounds = TrapezoidBounds::new();

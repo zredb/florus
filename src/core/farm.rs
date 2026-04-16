@@ -16,7 +16,7 @@ const POWER_SETPOINT_DEFAULT: Float = 5000.0; // 假设默认功率为5MW
 pub struct Farm {
     pub layout_x: Array1,
     pub layout_y: Array1,
-    pub turbine_types: Vec<TurbineType>,
+    pub turbines: Vec<Turbine>,
 
     pub yaw_angles: Array2,
     pub yaw_angles_sorted: Array2,
@@ -32,10 +32,6 @@ pub struct Farm {
     pub awc_frequencies_sorted: Array2,
     pub hub_heights: Array1,
     pub hub_heights_sorted: Array2,
-    pub turbine_map: Vec<Turbine>,
-    pub turbine_type_map: NdArray2<String>,
-    pub turbine_type_map_sorted: NdArray2<String>,
-   
 
     pub rotor_diameters: Array1,
     pub rotor_diameters_sorted: Array2,
@@ -53,7 +49,7 @@ impl fmt::Debug for Farm {
         f.debug_struct("Farm")
             .field("layout_x", &self.layout_x)
             .field("layout_y", &self.layout_y)
-            .field("turbine_type", &self.turbine_types)
+            .field("turbines", &self.turbines)
             .field("yaw_angles", &self.yaw_angles)
             .field("yaw_angles_sorted", &self.yaw_angles_sorted)
             .field("tilt_angles", &self.tilt_angles)
@@ -62,7 +58,6 @@ impl fmt::Debug for Farm {
             .field("power_setpoints_sorted", &self.power_setpoints_sorted)
             .field("hub_heights", &self.hub_heights)
             .field("hub_heights_sorted", &self.hub_heights_sorted)
-            .field("turbine_map", &self.turbine_map)
             .field("rotor_diameters", &self.rotor_diameters)
             .field("tsrs", &self.tsrs)
             .field("ref_tilts", &self.ref_tilts)
@@ -75,7 +70,7 @@ impl Farm {
     pub fn new(
         layout_x: Array1,
         layout_y: Array1,
-        turbine_types: Vec<String>,
+        turbine_types: &Vec<String>,
     ) -> crate::Result<Self> {
         let n_turbines = layout_x.len();
 
@@ -94,11 +89,12 @@ impl Farm {
         if TurbineLibrary::get_loaded_turbines().is_empty() {
             // 如果还没有初始化，这里应该预先加载一些默认类型
             // 或者您可以确保在创建Farm之前调用TurbineLibrary::initialize()之类的函数
+            TurbineLibrary::init_if_needed()?;
         }
 
         // 获取TurbineType引用
         let mut tts = Vec::new();
-        for t in &turbine_types {
+        for t in turbine_types {
             match TurbineLibrary::get_turbine(t) {
                 Some(turbine_type) => tts.push(turbine_type),
                 None => {
@@ -117,11 +113,15 @@ impl Farm {
         } else {
             tts
         };
+        let mut turbines = Vec::new();
+        for tt in turbine_types {
+            turbines.push(Turbine { turbine_type: tt });
+        }
 
         let mut farm = Self {
             layout_x,
             layout_y,
-            turbine_types: turbine_types,
+            turbines: turbines,
             yaw_angles: Array2::zeros((1, n_turbines)),
             yaw_angles_sorted: Array2::zeros((1, n_turbines)),
             tilt_angles: Array2::zeros((1, n_turbines)),
@@ -136,9 +136,6 @@ impl Farm {
             awc_frequencies_sorted: Array2::zeros((1, n_turbines)),
             hub_heights: Array1::zeros(n_turbines),
             hub_heights_sorted: Array2::zeros((1, n_turbines)),
-            turbine_map: vec![],
-            turbine_type_map: NdArray2::from_elem((1, n_turbines), String::new()),
-            turbine_type_map_sorted: NdArray2::from_elem((1, n_turbines), String::new()),
 
             rotor_diameters: Array1::zeros(n_turbines),
             rotor_diameters_sorted: Array2::zeros((1, n_turbines)),
@@ -166,9 +163,42 @@ impl Farm {
         Ok(())
     }
 
-    pub fn initialize(&mut self, _sorted_indices: &NdArray3<usize>) {
-        // 根据排序索引对偏航角进行排序
-        // 这里使用简单的实现，实际需要使用更复杂的索引操作
+    pub fn initialize(&mut self, sorted_coord_indices: &Array2) {
+        let n_findex = self.yaw_angles.dim().0;
+        let n_turbines = self.yaw_angles.dim().1;
+
+        // Helper: sort array2 according to sorted_coord_indices for each findex
+        let sort_array2 = |arr: &Array2| -> Array2 {
+            let mut sorted = Array2::zeros((n_findex, n_turbines));
+            for fi in 0..n_findex {
+                for new_i in 0..n_turbines {
+                    let old_i = sorted_coord_indices[[fi, new_i]] as usize;
+                    sorted[[fi, new_i]] = arr[[fi, old_i]];
+                }
+            }
+            sorted
+        };
+
+        // Sort yaw_angles
+        self.yaw_angles_sorted = sort_array2(&self.yaw_angles);
+        // Sort tilt_angles
+        self.tilt_angles_sorted = sort_array2(&self.tilt_angles);
+        // Sort power_setpoints
+        self.power_setpoints_sorted = sort_array2(&self.power_setpoints);
+        // Sort awc_amplitudes
+        self.awc_amplitudes_sorted = sort_array2(&self.awc_amplitudes);
+        // Sort awc_frequencies
+        self.awc_frequencies_sorted = sort_array2(&self.awc_frequencies);
+
+        // For String arrays, need special handling
+        self.awc_modes_sorted = self.awc_modes.clone();
+
+        self.state.initialized = true;
+    }
+
+    /// Initialize farm for simulation (simplified version without sorted indices)
+    pub fn initialize_for_simulation(&mut self) {
+        // Copy current values to sorted arrays
         self.yaw_angles_sorted = self.yaw_angles.clone();
         self.tilt_angles_sorted = self.tilt_angles.clone();
         self.power_setpoints_sorted = self.power_setpoints.clone();
@@ -181,45 +211,45 @@ impl Farm {
 
     pub fn construct_hub_heights(&mut self) {
         self.hub_heights = Array1::from_vec(
-            self.turbine_types
+            self.turbines
                 .iter()
-                .map(|turb| turb.hub_height)
+                .map(|turb| turb.turbine_type.hub_height)
                 .collect(),
         );
     }
 
     pub fn construct_rotor_diameters(&mut self) {
         self.rotor_diameters = Array1::from_vec(
-            self.turbine_types
+            self.turbines
                 .iter()
-                .map(|turb| turb.rotor_diameter)
+                .map(|turb| turb.turbine_type.rotor_diameter)
                 .collect(),
         );
     }
 
     pub fn construct_turbine_tsrs(&mut self) {
         self.tsrs = Array1::from_vec(
-            self.turbine_types
+            self.turbines
                 .iter()
-                .map(|turb| turb.tsr.unwrap_or(8.0))
+                .map(|turb| turb.turbine_type.tsr.unwrap_or(8.0))
                 .collect(),
         );
     }
 
     pub fn construct_turbine_ref_tilts(&mut self) {
         self.ref_tilts = Array1::from_vec(
-            self.turbine_types
+            self.turbines
                 .iter()
-                .map(|turb| turb.power_thrust_table.ref_tilt.unwrap_or(5.0))
+                .map(|turb| turb.turbine_type.power_thrust_table.ref_tilt.unwrap_or(5.0))
                 .collect(),
         );
     }
 
     pub fn construct_turbine_correct_cp_ct_for_tilt(&mut self) {
         self.correct_cp_ct_for_tilt = self
-            .turbine_types
+            .turbines
             .iter()
-            .map(|turb| turb.correct_cp_ct_for_tilt)
+            .map(|turb| turb.turbine_type.correct_cp_ct_for_tilt)
             .collect();
     }
 
@@ -268,7 +298,6 @@ impl Farm {
         let awc_modes_expanded = broadcast_string_array2(&self.awc_modes);
         let awc_amplitudes_expanded = broadcast_array2(&self.awc_amplitudes);
         let awc_frequencies_expanded = broadcast_array2(&self.awc_frequencies);
-        let turbine_type_map_expanded = broadcast_string_array2(&self.turbine_type_map);
 
         // Helper function to sort array1 according to sorted_indices for each findex
         let sort_array1_for_findex = |arr: &Array1, fi: usize| -> Array1 {
@@ -394,15 +423,15 @@ impl Farm {
             }
         }
 
-        // Sort turbine_type_map according to sorted_indices for each findex
-        self.turbine_type_map_sorted = NdArray2::from_elem((n_findex, n_turbines), String::new());
-        for fi in 0..n_findex {
-            for new_i in 0..n_turbines {
-                let old_i = sorted_coord_indices[[fi, new_i]] as usize;
-                self.turbine_type_map_sorted[[fi, new_i]] =
-                    turbine_type_map_expanded[[fi, old_i]].clone();
-            }
-        }
+        // // Sort turbine_type_map according to sorted_indices for each findex
+        // self.turbine_types_sorted = NdArray1::from_elem(( n_turbines), self.turbine_types[0].clone());
+        // for fi in 0..n_findex {
+        //     for new_i in 0..n_turbines {
+        //         let old_i = sorted_coord_indices[[fi, new_i]] as usize;
+        //         self.turbine_type_map_sorted[[fi, new_i]] =
+        //             turbine_type_map_expanded[[fi, old_i]].clone();
+        //     }
+        // }
     }
 
     pub fn set_yaw_angles(&mut self, yaw_angles: Array2) {
@@ -490,9 +519,32 @@ impl Farm {
         Array2::zeros((1, self.n_turbines()))
     }
 
-    pub fn finalize(&mut self, _unsorted_indices: &NdArray3<usize>) {
-        // 恢复原始顺序
-        // 这里简化实现，实际需要根据unsorted_indices重新排序
+    pub fn finalize(&mut self, unsorted_indices: &Array2) {
+        let n_findex = self.yaw_angles.dim().0;
+        let n_turbines = self.yaw_angles.dim().1;
+
+        if n_findex == 0 || n_turbines == 0 {
+            self.state.converged = true;
+            return;
+        }
+
+        self.yaw_angles = Array2::zeros((n_findex, n_turbines));
+        self.tilt_angles = Array2::zeros((n_findex, n_turbines));
+        self.power_setpoints = Array2::zeros((n_findex, n_turbines));
+        self.awc_amplitudes = Array2::zeros((n_findex, n_turbines));
+        self.awc_frequencies = Array2::zeros((n_findex, n_turbines));
+
+        for fi in 0..n_findex {
+            for new_i in 0..n_turbines {
+                let old_i = unsorted_indices[[fi, new_i]] as usize;
+                self.yaw_angles[[fi, new_i]] = self.yaw_angles_sorted[[fi, old_i]];
+                self.tilt_angles[[fi, new_i]] = self.tilt_angles_sorted[[fi, old_i]];
+                self.power_setpoints[[fi, new_i]] = self.power_setpoints_sorted[[fi, old_i]];
+                self.awc_amplitudes[[fi, new_i]] = self.awc_amplitudes_sorted[[fi, old_i]];
+                self.awc_frequencies[[fi, new_i]] = self.awc_frequencies_sorted[[fi, old_i]];
+            }
+        }
+
         self.state.converged = true;
     }
 
@@ -537,11 +589,6 @@ impl Farm {
         &self.rotor_diameters
     }
 
-    /// Get turbine map reference
-    pub fn turbine_map(&self) -> &[Turbine] {
-        &self.turbine_map
-    }
-
     /// Create grid from farm configuration
     pub fn create_grid(&self) -> crate::Result<TurbineGrid> {
         let coords = self.coordinates();
@@ -573,9 +620,6 @@ impl Farm {
 
         self.awc_frequencies = Array2::zeros((n_findex, n_turbines));
         self.awc_frequencies_sorted = Array2::zeros((n_findex, n_turbines));
-
-        self.turbine_type_map = NdArray2::from_elem((n_findex, n_turbines), String::new());
-        self.turbine_type_map_sorted = NdArray2::from_elem((n_findex, n_turbines), String::new());
     }
 
     /// Set turbine layout
@@ -591,19 +635,17 @@ impl Farm {
         self.layout_y = layout_y.clone();
 
         // 更新turbine_types以适应新的布局
-        if self.turbine_types.len() == 1 {
-            let single_type = self.turbine_types[0].clone();
-            self.turbine_types = vec![single_type; n_turbines];
-        } else if self.turbine_types.len() > n_turbines {
-            self.turbine_types = self.turbine_types[..n_turbines].to_vec();
-        } else if self.turbine_types.len() < n_turbines {
-            let last_type = self.turbine_types.last().clone().unwrap();
-            self.turbine_types = vec![last_type.clone(); n_turbines];
+        if self.turbines.len() == 1 {
+            let single_type = self.turbines[0].clone();
+            self.turbines = vec![single_type; n_turbines];
+        } else if self.turbines.len() > n_turbines {
+            self.turbines = self.turbines[..n_turbines].to_vec();
+        } else if self.turbines.len() < n_turbines {
+            let last_type = self.turbines.last().clone().unwrap();
+            self.turbines = vec![last_type.clone(); n_turbines];
         }
 
         // Reconstruct derived properties
-        self.turbine_map.clear();
-        self.construct_turbine_map();
         self.construct_hub_heights();
         self.construct_rotor_diameters();
         self.construct_turbine_tsrs();

@@ -35,17 +35,17 @@ pub fn compute_lti(
     wake_slope: Float,
     max_dist_d: Float,
 ) -> anyhow::Result<Array2> {
-    if !fmodel.state.initialized {
+    if !fmodel.state().initialized {
         anyhow::bail!("FlorisModel must be run before computing load turbulence intensity");
     }
 
-    let grid = fmodel
-        .grid
+    let grid_option = fmodel.grid();
+    let grid = grid_option
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("Grid not initialized"))?;
 
-    let n_findex = fmodel.flow_field.n_findex;
-    let n_turbines = fmodel.farm.rotor_diameters.len();
+    let n_findex = fmodel.flow_field().n_findex;
+    let n_turbines = fmodel.farm().rotor_diameters.len();
 
     if ambient_lti.len() != n_findex {
         anyhow::bail!(
@@ -55,7 +55,7 @@ pub fn compute_lti(
         );
     }
 
-    let d = fmodel.farm.rotor_diameters[0];
+    let d = fmodel.farm().rotor_diameters[0];
     let sorted_indices = grid.sorted_indices();
     let x_sorted = grid.x_sorted();
     let y_sorted = grid.y_sorted();
@@ -69,7 +69,7 @@ pub fn compute_lti(
     }
 
     let cts = fmodel.get_turbine_thrust_coefficients();
-    let ambient_wind_speeds = &fmodel.flow_field.wind_speeds;
+    let ambient_wind_speeds = &fmodel.flow_field().wind_speeds;
 
     let mut x_sorted_mean = Array::zeros((n_findex, n_turbines));
     let mut y_sorted_mean = Array::zeros((n_findex, n_turbines));
@@ -163,12 +163,12 @@ pub fn compute_turbine_voc(
     exp_ws_std: Float,
     exp_thrust: Float,
 ) -> anyhow::Result<Array2> {
-    let n_findex = fmodel.flow_field.n_findex;
-    let n_turbines = fmodel.farm.rotor_diameters.len();
+    let n_findex = fmodel.flow_field().n_findex;
+    let n_turbines = fmodel.farm().rotor_diameters.len();
 
     let ambient_wind_speeds = Array::from_shape_vec((n_findex, n_turbines), {
         let mut v = Vec::with_capacity(n_findex * n_turbines);
-        for &ws in &fmodel.flow_field.wind_speeds {
+        for &ws in &fmodel.flow_field().wind_speeds {
             for _ in 0..n_turbines {
                 v.push(ws);
             }
@@ -176,11 +176,11 @@ pub fn compute_turbine_voc(
         v
     })?;
 
-    let d = fmodel.farm.rotor_diameters[0];
+    let d = fmodel.farm().rotor_diameters[0];
     let area = PI * (d / 2.0).powi(2);
 
     let cts = fmodel.get_turbine_thrust_coefficients();
-    let air_density = fmodel.flow_field.air_density;
+    let air_density = fmodel.flow_field().air_density;
 
     let mut thrust = Array::zeros((n_findex, n_turbines));
     for fi in 0..n_findex {
@@ -230,7 +230,7 @@ pub fn compute_farm_voc(
 }
 
 pub fn compute_farm_revenue(fmodel: &FlorisModel) -> anyhow::Result<Array1> {
-    if !fmodel.state.initialized {
+    if !fmodel.state().initialized {
         anyhow::bail!("FlorisModel must be run before computing farm revenue");
     }
 
@@ -300,7 +300,7 @@ pub fn find_a_to_satisfy_target_voc_per_mw(
     exp_ws_std: Float,
     exp_thrust: Float,
 ) -> anyhow::Result<Float> {
-    if !fmodel.state.initialized {
+    if !fmodel.state().initialized {
         anyhow::bail!("FlorisModel must be run before finding A for target cost/MW/findex");
     }
 
@@ -333,7 +333,8 @@ pub fn optimize_power_setpoints(
     power_setpoint_initial: Option<&Array2>,
     power_setpoint_levels: &[Float],
 ) -> anyhow::Result<(Array2, Array1)> {
-    let operation_model = fmodel.get_operation_model();
+    let operation_models = fmodel.get_operation_models();
+    let operation_model = operation_models[0][0].clone();
     if operation_model != "mixed" && operation_model != "simple-derating" {
         anyhow::bail!(
             "Operation model must include derating (e.g., 'mixed' or 'simple-derating'), got '{}'",
@@ -341,46 +342,41 @@ pub fn optimize_power_setpoints(
         );
     }
 
-    if fmodel.farm.turbine_types.len() > 1 {
+    if fmodel.farm().turbines.len() > 1 {
         anyhow::bail!("Only one turbine type is currently supported for optimization");
     }
 
-    let n_findex = fmodel.flow_field.n_findex;
-    let n_turbines = fmodel.farm.rotor_diameters.len();
+    let n_findex = fmodel.flow_field().n_findex;
+    let n_turbines = fmodel.farm().rotor_diameters.len();
 
     let power_setpoint_initial = if let Some(initial) = power_setpoint_initial {
         initial.clone()
     } else {
-        let max_power = fmodel.farm.turbine_map[0].turbine_type.power_curve().values[fmodel
-            .farm
-            .turbine_map[0]
+        let max_power = fmodel.farm().turbines[0]
             .turbine_type
-            .power_curve()
-            .values
-            .len()
-            - 1]
-            * 1000.0;
+            .rated_power
+            .unwrap_or(5e6);
         Array::from_elem((n_findex, n_turbines), max_power)
     };
 
     let mut power_setpoint_test = power_setpoint_initial.clone();
     let mut power_setpoint_opt = power_setpoint_initial.clone();
 
-    let grid = fmodel
-        .grid
+    let grid_option = fmodel.grid();
+    let grid = grid_option
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("Grid not initialized"))?;
 
-    // Clone sorted_indices before mutable borrow of fmodel
+    // Clone all data needed from grid BEFORE releasing the borrow
     let sorted_indices = grid.sorted_indices().clone();
-    let _x_sorted = grid.x_sorted();
-    let _y_sorted = grid.y_sorted();
+    let x_sorted = grid.x_sorted().clone();
+    let y_sorted = grid.y_sorted().clone();
 
-    // Drop all references to grid before mutable borrow
-    let _ = grid;
+    drop(grid);
+    drop(grid_option);
 
     fmodel
-        .farm
+        .farm_mut()
         .set_power_setpoints(power_setpoint_initial.clone());
     fmodel.run()?;
 
@@ -401,7 +397,9 @@ pub fn optimize_power_setpoints(
             for derating_level in power_setpoint_levels {
                 power_setpoint_test[[fi, sorted_idx]] = *derating_level;
 
-                fmodel.farm.set_power_setpoints(power_setpoint_test.clone());
+                fmodel
+                    .farm_mut()
+                    .set_power_setpoints(power_setpoint_test.clone());
                 fmodel.run()?;
 
                 let test_net_revenue = compute_net_revenue(

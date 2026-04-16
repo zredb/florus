@@ -2,7 +2,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::core::flow_field::FlowField;
-use crate::core::grid::GridBase;
+use crate::core::grid::Grid;
 /// Base wake model traits and structures
 ///
 /// Corresponds to wake/geometry.py and base_classes in Python implementation
@@ -32,7 +32,7 @@ pub trait VelocityModel {
     /// Prepare function - returns model-specific arguments
     fn prepare_function(
         &self,
-        grid: &dyn GridBase,
+        grid: &dyn Grid,
         flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array4>>;
 
@@ -60,7 +60,7 @@ pub trait DeflectionModel {
     /// Prepare function - returns model-specific arguments
     fn prepare_function(
         &self,
-        grid: &dyn GridBase,
+        grid: &dyn Grid,
         flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array1>>;
 
@@ -82,7 +82,7 @@ pub trait TurbulenceModel {
     /// Prepare function - returns model-specific arguments
     fn prepare_function(
         &self,
-        grid: &dyn GridBase,
+        grid: &dyn Grid,
         flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array1>>;
 
@@ -102,7 +102,7 @@ pub trait CombinationModel {
     /// Prepare function - returns model-specific arguments
     fn prepare_function(
         &self,
-        grid: &dyn GridBase,
+        grid: &dyn Grid,
         flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array4>>;
 

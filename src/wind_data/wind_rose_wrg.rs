@@ -6,7 +6,7 @@
 //! - RegularGridInterpolant: 2D interpolation helper
 //! - WRGData: Internal WRG file data structure
 
-use crate::core::base::InterpMethod;
+use crate::core::models::InterpMethod;
 use crate::heterogeneous_map::HeterogeneousInflowConfig;
 use crate::types::{Array1, Array2, Array3, Float};
 use crate::wind_data::traits::WindData;

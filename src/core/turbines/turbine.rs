@@ -77,13 +77,13 @@ impl Turbine {
                     power_output[[fi, ti]] = 0.0;
                 } else {
                     // Use turbine_type's power curve interpolation
-                    let base_power_kw = power_table.interpolate(v);
+                    let base_power_kw = self.turbine_type.power_thrust_table.cp_ct_table.get_cp(&TableConditions::builder().wind_speed(v).build().unwrap()).unwrap();
                     let power_watts = base_power_kw * 1000.0;
 
                     // Apply yaw correction from operation model
                     if let Some(yaw) = yaw_angles {
                         let yaw_rad = yaw[[fi, ti]].to_radians();
-                        let operation_model = self.turbine_type.get_operation_model_enum();
+                        let operation_model = self.turbine_type.operation_model.as_ref();
                         let loss_factor = operation_model.power_loss_factor(yaw_rad, 2.0);
                         power_output[[fi, ti]] = power_watts * loss_factor;
                     } else {
@@ -139,7 +139,8 @@ impl Turbine {
                     .turbine_type
                     .power_thrust_table
                     .cp_ct_table
-                    .get_ct(conditions);
+                    .get_ct(&conditions)
+                    .unwrap_or(0.0);
             }
         }
 

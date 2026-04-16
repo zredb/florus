@@ -10,6 +10,15 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let default_input = "default_inputs.yaml";
+    let output_default_input_file = out_dir.join(default_input);
+    if !output_default_input_file.exists() {
+        fs::copy(default_input, &output_default_input_file)
+            .expect("Failed to copy default_input.yaml");
+        println!("cargo:warning=Copied default_input.yaml to OUT_DIR");
+    }
+
     let mat_file = "src/core/wake/wake_velocity/turbopark_lookup_table.mat";
 
     // Check if the .mat file exists
@@ -19,13 +28,11 @@ fn main() {
     }
 
     // Get the output directory
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+
     let output_file = out_dir.join("turbopark_lookup.rs");
 
     // Get the modification times
-    let mat_mtime = fs::metadata(mat_file)
-        .and_then(|m| m.modified())
-        .ok();
+    let mat_mtime = fs::metadata(mat_file).and_then(|m| m.modified()).ok();
 
     let needs_rebuild = if let Ok(output_metadata) = fs::metadata(&output_file) {
         if let (Some(mat_m), Ok(output_m)) = (mat_mtime, output_metadata.modified()) {
@@ -41,16 +48,11 @@ fn main() {
         println!("cargo:rerun-if-changed={}", mat_file);
 
         // Try to run Python with scipy
-        let python_exes = vec![
-            "python3",
-            "python",
-        ];
+        let python_exes = vec!["python3", "python"];
 
         let mut python_found = None;
         for &python in &python_exes {
-            let output = Command::new(python)
-                .args(&["--version"])
-                .output();
+            let output = Command::new(python).args(&["--version"]).output();
 
             if let Ok(o) = output {
                 if o.status.success() {
@@ -77,14 +79,19 @@ fn main() {
                     if output_file.exists() {
                         println!("cargo:warning=Successfully generated turbopark_lookup.rs");
                     } else {
-                        println!("cargo:warning=Generated file not found, using runtime calculation");
+                        println!(
+                            "cargo:warning=Generated file not found, using runtime calculation"
+                        );
                     }
                 }
                 Ok(_) => {
                     println!("cargo:warning=Python script failed, using runtime calculation");
                 }
                 Err(e) => {
-                    println!("cargo:warning=Could not run Python: {}, using runtime calculation", e);
+                    println!(
+                        "cargo:warning=Could not run Python: {}, using runtime calculation",
+                        e
+                    );
                 }
             }
         } else {

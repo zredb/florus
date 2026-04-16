@@ -1,9 +1,8 @@
 /// TurbOParkGauss Wake Velocity Model
 ///
 /// TurbOPark model with Gaussian wake profile.
-
 use crate::core::wake::{BaseModel, VelocityModel};
-use crate::core::{FlowField, GridBase};
+use crate::core::{FlowField, Grid};
 use crate::types::{Array2, Array4, Float};
 use ndarray::Array;
 use std::collections::HashMap;
@@ -19,7 +18,10 @@ impl TurbOParkGaussVelocityDeficit {
     pub fn new(a: Float, include_mirror_wake: bool) -> Self {
         let mut params = HashMap::new();
         params.insert("a".to_string(), a);
-        params.insert("include_mirror_wake".to_string(), if include_mirror_wake { 1.0 } else { 0.0 });
+        params.insert(
+            "include_mirror_wake".to_string(),
+            if include_mirror_wake { 1.0 } else { 0.0 },
+        );
 
         Self {
             base: BaseModel::new(params, "turboparkgauss"),
@@ -61,7 +63,9 @@ fn turboparkgauss_wake_width(x_dist: Float, ti: Float, ct: Float, a: Float) -> F
     let term2 = (1.0 + alpha.powi(2)).sqrt();
 
     let dw = a * ti / beta
-        * (term1 - term2 - ((term1 + 1.0) * alpha / ((term2 + 1.0) * (alpha + beta * x_dist))).ln());
+        * (term1
+            - term2
+            - ((term1 + 1.0) * alpha / ((term2 + 1.0) * (alpha + beta * x_dist))).ln());
 
     dw.max(0.0)
 }
@@ -69,7 +73,7 @@ fn turboparkgauss_wake_width(x_dist: Float, ti: Float, ct: Float, a: Float) -> F
 impl VelocityModel for TurbOParkGaussVelocityDeficit {
     fn prepare_function(
         &self,
-        _grid: &dyn GridBase,
+        _grid: &dyn Grid,
         _flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array4>> {
         Ok(HashMap::new())
@@ -125,13 +129,19 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
                         let y_point = y[[fi, ti, iy, iz]];
                         let z_point = z[[fi, ti, iy, iz]];
 
-                        let wake_center_y = y_wake_source + deflection_at_source * (x_point - x_wake_source);
+                        let wake_center_y =
+                            y_wake_source + deflection_at_source * (x_point - x_wake_source);
                         let dy = (y_point - wake_center_y).abs();
                         let dz = z_point - hub_height;
                         let r = (dy.powi(2) + dz.powi(2)).sqrt();
 
                         let x_dist = (x_point - x_wake_source) / rotor_diameter;
-                        let dw = turboparkgauss_wake_width(x_dist, turbulence_intensity, thrust_coefficient, self.a);
+                        let dw = turboparkgauss_wake_width(
+                            x_dist,
+                            turbulence_intensity,
+                            thrust_coefficient,
+                            self.a,
+                        );
                         let sigma = (self.a * turbulence_intensity + epsilon + dw).max(epsilon);
                         let wake_width = sigma * rotor_diameter;
 
@@ -146,9 +156,11 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
                                 let z_ground = -hub_height;
                                 let dz_mirror = z_point - z_ground;
                                 let r_mirror = (dy.powi(2) + dz_mirror.powi(2)).sqrt();
-                                let exponent_mirror = -r_mirror.powi(2) / (2.0 * wake_width.powi(2));
+                                let exponent_mirror =
+                                    -r_mirror.powi(2) / (2.0 * wake_width.powi(2));
                                 let profile_mirror = (-exponent_mirror).exp();
-                                velocity_deficit[[fi, ti, iy, iz]] += deficit_max * 0.5 * profile_mirror;
+                                velocity_deficit[[fi, ti, iy, iz]] +=
+                                    deficit_max * 0.5 * profile_mirror;
                             }
                         }
                     }
@@ -199,18 +211,36 @@ mod tests {
         assert!(eps > 0.0 && eps < 1.0);
     }
 
-    fn fake_grid() -> impl crate::core::GridBase {
+    fn fake_grid() -> impl crate::core::Grid {
         struct FakeGrid;
-        impl crate::core::GridBase for FakeGrid {
-            fn n_turbines(&self) -> usize { 1 }
-            fn n_findex(&self) -> usize { 1 }
-            fn x_sorted(&self) -> &Array4 { panic!() }
-            fn y_sorted(&self) -> &Array4 { panic!() }
-            fn z_sorted(&self) -> &Array4 { panic!() }
-            fn x_sorted_inertial_frame(&self) -> &Array4 { panic!() }
-            fn y_sorted_inertial_frame(&self) -> &Array4 { panic!() }
-            fn z_sorted_inertial_frame(&self) -> &Array4 { panic!() }
-            fn cubature_weights(&self) -> Option<&Array2> { None }
+        impl crate::core::Grid for FakeGrid {
+            fn n_turbines(&self) -> usize {
+                1
+            }
+            fn n_findex(&self) -> usize {
+                1
+            }
+            fn x_sorted(&self) -> &Array4 {
+                panic!()
+            }
+            fn y_sorted(&self) -> &Array4 {
+                panic!()
+            }
+            fn z_sorted(&self) -> &Array4 {
+                panic!()
+            }
+            fn x_sorted_inertial_frame(&self) -> &Array4 {
+                panic!()
+            }
+            fn y_sorted_inertial_frame(&self) -> &Array4 {
+                panic!()
+            }
+            fn z_sorted_inertial_frame(&self) -> &Array4 {
+                panic!()
+            }
+            fn cubature_weights(&self) -> Option<&Array2> {
+                None
+            }
             fn average_method(&self) -> crate::core::AveragingMethod {
                 crate::core::AveragingMethod::CubicMean
             }
@@ -222,7 +252,12 @@ mod tests {
                 static COORD_INDICES: std::sync::OnceLock<Array2> = std::sync::OnceLock::new();
                 COORD_INDICES.get_or_init(|| Array2::zeros((1, 1)))
             }
-            fn resolution(&self) -> usize { 1 }
+            fn resolution(&self) -> usize {
+                1
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
         }
         FakeGrid
     }

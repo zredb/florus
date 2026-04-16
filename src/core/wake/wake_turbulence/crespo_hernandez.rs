@@ -4,7 +4,7 @@
 
 use crate::types::{Float, Array1};
 use crate::core::wake::{BaseModel, TurbulenceModel};
-use crate::core::{GridBase, FlowField};
+use crate::core::{Grid, FlowField};
 use std::collections::HashMap;
 
 /// Crespo-Hernandez wake turbulence model parameters
@@ -32,7 +32,7 @@ impl CrespoHernandez {
 impl TurbulenceModel for CrespoHernandez {
     fn prepare_function(
         &self,
-        _grid: &dyn GridBase,
+        _grid: &dyn Grid,
         _flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array1>> {
         Ok(HashMap::new())

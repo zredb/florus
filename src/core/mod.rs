@@ -1,7 +1,8 @@
 /// Core data structures for FLORIS-RS
 ///
 /// Corresponds to core/ module in Python implementation
-pub mod base;
+pub mod core;
+pub mod models;
 pub mod farm;
 pub mod flow_field;
 pub mod grid;
@@ -11,10 +12,11 @@ pub mod state;
 pub mod turbines;
 pub mod wake;
 
-pub use base::*;
+pub use core::Core;
+pub use models::*;
 pub use farm::Farm;
 pub use flow_field::FlowField;
-pub use grid::{GridBase, TurbineGrid};
+pub use grid::{FlowFieldGrid, FlowFieldPlanarGrid, Grid, PointsGrid, TurbineCubatureGrid, TurbineGrid};
 pub use rotor_velocity::*;
 pub use solver::*;
 pub use state::State;

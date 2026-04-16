@@ -2,7 +2,7 @@
 ///
 /// Corresponds to flow_field.py
 use crate::{
-    types::{Array1, Array4, Float},
+    types::{Array1, Array2, Array4, Float},
     wind_data::WindData,
 };
 use ndarray::Array;
@@ -223,6 +223,48 @@ impl FlowField {
             90.0,
         )
         .unwrap()
+    }
+
+    pub fn finalize(&mut self, unsorted_indices: &Array2) {
+        let shape = self.u_sorted.shape();
+        let n_findex = shape[0];
+        let n_turbines = shape[1];
+        let n_y = shape[2];
+        let n_z = shape[3];
+
+        if n_findex == 0 || n_turbines == 0 {
+            return;
+        }
+
+        self.u = Array::zeros((n_findex, n_turbines, n_y, n_z));
+        self.v = Array::zeros((n_findex, n_turbines, n_y, n_z));
+        self.w = Array::zeros((n_findex, n_turbines, n_y, n_z));
+
+        for fi in 0..n_findex {
+            for new_i in 0..n_turbines {
+                let old_i = unsorted_indices[[fi, new_i]] as usize;
+                for iy in 0..n_y {
+                    for iz in 0..n_z {
+                        self.u[[fi, new_i, iy, iz]] = self.u_sorted[[fi, old_i, iy, iz]];
+                        self.v[[fi, new_i, iy, iz]] = self.v_sorted[[fi, old_i, iy, iz]];
+                        self.w[[fi, new_i, iy, iz]] = self.w_sorted[[fi, old_i, iy, iz]];
+                    }
+                }
+            }
+        }
+
+        self.turbulence_intensity_field = Array::zeros((n_findex, n_turbines, n_y, n_z));
+        for fi in 0..n_findex {
+            for new_i in 0..n_turbines {
+                let old_i = unsorted_indices[[fi, new_i]] as usize;
+                for iy in 0..n_y {
+                    for iz in 0..n_z {
+                        self.turbulence_intensity_field[[fi, new_i, iy, iz]] = 
+                            self.turbulence_intensity_field_sorted[[fi, old_i, iy, iz]];
+                    }
+                }
+            }
+        }
     }
 }
 

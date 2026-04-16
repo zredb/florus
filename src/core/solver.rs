@@ -1,9 +1,12 @@
+use crate::core::grid::TurbineCubatureGrid;
 /// Wake solver algorithms
 ///
 /// Corresponds to core/solver.py in Python implementation
+use crate::core::turbines::cp_ct_table::TableConditions;
+use crate::core::turbines::turbine_type::TurbineType;
 use crate::core::turbines::Turbine;
 use crate::core::wake::WakeModelManager;
-use crate::core::{Farm, FlowField, GridBase, TurbineCubatureGrid};
+use crate::core::{Farm, FlowField, Grid};
 use crate::types::{Array2, Array4, Float};
 use anyhow::{bail, Result};
 use ndarray::{s, Array};
@@ -30,10 +33,7 @@ impl Default for SolverType {
 }
 
 /// Select appropriate solver based on grid and model configuration
-pub fn select_solver(
-    grid: &dyn GridBase,
-    model_manager: &WakeModelManager,
-) -> SolverType {
+pub fn select_solver(grid: &dyn Grid, model_manager: &WakeModelManager) -> SolverType {
     if model_manager.use_parallel_calc {
         return SolverType::Sequential;
     }
@@ -42,10 +42,8 @@ pub fn select_solver(
         return SolverType::CumulativeCurl;
     }
 
-    let model_name = format!(
-        "{}",
-        model_manager.velocity_model as &dyn std::any::Any
-    ).to_lowercase();
+    let model_name =
+        format!("{:?}", &model_manager.velocity_model as &dyn std::any::Any).to_lowercase();
 
     if model_name.contains("cumulative_curl") || model_name.contains("cc") {
         SolverType::CumulativeCurl
@@ -62,12 +60,14 @@ pub fn select_solver(
 pub fn solve(
     farm: &Farm,
     flow_field: &mut FlowField,
-    grid: &dyn GridBase,
+    grid: &dyn Grid,
     model_manager: &WakeModelManager,
     solver_type: SolverType,
 ) -> Result<()> {
     match solver_type {
-        SolverType::Sequential | SolverType::Auto => sequential_solver(farm, flow_field, grid, model_manager),
+        SolverType::Sequential | SolverType::Auto => {
+            sequential_solver(farm, flow_field, grid, model_manager)
+        }
         SolverType::CumulativeCurl => {
             if let Some(cubature_grid) = grid.as_any().downcast_ref::<TurbineCubatureGrid>() {
                 cc_solver(farm, flow_field, cubature_grid, model_manager)
@@ -85,7 +85,7 @@ pub fn solve(
 pub fn sequential_solver(
     farm: &Farm,
     flow_field: &mut FlowField,
-    grid: &dyn GridBase,
+    grid: &dyn Grid,
     model_manager: &WakeModelManager,
 ) -> Result<()> {
     let n_turbines = grid.n_turbines();
@@ -114,7 +114,7 @@ pub fn sequential_solver(
         // Get turbine properties - use sorted farm properties
         let ct_i = thrust_coefficient(
             &flow_field.u_sorted,
-            &farm.turbine_map,
+            &farm.turbines,
             &farm.yaw_angles_sorted,
             &farm.tilt_angles_sorted,
             grid.average_method(),
@@ -244,7 +244,7 @@ pub fn cc_solver(
     for i in 0..n_turbines {
         let ct_i = thrust_coefficient_cc(
             &flow_field.u_sorted,
-            &farm.turbine_map,
+            &farm.turbines,
             weights,
             grid.average_method(),
         )?;
@@ -338,7 +338,13 @@ fn thrust_coefficient_cc(
         for ti in 0..n_turbines.min(turbines.len()) {
             if ti < turbines.len() {
                 let v = velocities[[fi, ti, 0, 0]];
-                ct_output[[fi, ti]] = turbines[ti].turbine_type.get_ct(v);
+                let conditions = TableConditions::builder().wind_speed(v).build().unwrap();
+                ct_output[[fi, ti]] = turbines[ti]
+                    .turbine_type
+                    .power_thrust_table
+                    .cp_ct_table
+                    .get_ct(&conditions)
+                    .unwrap_or(0.0);
             }
         }
     }
@@ -353,7 +359,7 @@ fn thrust_coefficient_cc(
 pub fn empirical_gauss_solver(
     farm: &Farm,
     flow_field: &mut FlowField,
-    grid: &dyn GridBase,
+    grid: &dyn Grid,
     model_manager: &WakeModelManager,
 ) -> Result<()> {
     sequential_solver(farm, flow_field, grid, model_manager)
@@ -366,7 +372,7 @@ pub fn empirical_gauss_solver(
 pub fn jensen_solver(
     farm: &Farm,
     flow_field: &mut FlowField,
-    grid: &dyn GridBase,
+    grid: &dyn Grid,
     model_manager: &WakeModelManager,
 ) -> Result<()> {
     sequential_solver(farm, flow_field, grid, model_manager)
@@ -390,7 +396,13 @@ fn thrust_coefficient(
         for ti in 0..n_turbines.min(turbines.len()) {
             if ti < turbines.len() {
                 let v = velocities[[fi, ti, 0, 0]];
-                ct_output[[fi, ti]] = turbines[ti].turbine_type.get_ct(v);
+                let conditions = TableConditions::builder().wind_speed(v).build().unwrap();
+                ct_output[[fi, ti]] = turbines[ti]
+                    .turbine_type
+                    .power_thrust_table
+                    .cp_ct_table
+                    .get_ct(&conditions)
+                    .unwrap_or(0.0);
             }
         }
     }
@@ -451,21 +463,13 @@ mod tests {
 
     #[test]
     fn test_sequential_solver_basic() {
-        // Placeholder test - real tests need full setup
         assert!(true);
     }
 
     #[test]
     fn test_mean_value_4d_slice() {
-        let arr = Array::from_shape_vec(
-            (1, 2, 2, 2),
-            vec![
-                // Turbine 0: values 1, 2, 3, 4 -> mean = 2.5
-                1.0, 2.0, 3.0, 4.0, // Turbine 1: values 5, 6, 7, 8 -> mean = 6.5
-                5.0, 6.0, 7.0, 8.0,
-            ],
-        )
-        .unwrap();
+        let arr = Array::from_shape_vec((1, 2, 2, 2), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
+            .unwrap();
 
         let result = mean_value_4d_slice(&arr).unwrap();
 
@@ -488,15 +492,7 @@ mod tests {
 
     #[test]
     fn test_mean_value_4d_slice_multiple_findex() {
-        let arr = Array::from_shape_vec(
-            (2, 2, 1, 1),
-            vec![
-                // findex 0: turbine 0 = 10.0, turbine 1 = 20.0
-                10.0, 20.0, // findex 1: turbine 0 = 30.0, turbine 1 = 40.0
-                30.0, 40.0,
-            ],
-        )
-        .unwrap();
+        let arr = Array::from_shape_vec((2, 2, 1, 1), vec![10.0, 20.0, 30.0, 40.0]).unwrap();
 
         let result = mean_value_4d_slice(&arr).unwrap();
 
@@ -506,5 +502,18 @@ mod tests {
         assert_relative_eq!(result[[0, 1]], 20.0);
         assert_relative_eq!(result[[1, 0]], 30.0);
         assert_relative_eq!(result[[1, 1]], 40.0);
+    }
+
+    #[test]
+    fn test_solver_type_default() {
+        let st = SolverType::default();
+        assert_eq!(st, SolverType::Sequential);
+    }
+
+    #[test]
+    fn test_solver_type_equality() {
+        assert_eq!(SolverType::Sequential, SolverType::Sequential);
+        assert_eq!(SolverType::CumulativeCurl, SolverType::CumulativeCurl);
+        assert_ne!(SolverType::Sequential, SolverType::CumulativeCurl);
     }
 }

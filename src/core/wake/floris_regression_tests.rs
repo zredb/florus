@@ -9,10 +9,11 @@
 //! - floris-4.6/tests/reg_tests/gauss_regression_test.py
 //! - floris-4.6/tests/reg_tests/jensen_jimenez_regression_test.py
 
-use crate::core::{Farm, FlowField};
+use crate::core::TurbineGrid;
 use crate::core::wake::{WakeModelManager, WakeModelStrings};
+use crate::floris_config::{FarmConfig, FlorisConfig, FlowFieldConfig, SolverConfig, WakeConfig};
+use crate::floris_model::FlorisModel;
 use crate::types::{Array1, Array2};
-use crate::FlorisModel;
 use ndarray::Array;
 
 /// Test fixture parameters from Python conftest.py
@@ -169,30 +170,39 @@ fn create_test_model(
 ) -> FlorisModel {
     let turbine_types = vec!["nrel_5MW".to_string(); N_TURBINES];
 
-    let farm = Farm::new(
-        Array1::from_vec(X_COORDS.to_vec()),
-        Array1::from_vec(Y_COORDS.to_vec()),
-        turbine_types,
-    ).expect("Failed to create farm");
+    let farm_config = FarmConfig {
+        layout_x: X_COORDS.to_vec(),
+        layout_y: Y_COORDS.to_vec(),
+        turbine_type: turbine_types,
+    };
 
-    let flow_field = FlowField::new(
-        Array1::from_vec(WIND_SPEEDS[0..4].to_vec()),
-        Array1::from_vec(WIND_DIRECTIONS[0..4].to_vec()),
-        0.0,
-        0.12,
-        1.225,
-        Array1::from_vec(TURBULENCE_INTENSITIES[0..4].to_vec()),
-        90.0,
-    ).expect("Failed to create flow field");
+    let flow_field_config = FlowFieldConfig {
+        wind_speeds: WIND_SPEEDS[0..4].to_vec(),
+        wind_directions: WIND_DIRECTIONS[0..4].to_vec(),
+        turbulence_intensities: TURBULENCE_INTENSITIES[0..4].to_vec(),
+        wind_shear: 0.12,
+        wind_veer: 0.0,
+        air_density: 1.225,
+        reference_wind_height: 90.0,
+        multidim_conditions: None,
+    };
 
-    FlorisModel {
-        farm,
-        flow_field,
-        state: crate::core::State::new(),
-        grid: None,
-        solver: SolverConfig::default(),
-        model_manager: None,
-    }
+    let solver_config = SolverConfig::default();
+    let wake_config = WakeConfig::default();
+
+    let config = FlorisConfig {
+        name: "test".to_string(),
+        description: Some("test".to_string()),
+        floris_version: "v4".to_string(),
+        logging: Default::default(),
+        solver: solver_config,
+        farm: farm_config,
+        flow_field: flow_field_config,
+        wake: wake_config,
+        turbine_library: "turbine_library".to_string(),
+    };
+
+    FlorisModel::from_config(config).expect("Failed to create FlorisModel")
 }
 
 /// Run the solver and extract results

@@ -18,9 +18,11 @@
 //! - Custom lookup tables from controller
 //! - Integration with external controller systems (ROSCO, ROSCO)
 
-use crate::types::Array2;
-use crate::core::turbines::operation_models::base::*;
 use super::CosineLossTurbine;
+use crate::{
+    core::{turbines::operation_models::OperationModel, TurbineContext, TurbineParameters},
+    types::Array2,
+};
 #[derive(Debug, Clone, Default)]
 pub struct ControllerDependentTurbine;
 
@@ -43,7 +45,11 @@ impl OperationModel for ControllerDependentTurbine {
         cosine.power(params, ctx)
     }
 
-    fn thrust_coefficient(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
+    fn thrust_coefficient(
+        &self,
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<Array2> {
         // TODO: Implement controller-dependent behavior
         // Currently delegated to CosineLossTurbine
         // Future enhancements could include:
@@ -55,9 +61,16 @@ impl OperationModel for ControllerDependentTurbine {
         cosine.thrust_coefficient(params, ctx)
     }
 
-    fn axial_induction(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
-        // Controller-dependent axial induction computed based on thrust coefficient
+    fn axial_induction(
+        &self,
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<Array2> {
         let cosine = CosineLossTurbine;
         cosine.axial_induction(params, ctx)
+    }
+
+    fn clone_box(&self) -> Box<dyn OperationModel> {
+        Box::new(self.clone())
     }
 }

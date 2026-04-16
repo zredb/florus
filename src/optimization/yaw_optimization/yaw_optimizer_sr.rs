@@ -43,8 +43,8 @@ impl YawOptimizationSR {
     }
 
     fn calculate_turbine_order(fmodel: &FlorisModel) -> Vec<usize> {
-        let n_turbines = fmodel.farm.n_turbines();
-        let layout_x = fmodel.farm.layout_x.clone();
+        let n_turbines = fmodel.farm().n_turbines();
+        let layout_x = fmodel.farm().layout_x.clone();
 
         let mut indices: Vec<(Float, usize)> = (0..n_turbines)
             .map(|i| (layout_x[i], i))
@@ -72,12 +72,12 @@ impl YawOptimization for YawOptimizationSR {
             self.config = cfg;
         }
 
-        if !fmodel.state.initialized {
+        if !fmodel.state().initialized {
             anyhow::bail!("FlorisModel must be run before optimization");
         }
 
-        let n_findex = fmodel.flow_field.n_findex;
-        let n_turbines = fmodel.farm.n_turbines();
+        let n_findex = fmodel.flow_field().n_findex;
+        let n_turbines = fmodel.farm().n_turbines();
 
         self.turbine_order = Self::calculate_turbine_order(fmodel);
 

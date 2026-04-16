@@ -1,5 +1,5 @@
 use crate::core::wake::{BaseModel, VelocityModel};
-use crate::core::{FlowField, GridBase};
+use crate::core::{FlowField, Grid};
 /// Gauss wake velocity model
 ///
 /// Gaussian wake model based on Bastankhah and Porte-Agel (2014, 2016)
@@ -40,7 +40,7 @@ impl GaussVelocity {
 impl VelocityModel for GaussVelocity {
     fn prepare_function(
         &self,
-        _grid: &dyn GridBase,
+        _grid: &dyn Grid,
         _flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array4>> {
         Ok(HashMap::new())
@@ -101,7 +101,9 @@ impl VelocityModel for GaussVelocity {
 
         // Start of far wake (x0)
         let x0 = rotor_diameter * cosd(yaw) * (1.0 + sqrt_one_minus_ct)
-            / (2.0_f64.sqrt() * (4.0 * self.alpha * turbulence_intensity + 2.0 * self.beta * (1.0 - sqrt_one_minus_ct)));
+            / (2.0_f64.sqrt()
+                * (4.0 * self.alpha * turbulence_intensity
+                    + 2.0 * self.beta * (1.0 - sqrt_one_minus_ct)));
 
         // Wake expansion rate
         let ky = self.ka * turbulence_intensity + self.kb;
@@ -128,10 +130,12 @@ impl VelocityModel for GaussVelocity {
                             let near_wake_ramp_up = (x_point - x_i) / x0;
                             let near_wake_ramp_down = (x_i + x0 - x_point) / x0;
 
-                            let sy = near_wake_ramp_down * 0.501 * rotor_diameter * (ct / 2.0).sqrt()
-                                + near_wake_ramp_up * sigma_y0;
-                            let sz = near_wake_ramp_down * 0.501 * rotor_diameter * (ct / 2.0).sqrt()
-                                + near_wake_ramp_up * sigma_z0;
+                            let sy =
+                                near_wake_ramp_down * 0.501 * rotor_diameter * (ct / 2.0).sqrt()
+                                    + near_wake_ramp_up * sigma_y0;
+                            let sz =
+                                near_wake_ramp_down * 0.501 * rotor_diameter * (ct / 2.0).sqrt()
+                                    + near_wake_ramp_up * sigma_z0;
                             (sy, sz)
                         } else {
                             // Far wake region
@@ -155,7 +159,9 @@ impl VelocityModel for GaussVelocity {
                             + dz * dz / (2.0 * sigma_z * sigma_z);
 
                         // C coefficient for velocity deficit
-                        let d = 1.0 - (ct * cosd(yaw) / (8.0 * sigma_y * sigma_z / (rotor_diameter * rotor_diameter)));
+                        let d = 1.0
+                            - (ct * cosd(yaw)
+                                / (8.0 * sigma_y * sigma_z / (rotor_diameter * rotor_diameter)));
                         let c = 1.0 - d.max(0.0).sqrt();
 
                         // Gaussian function
@@ -195,19 +201,39 @@ mod tests {
         assert!(result.unwrap().is_empty());
     }
 
-    fn fake_grid() -> impl crate::core::GridBase {
+    fn fake_grid() -> impl crate::core::Grid {
         struct FakeGrid;
-        impl crate::core::GridBase for FakeGrid {
-            fn n_turbines(&self) -> usize { 1 }
-            fn n_findex(&self) -> usize { 1 }
-            fn x_sorted(&self) -> &Array4 { panic!() }
-            fn y_sorted(&self) -> &Array4 { panic!() }
-            fn z_sorted(&self) -> &Array4 { panic!() }
-            fn x_sorted_inertial_frame(&self) -> &Array4 { panic!() }
-            fn y_sorted_inertial_frame(&self) -> &Array4 { panic!() }
-            fn z_sorted_inertial_frame(&self) -> &Array4 { panic!() }
-            fn cubature_weights(&self) -> Option<&Array2> { None }
-            fn average_method(&self) -> AveragingMethod { AveragingMethod::CubicMean }
+        impl crate::core::Grid for FakeGrid {
+            fn n_turbines(&self) -> usize {
+                1
+            }
+            fn n_findex(&self) -> usize {
+                1
+            }
+            fn x_sorted(&self) -> &Array4 {
+                panic!()
+            }
+            fn y_sorted(&self) -> &Array4 {
+                panic!()
+            }
+            fn z_sorted(&self) -> &Array4 {
+                panic!()
+            }
+            fn x_sorted_inertial_frame(&self) -> &Array4 {
+                panic!()
+            }
+            fn y_sorted_inertial_frame(&self) -> &Array4 {
+                panic!()
+            }
+            fn z_sorted_inertial_frame(&self) -> &Array4 {
+                panic!()
+            }
+            fn cubature_weights(&self) -> Option<&Array2> {
+                None
+            }
+            fn average_method(&self) -> AveragingMethod {
+                AveragingMethod::CubicMean
+            }
             fn sorted_indices(&self) -> &Array2 {
                 static INDICES: std::sync::OnceLock<Array2> = std::sync::OnceLock::new();
                 INDICES.get_or_init(|| Array2::zeros((1, 1)))
@@ -216,7 +242,12 @@ mod tests {
                 static COORD_INDICES: std::sync::OnceLock<Array2> = std::sync::OnceLock::new();
                 COORD_INDICES.get_or_init(|| Array2::zeros((1, 1)))
             }
-            fn resolution(&self) -> usize { 1 }
+            fn resolution(&self) -> usize {
+                1
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
         }
         FakeGrid
     }

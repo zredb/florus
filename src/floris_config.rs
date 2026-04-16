@@ -6,7 +6,7 @@
 use crate::types::Float;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_yaml::Value;
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 /// Top-level FLORIS configuration structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,12 +88,32 @@ pub struct SolverConfig {
     /// Number of grid points per turbine
     #[serde(default, rename = "turbine_grid_points")]
     pub turbine_grid_points: usize,
+
+    #[serde(default)]
+    pub grid_resolution: Option<[usize; 2]>,
+
+    #[serde(default)]
+    pub normal_vector: Option<String>,
+
+    #[serde(default)]
+    pub planar_coordinate: Option<Float>,
+
+    #[serde(default)]
+    pub x1_bounds: Option<(Float, Float)>,
+
+    #[serde(default)]
+    pub x2_bounds: Option<(Float, Float)>,
 }
 impl Default for SolverConfig {
     fn default() -> Self {
         Self {
             solver_type: SolverType::TurbineGrid,
             turbine_grid_points: 3,
+            grid_resolution: None,
+            normal_vector: None,
+            planar_coordinate: None,
+            x1_bounds: None,
+            x2_bounds: None,
         }
     }
 }
@@ -103,14 +123,19 @@ impl SolverConfig {
         Self {
             solver_type,
             turbine_grid_points,
+            grid_resolution: None,
+            normal_vector: None,
+            planar_coordinate: None,
+            x1_bounds: None,
+            x2_bounds: None,
         }
     }
     pub fn is_turbine_grid(&self) -> bool {
         matches!(self.solver_type, SolverType::TurbineGrid)
     }
 
-    pub fn is_turbine_cubature_grid(&self) -> bool {
-        matches!(self.solver_type, SolverType::TurbineCubatureGrid)
+    pub fn is_flow_field_planar_grid(&self) -> bool {
+        matches!(self.solver_type, SolverType::FlowFieldPlanarGrid)
     }
 }
 
@@ -119,6 +144,21 @@ impl SolverConfig {
 pub enum SolverType {
     TurbineGrid,
     TurbineCubatureGrid,
+    FlowFieldGrid,
+    FlowFieldPlanarGrid,
+}
+impl FromStr for SolverType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "turbine_grid" => Ok(SolverType::TurbineGrid),
+            "flow_field_grid" => Ok(SolverType::FlowFieldGrid),
+            "turbine_cubature_grid" => Ok(SolverType::TurbineCubatureGrid),
+            "flow_field_planar_grid" => Ok(SolverType::FlowFieldPlanarGrid),
+            _ => Err(format!("Unknown solver type: {}", s)),
+        }
+    }
 }
 
 /// Farm configuration

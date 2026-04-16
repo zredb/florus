@@ -3,9 +3,11 @@
 //! Power setpoint control that limits turbine power output
 //! When derated, thrust coefficient scales with power^(2/3)
 
-use crate::types::Array2;
-use crate::core::turbines::operation_models::base::*;
 use super::SimpleTurbine;
+use crate::{
+    core::{TurbineContext, TurbineParameters, turbines::{POWER_SETPOINT_DEFAULT, operation_models::OperationModel}},
+    types::Array2,
+};
 
 /// Simple derating: limit power to specified setpoint
 #[derive(Debug, Clone, Default)]
@@ -37,7 +39,11 @@ impl OperationModel for SimpleDeratingTurbine {
         }
     }
 
-    fn thrust_coefficient(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
+    fn thrust_coefficient(
+        &self,
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<Array2> {
         let simple = SimpleTurbine;
         let base_ct = simple.thrust_coefficient(params, ctx)?;
         let base_power = simple.power(params, ctx)?;
@@ -61,8 +67,16 @@ impl OperationModel for SimpleDeratingTurbine {
         }
     }
 
-    fn axial_induction(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
+    fn axial_induction(
+        &self,
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<Array2> {
         let ct = self.thrust_coefficient(params, ctx)?;
         Ok(crate::core::turbines::operation_models::helpers::axial_induction_from_ct(&ct))
+    }
+
+    fn clone_box(&self) -> Box<dyn OperationModel> {
+        Box::new(self.clone())
     }
 }

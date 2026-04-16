@@ -3,7 +3,7 @@
 /// Combines wake fields by linear superposition
 use crate::types::Array4;
 use crate::core::wake::CombinationModel;
-use crate::core::{GridBase, FlowField};
+use crate::core::{Grid, FlowField};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy)]
@@ -14,7 +14,7 @@ pub use FLSCopied as FLS;
 impl CombinationModel for FLS {
     fn prepare_function(
         &self,
-        _grid: &dyn GridBase,
+        _grid: &dyn Grid,
         _flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array4>> {
         Ok(HashMap::new())
@@ -108,7 +108,7 @@ use ndarray::Array;
     
     // Fake implementations for testing
     struct FakeGrid;
-    impl crate::core::GridBase for FakeGrid {
+    impl crate::core::Grid for FakeGrid {
         fn n_turbines(&self) -> usize { 1 }
         fn n_findex(&self) -> usize { 1 }
         fn x_sorted(&self) -> &Array4 { panic!() }
@@ -130,5 +130,8 @@ use ndarray::Array;
             COORD_INDICES.get_or_init(|| Array2::zeros((1, 1)))
         }
         fn resolution(&self) -> usize { 1 }
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
     }
 }

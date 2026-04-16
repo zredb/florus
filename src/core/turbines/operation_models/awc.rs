@@ -9,8 +9,10 @@
 //! - Implementation of helix wake mixing model
 
 use super::CosineLossTurbine;
-use crate::core::turbines::operation_models::base::*;
-use crate::types::Array2;
+use crate::{
+    core::{turbines::operation_models::OperationModel, TurbineContext, TurbineParameters},
+    types::Array2,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct AWCTurbine;
@@ -43,5 +45,9 @@ impl OperationModel for AWCTurbine {
     ) -> crate::Result<Array2> {
         let cosine = CosineLossTurbine;
         cosine.axial_induction(params, ctx)
+    }
+
+    fn clone_box(&self) -> Box<dyn OperationModel> {
+        Box::new(self.clone())
     }
 }

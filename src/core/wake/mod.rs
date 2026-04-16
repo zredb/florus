@@ -8,7 +8,7 @@ pub mod wake_velocity;
 pub mod wake_manager;
 
 // Re-export base traits
-pub use super::base::{
+pub use super::models::{
     BaseModel, CombinationModel, DeflectionModel,
     TurbulenceModel, VelocityModel,
 };
