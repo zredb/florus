@@ -237,6 +237,9 @@ impl Core {
             }
         }
 
+        // Mark as uninitialized since grid changed - will be reinitialized on next run()
+        self.state.initialized = false;
+
         Ok(())
     }
 

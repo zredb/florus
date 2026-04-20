@@ -207,7 +207,7 @@ mod tests {
 
     #[test]
     fn test_load_multidimensional_data() {
-        let file = "src/turbine_library/iea_15MW_multi_dim_Tp_Hs.csv";
+        let file = "turbine_library/iea_15MW_multi_dim_Tp_Hs.csv";
 
         // 加载数据
         let table = CsvDataLoader::load_multidimensional_data(file).unwrap();

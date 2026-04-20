@@ -195,23 +195,21 @@ impl FlorisModel {
     ///
     /// This implementation matches Python FLORIS's CosineLossTurbine.power() method:
     /// 1. Uses cubic-mean for rotor average velocity
-    /// 2. Applies air density correction
+    /// 2. Applies air density correction  
     /// 3. Applies yaw cosine correction
-    /// 4. Uses power curve interpolation directly
+    /// 4. Uses power curve interpolation directly from cp_ct_table
     pub fn get_turbine_powers(&self) -> Array2 {
+        use crate::core::turbines::cp_ct_table::TableConditions;
+        
         let n_findex = self.core.flow_field.n_findex;
         let n_turbines = self.core.farm.n_turbines();
-        let yaw_angles = &self.core.farm.yaw_angles_sorted;
-        let tilt_angles = &self.core.farm.tilt_angles_sorted;
+        // Use unsorted arrays to match Python FLORIS behavior
+        let yaw_angles = &self.core.farm.yaw_angles;
+        let tilt_angles = &self.core.farm.tilt_angles;
 
         let mut powers = Array::zeros((n_findex, n_turbines));
-        let velocities = &self.core.flow_field.u_sorted;
-
-        // Default parameters matching Python FLORIS
-        let ref_air_density = 1.225; // Standard air density
-        let cosine_loss_exponent_yaw = 1.88; // Default from Python FLORIS
-        let cosine_loss_exponent_tilt = 1.88;
-        let ref_tilt = 5.0; // Default reference tilt angle for nrel_5MW
+        // Use unsorted velocity field
+        let velocities = &self.core.flow_field.u;
 
         for ti in 0..n_turbines {
             if ti >= self.core.farm.turbines.len() {
@@ -219,11 +217,13 @@ impl FlorisModel {
             }
 
             let turbine = &self.core.farm.turbines[ti];
-            let rated_power = turbine.turbine_type.rated_power.unwrap_or(5e6); // Watts
+            
+            let ref_air_density = turbine.turbine_type.power_thrust_table.ref_air_density.unwrap_or(1.225);
+            let cosine_loss_exponent_yaw = turbine.turbine_type.power_thrust_table.cosine_loss_exponent_yaw.unwrap_or(1.88);
+            let cosine_loss_exponent_tilt = turbine.turbine_type.power_thrust_table.cosine_loss_exponent_tilt.unwrap_or(1.88);
+            let ref_tilt = turbine.turbine_type.power_thrust_table.ref_tilt.unwrap_or(5.0);
 
             for fi in 0..n_findex {
-                // Step 1: Calculate rotor average velocity using cubic mean
-                // cubic_mean = cbrt(mean(v^3))
                 let mut v_cubed_sum = 0.0;
                 let grid_points = velocities.shape()[2] * velocities.shape()[3];
                 for iy in 0..velocities.shape()[2] {
@@ -233,44 +233,22 @@ impl FlorisModel {
                 }
                 let rotor_avg_velocity = (v_cubed_sum / grid_points as f64).powf(1.0 / 3.0);
 
-                // Step 2: Apply air density correction
-                // rotor_effective_velocity = (air_density/ref_air_density)^(1/3) * rotor_avg_velocity
-                let density_factor =
-                    (self.core.flow_field.air_density / ref_air_density).powf(1.0 / 3.0);
+                let density_factor = (self.core.flow_field.air_density / ref_air_density).powf(1.0 / 3.0);
                 let mut rotor_effective_velocity = rotor_avg_velocity * density_factor;
 
-                // Step 3: Apply yaw cosine correction
-                // rotor_effective_velocity *= cosd(yaw)^(cosine_loss_exponent_yaw/3)
                 let yaw = yaw_angles[[fi, ti]];
                 let yaw_correction = cosd(yaw).powf(cosine_loss_exponent_yaw / 3.0);
                 rotor_effective_velocity *= yaw_correction;
 
-                // Step 4: Apply tilt cosine correction
                 let tilt = tilt_angles[[fi, ti]];
-                let tilt_correction =
-                    (cosd(tilt) / cosd(ref_tilt)).powf(cosine_loss_exponent_tilt / 3.0);
+                let tilt_correction = (cosd(tilt) / cosd(ref_tilt)).powf(cosine_loss_exponent_tilt / 3.0);
                 rotor_effective_velocity *= tilt_correction;
 
-                // Step 5: Calculate power using simplified model
-                // Use a typical wind turbine power curve approximation
-                let power = if rotor_effective_velocity < 3.0 {
-                    0.0 // Below cut-in speed
-                } else if rotor_effective_velocity > 25.0 {
-                    0.0 // Above cut-out speed
-                } else if rotor_effective_velocity < 12.0 {
-                    let cp = 0.45;
-                    let area =
-                        std::f64::consts::PI * (turbine.turbine_type.rotor_diameter / 2.0).powi(2);
-                    0.5 * self.core.flow_field.air_density
-                        * area
-                        * cp
-                        * rotor_effective_velocity.powi(3)
-                } else {
-                    rated_power // At or above rated speed
-                };
+                let mut conditions = TableConditions::default();
+                conditions.wind_speed = rotor_effective_velocity;
+                let power_kw = turbine.turbine_type.power_thrust_table.cp_ct_table.get_cp(&conditions).unwrap_or(0.0);
 
-                // Clip to rated power
-                powers[[fi, ti]] = power.min(rated_power).max(0.0);
+                powers[[fi, ti]] = power_kw * 1000.0;
             }
         }
 
@@ -565,10 +543,8 @@ impl FlorisModel {
                 let velocity = self.core.flow_field.wind_speeds[fi];
                 if ti < self.core.farm.turbines.len() {
                     let turbine_type = &self.core.farm.turbines[ti].turbine_type;
-                    let conditions = TableConditions::builder()
-                        .wind_speed(velocity)
-                        .build()
-                        .unwrap();
+                    let mut conditions = TableConditions::default();
+                    conditions.wind_speed = velocity;
                     ct_array[[fi, ti]] = turbine_type
                         .power_thrust_table
                         .cp_ct_table
@@ -894,6 +870,9 @@ impl FlorisModel {
         self.core
             .farm
             .initialize_control_arrays(self.core.flow_field.n_findex);
+        
+        // Mark farm as uninitialized so it will be properly reinitialized on next run()
+        self.core.farm.state.initialized = false;
         self.core.grid = None;
         Ok(())
     }
@@ -917,6 +896,24 @@ impl FlorisModel {
     pub fn set_layout(&mut self, layout_x: &Array1, layout_y: &Array1) -> crate::Result<()> {
         self.core.farm.set_layout(layout_x, layout_y)?;
         self.core.grid = None; // Reset grid when layout changes
+        Ok(())
+    }
+
+    /// Set wind shear exponent
+    pub fn set_wind_shear(&mut self, wind_shear: Float) -> crate::Result<()> {
+        self.core.flow_field.wind_shear = wind_shear;
+        Ok(())
+    }
+
+    /// Set air density
+    pub fn set_air_density(&mut self, air_density: Float) -> crate::Result<()> {
+        self.core.flow_field.air_density = air_density;
+        Ok(())
+    }
+
+    /// Set reference wind height
+    pub fn set_reference_wind_height(&mut self, reference_wind_height: Float) -> crate::Result<()> {
+        self.core.flow_field.reference_wind_height = reference_wind_height;
         Ok(())
     }
 

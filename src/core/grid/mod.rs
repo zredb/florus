@@ -49,7 +49,7 @@ pub trait Grid {
         let z = self.z_sorted();
         let mut heights = Array1::zeros(n_turbines);
         for ti in 0..n_turbines {
-            heights[ti] = z[[0, ti, 0, 0]];
+            heights[ti] = z[[0, ti, 0, 1]];
         }
         heights
     }

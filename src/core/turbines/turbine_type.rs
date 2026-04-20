@@ -486,7 +486,7 @@ mod tests {
 
     #[test]
     fn test_load_turbine_type_nrel_5mw() {
-        let yaml_path = "src/turbine_library/nrel_5MW.yaml";
+        let yaml_path = "turbine_library/nrel_5MW.yaml";
         let turbine_type = TurbineType::load_turbine_type(yaml_path);
         assert!(turbine_type.is_ok());
         let turbine_type = turbine_type.unwrap();
@@ -547,7 +547,7 @@ mod tests {
     }
     #[test]
     fn test_load_turbine_type_iea_10mw() {
-        let yaml_path = "src/turbine_library/iea_10MW.yaml";
+        let yaml_path = "turbine_library/iea_10MW.yaml";
         let turbine_type_result = TurbineType::load_turbine_type(yaml_path);
         if turbine_type_result.as_ref().is_err() {
             println!(
@@ -621,7 +621,7 @@ mod tests {
     }
     #[test]
     fn test_load_turbine_type_iea_15mw() {
-        let yaml_path = "src/turbine_library/iea_15MW.yaml";
+        let yaml_path = "turbine_library/iea_15MW.yaml";
         let turbine_type_result = TurbineType::load_turbine_type(yaml_path);
         if turbine_type_result.as_ref().is_err() {
             println!(
@@ -677,7 +677,7 @@ mod tests {
 
     #[test]
     fn test_load_turbine_type_iea_22mw() {
-        let yaml_path = "src/turbine_library/iea_22MW.yaml";
+        let yaml_path = "turbine_library/iea_22MW.yaml";
         let turbine_type_result = TurbineType::load_turbine_type(yaml_path);
         if turbine_type_result.as_ref().is_err() {
             println!(
@@ -715,7 +715,7 @@ mod tests {
     }
     #[test]
     fn test_load_turbine_type_iea_15mw_multi_dim_cp_ct() {
-        let yaml_path = "src/turbine_library/iea_15MW_multi_dim_cp_ct.yaml";
+        let yaml_path = "turbine_library/iea_15MW_multi_dim_cp_ct.yaml";
         let turbine_type_result = TurbineType::load_turbine_type(yaml_path);
         if turbine_type_result.as_ref().is_err() {
             println!(
@@ -763,7 +763,7 @@ mod tests {
 
     #[test]
     fn test_load_turbine_type_iea_15mw_floating_multi_dim_cp_ct() {
-        let yaml_path = "src/turbine_library/iea_15MW_floating_multi_dim_cp_ct.yaml";
+        let yaml_path = "turbine_library/iea_15MW_floating_multi_dim_cp_ct.yaml";
         let turbine_type_result = TurbineType::load_turbine_type(yaml_path);
         if turbine_type_result.as_ref().is_err() {
             println!(

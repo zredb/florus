@@ -2,6 +2,8 @@ use crate::core::grid::TurbineCubatureGrid;
 /// Wake solver algorithms
 ///
 /// Corresponds to core/solver.py in Python implementation
+use std::collections::HashMap;
+
 use crate::core::turbines::cp_ct_table::TableConditions;
 use crate::core::turbines::turbine_type::TurbineType;
 use crate::core::turbines::Turbine;
@@ -338,7 +340,8 @@ fn thrust_coefficient_cc(
         for ti in 0..n_turbines.min(turbines.len()) {
             if ti < turbines.len() {
                 let v = velocities[[fi, ti, 0, 0]];
-                let conditions = TableConditions::builder().wind_speed(v).build().unwrap();
+                let mut conditions = TableConditions::default();
+                conditions.wind_speed = v;
                 ct_output[[fi, ti]] = turbines[ti]
                     .turbine_type
                     .power_thrust_table
@@ -396,7 +399,8 @@ fn thrust_coefficient(
         for ti in 0..n_turbines.min(turbines.len()) {
             if ti < turbines.len() {
                 let v = velocities[[fi, ti, 0, 0]];
-                let conditions = TableConditions::builder().wind_speed(v).build().unwrap();
+                let mut conditions = TableConditions::default();
+                conditions.wind_speed = v;
                 ct_output[[fi, ti]] = turbines[ti]
                     .turbine_type
                     .power_thrust_table

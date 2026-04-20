@@ -1,0 +1,167 @@
+warning: florus@0.1.0: Copied default_input.yaml to OUT_DIR
+warning: florus@0.1.0: Using python to convert .mat file
+warning: florus@0.1.0: Successfully generated turbopark_lookup.rs
+    Finished `release` profile [optimized] target(s) in 0.30s
+     Running `target\release\examples\001_opening_floris_computing_power.exe`
+Successfully loaded turbine_library/nrel_5MW.yaml
+Successfully loaded turbine_library/iea_10MW.yaml
+Successfully loaded turbine_library/iea_15MW.yaml
+Successfully loaded turbine_library/iea_15MW_floating_multi_dim_cp_ct.yaml
+Successfully loaded turbine_library/iea_15MW_multi_dim_cp_ct.yaml
+Successfully loaded turbine_library/iea_22MW.yaml
+[src\core\core.rs:100:9] "Initializing Core from config: {:?}" = "Initializing Core from config: {:?}"
+[src\core\core.rs:100:9] &config = FlorisConfig {
+    name: "GCH",
+    description: Some(
+        "Three turbines using Gauss Curl Hybrid model",
+    ),
+    floris_version: "v4",
+    logging: LoggingConfig {
+        console: Some(
+            ConsoleLoggingConfig {
+                enable: true,
+                level: "WARNING",
+            },
+        ),
+        file: Some(
+            FileLoggingConfig {
+                enable: false,
+                level: "WARNING",
+            },
+        ),
+    },
+    solver: SolverConfig {
+        solver_type: TurbineGrid,
+        turbine_grid_points: 3,
+        grid_resolution: None,
+        normal_vector: None,
+        planar_coordinate: None,
+        x1_bounds: None,
+        x2_bounds: None,
+    },
+    farm: FarmConfig {
+        layout_x: [
+            0.0,
+            630.0,
+            1260.0,
+        ],
+        layout_y: [
+            0.0,
+            0.0,
+            0.0,
+        ],
+        turbine_type: [
+            "nrel_5MW",
+        ],
+    },
+    flow_field: FlowFieldConfig {
+        wind_speeds: [
+            8.0,
+        ],
+        wind_directions: [
+            270.0,
+        ],
+        turbulence_intensities: [
+            0.06,
+        ],
+        air_density: 1.225,
+        wind_shear: 0.12,
+        wind_veer: 0.0,
+        reference_wind_height: -1.0,
+        multidim_conditions: Some(
+            MultiDimConditions {
+                tp: 2.5,
+                hs: 3.01,
+            },
+        ),
+    },
+    wake: WakeConfig {
+        model_strings: WakeModelStringsConfig {
+            velocity_model: Gauss {
+                alpha: 0.58,
+                beta: 0.077,
+                ka: 0.38,
+                kb: 0.004,
+            },
+            deflection_model: Gauss {
+                alpha: 0.58,
+                beta: 0.077,
+                ad: 0.0,
+                bd: 0.0,
+                dm: 1.0,
+                ka: 0.38,
+                kb: 0.004,
+            },
+            turbulence_model: CrespoHernandez {
+                initial: 0.1,
+                constant: 0.5,
+                ai: 0.8,
+                downstream: -0.32,
+            },
+            combination_model: SOSFS,
+        },
+        enable_secondary_steering: true,
+        enable_yaw_added_recovery: true,
+        enable_active_wake_mixing: false,
+        enable_transverse_velocities: true,
+        enable_wake_mixing: false,
+        use_parallel_calc: false,
+    },
+    turbine_library: "",
+}
+
+[Gauss Model DIAG] Turbine 1 at point [1,1]
+  x_point=630, x_i=0, downstream_dist=630
+  y_i=-31.47, y_point=0, deflection=0
+  wake_center_y=-31.47, dy=31.47
+  hub_height=90, z_point=90, dz=0
+  sigma_y=45.87242490582967, sigma_z=45.87242490582967
+  r=0.23532067929122658
+  d_raw=0.2520468995789923, c=0.4979572731539752
+
+[DIAGNOSTIC] After processing turbine 0 (sorted index):
+  Max wake_field at turbine 1: 3.1484 m/s
+  Velocity deficit ratio at turbine 1 center: 0.3935
+  Absolute velocity deficit at turbine 1 center: 3.1484 m/s
+  u_initial at turbine 1 center: 8.0000 m/s
+The turbine power matrix should be of dimensions 4 (n_findex) X 2 (n_turbines)
+  findex 0: [1766.430017239125, 621.5868191505342]
+  findex 1: [1766.430017239125, 621.5868191505342]
+  findex 2: [3439.965909709222, 1221.258573281624]
+  findex 3: [3439.965909709222, 1221.258573281624]
+Shape: (4, 2)
+
+The farm power should be a 1D array of length 4 (n_findex)
+Farm power (kW): [2388.016836389659, 2388.016836389659, 4661.224482990846, 4661.224482990846]
+Shape: (4,)
+
+=== Diagnostic Information ===
+Wind speeds: [8.0, 8.0, 10.0, 10.0]
+Wind directions: [270.0, 270.0, 270.0, 270.0]
+Turbulence intensities: [0.06, 0.06, 0.06, 0.06]
+Air density: 1.225
+
+Turbine positions:
+  Turbine 0: x=0, y=0, hub_height=90
+  Turbine 1: x=630, y=0, hub_height=90
+
+Grid information:
+Velocity field shape: [4, 2, 3, 3]
+  [findex, turbine, y_grid, z_grid]
+
+Checking sorted vs unsorted arrays:
+u_sorted shape: [4, 2, 3, 3]
+u (unsorted) shape: [4, 2, 3, 3]
+
+First turbine (turbine 0), first findex:
+Unsorted u[0,0,:,:]:
+  [0,0]: 7.5974  [0,1]: 8.0000  [0,2]: 8.2931
+  [1,0]: 7.5974  [1,1]: 8.0000  [1,2]: 8.2931
+  [2,0]: 7.5974  [2,1]: 8.0000  [2,2]: 8.2931
+
+Second turbine (turbine 1), first findex:
+Unsorted u[0,1,:,:]:
+  [0,0]: 4.6075  [0,1]: 4.0163  [0,2]: 5.0294
+  [1,0]: 5.2344  [1,1]: 4.8516  [1,2]: 5.7137
+  [2,0]: 6.4310  [2,1]: 6.4459  [2,2]: 7.0198
+Turbine 1: center=4.8516 m/s, rotor_avg=5.6389 m/s

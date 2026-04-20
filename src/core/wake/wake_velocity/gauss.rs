@@ -70,9 +70,30 @@ impl VelocityModel for GaussVelocity {
 
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
-        // Use the specified turbine's position as the wake source
-        let x_i = x[[0, turbine_index, 0, 0]];
-        let y_i = y[[0, turbine_index, 0, 0]];
+        // Calculate turbine center coordinates as mean of all grid points
+        // This matches Python FLORIS behavior: np.mean(grid.x_sorted[:, i:i+1], axis=(2, 3))
+        let mut x_i_array = Array::zeros((n_findex, n_turbines));
+        let mut y_i_array = Array::zeros((n_findex, n_turbines));
+
+        for fi in 0..n_findex {
+            for ti in 0..n_turbines {
+                let mut x_sum = 0.0;
+                let mut y_sum = 0.0;
+                let mut count = 0;
+                for iy in 0..n_y {
+                    for iz in 0..n_z {
+                        x_sum += x[[fi, ti, iy, iz]];
+                        y_sum += y[[fi, ti, iy, iz]];
+                        count += 1;
+                    }
+                }
+                x_i_array[[fi, ti]] = x_sum / count as f64;
+                y_i_array[[fi, ti]] = y_sum / count as f64;
+            }
+        }
+
+        let x_i = x_i_array[[0, turbine_index]];
+        let y_i = y_i_array[[0, turbine_index]];
 
         // Turbine upstream of reference point (x < 0) doesn't generate a wake
         if x_i < 0.0 {

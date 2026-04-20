@@ -8,7 +8,7 @@ fn main() -> florus::Result<()> {
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
     fmodel.set_layout(
-        &Array1::from_vec(vec![0.0, 500.0]),
+        &Array1::from_vec(vec![0.0, 630.0]),
         &Array1::from_vec(vec![0.0, 0.0]),
     )?;
 

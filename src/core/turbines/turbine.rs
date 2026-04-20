@@ -72,13 +72,20 @@ impl Turbine {
                     .power_thrust_table
                     .cp_ct_table
                     .wind_speeds();
+                if fi == 0 && ti == 0 {
+                    log::warn!("DEBUG: v={}, ws[0]={}, ws[-1]={}", v, wind_speed[0], wind_speed[wind_speed.len() - 1]);
+                }
 
                 if v < wind_speed[0] || v > wind_speed[wind_speed.len() - 1] {
                     power_output[[fi, ti]] = 0.0;
                 } else {
-                    // Use turbine_type's power curve interpolation
-                    let base_power_kw = self.turbine_type.power_thrust_table.cp_ct_table.get_cp(&TableConditions::builder().wind_speed(v).build().unwrap()).unwrap();
-                    let power_watts = base_power_kw * 1000.0;
+                    let mut conditions = TableConditions::default();
+                    conditions.wind_speed = v;
+                    let power_kw = self.turbine_type.power_thrust_table.cp_ct_table.get_cp(&conditions).unwrap();
+                    let power_watts = power_kw * 1000.0;
+                    if fi == 0 && ti == 0 {
+                        eprintln!("DEBUG: v={}, power_kw={}, power_watts={}", v, power_kw, power_watts);
+                    }
 
                     // Apply yaw correction from operation model
                     if let Some(yaw) = yaw_angles {
@@ -134,7 +141,8 @@ impl Turbine {
         for fi in 0..shape[0] {
             for ti in 0..shape[1] {
                 let v = rotor_velocities[[fi, ti, 0]];
-                let conditions = TableConditions::builder().wind_speed(v).build().unwrap();
+                let mut conditions = TableConditions::default();
+                conditions.wind_speed = v;
                 ct_output[[fi, ti]] = self
                     .turbine_type
                     .power_thrust_table

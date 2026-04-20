@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn test_load_npy_file_success() {
         let mut test_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        test_file.push("src/turbine_library/demo_cp_ct_surfaces/iea_10MW_demo_cp_ct_surface.npz");
+        test_file.push("turbine_library/demo_cp_ct_surfaces/iea_10MW_demo_cp_ct_surface.npz");
 
         let result = NpzDataLoader::load_npz_file(&test_file);
 

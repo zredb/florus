@@ -19,7 +19,6 @@ impl CombinationModel for SOSFSCopied {
     }
 
     fn function(&self, wake_field: &Array4, velocity_field: &Array4) -> anyhow::Result<Array4> {
-        // Square root of sum of squares: sqrt(wake^2 + velocity^2)
         let shape = wake_field.shape();
         let mut result = Array4::zeros((shape[0], shape[1], shape[2], shape[3]));
 
@@ -27,9 +26,9 @@ impl CombinationModel for SOSFSCopied {
             for t in 0..shape[1] {
                 for y in 0..shape[2] {
                     for z in 0..shape[3] {
-                        let w_val = wake_field[[f, t, y, z]];
-                        let v_val = velocity_field[[f, t, y, z]];
-                        result[[f, t, y, z]] = (w_val.powi(2) + v_val.powi(2)).sqrt();
+                        let deficit = wake_field[[f, t, y, z]];
+                        let velocity_deficit = velocity_field[[f, t, y, z]];
+                        result[[f, t, y, z]] = (deficit.powi(2) + velocity_deficit.powi(2)).sqrt();
                     }
                 }
             }
@@ -80,10 +79,7 @@ mod tests {
 
         let result = sosfs.function(&wake_field, &velocity_field).unwrap();
 
-        // SOSFS should compute sqrt(wake^2 + velocity^2)
-        // sqrt(3^2 + 4^2) = 5.0
-        assert_relative_eq!(result[[0, 0, 0, 0]], 5.0);
-        // sqrt(0^2 + 5^2) = 5.0
+        assert_relative_eq!(result[[0, 0, 0, 0]], (3.0_f64.powi(2) + 4.0_f64.powi(2)).sqrt(), epsilon = 1e-6);
         assert_relative_eq!(result[[0, 0, 1, 1]], 5.0);
     }
 
