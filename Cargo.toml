@@ -26,6 +26,24 @@ log = "0.4"
 env_logger = "0.11"
 zip = "2.2"
 derive_builder = "0.20.2"
+plotters = { version = "0.3", features = ["full_palette"] }
 
 [dev-dependencies]
 criterion = "0.5"
+
+# Examples in subdirectories need explicit declaration
+[[example]]
+name = "001_extract_wind_speed_at_turbines"
+path = "examples/examples_get_flow/001_extract_wind_speed_at_turbines.rs"
+
+[[example]]
+name = "002_extract_wind_speed_at_points"
+path = "examples/examples_get_flow/002_extract_wind_speed_at_points.rs"
+
+[[example]]
+name = "003_extract_turbulence_intensity_at_points"
+path = "examples/examples_get_flow/003_extract_turbulence_intensity_at_points.rs"
+
+[[example]]
+name = "004_plot_velocity_deficit_profiles"
+path = "examples/examples_get_flow/004_plot_velocity_deficit_profiles.rs"

@@ -2,6 +2,7 @@
 ///
 /// Corresponds to core/ module in Python implementation
 pub mod core;
+pub mod cut_plane;
 pub mod models;
 pub mod farm;
 pub mod flow_field;
@@ -13,6 +14,7 @@ pub mod turbines;
 pub mod wake;
 
 pub use core::Core;
+pub use cut_plane::{CutPlane, extract_horizontal_plane};
 pub use models::*;
 pub use farm::Farm;
 pub use flow_field::FlowField;

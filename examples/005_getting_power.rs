@@ -54,14 +54,15 @@ fn main() -> florus::Result<()> {
     // Get the turbine powers
     let turbine_powers = fmodel.get_turbine_powers();
 
-    // Turbines powers will have shape (n_findex, n_turbines)
-    println!("\nTurbine power shape: {:?}", turbine_powers.shape());
+    // Turbines powers will have shape (n_findex, n_turbines) where n_findex is the number of unique
+    // wind conditions and n_turbines is the number of turbines in the farm
+    println!("Turbine power has shape {:?}", turbine_powers.shape());
 
     // It is also possible to get the farm power directly
     let farm_power = fmodel.get_farm_power();
 
     // Farm power has length n_findex, and is the sum of the turbine powers
-    println!("Farm power shape: {:?}", farm_power.shape());
+    println!("Farm power has shape {:?}", farm_power.shape());
 
     // Print some sample results
     println!("\nSample results (first 5 conditions):");
@@ -118,10 +119,12 @@ fn main() -> florus::Result<()> {
         }
     }
 
-    fmodel_rose.set_wind_conditions(
+    fmodel_rose.set_wind_conditions_with_rose(
         Array1::from_vec(rose_wind_speeds),
         Array1::from_vec(rose_wind_directions),
         Array1::from_vec(rose_tis),
+        wd_values.clone(),
+        ws_values.clone(),
     )?;
 
     println!("Wind directions: {:?}", wd_values);
@@ -130,20 +133,23 @@ fn main() -> florus::Result<()> {
 
     fmodel_rose.run()?;
 
-    let turbine_powers = fmodel_rose.get_turbine_powers();
-    println!("\nShape of turbine powers: {:?}", turbine_powers.shape());
+    // Use reshaped methods to match Python output format
+    let turbine_powers = fmodel_rose.get_turbine_powers_rose();
 
-    let farm_power = fmodel_rose.get_farm_power();
+    println!("Shape of turbine powers: {:?}", turbine_powers.shape());
+
+    let farm_power = fmodel_rose.get_farm_power_rose();
+
     println!("Shape of farm power: {:?}", farm_power.shape());
 
     // Print results organized by wind direction and speed
     println!("\nFarm power by condition:");
-    for idx in 0..farm_power.len() {
-        let wd_idx = idx / ws_values.len();
-        let ws_idx = idx % ws_values.len();
-        print!("  WD={:.0}°: ", wd_values[wd_idx]);
-        println!("WS={:.0}m/s → Farm Power={:.0}kW", 
-                 ws_values[ws_idx], farm_power[idx] / 1000.0);
+    for wd_idx in 0..wd_values.len() {
+        for ws_idx in 0..ws_values.len() {
+            print!("  WD={:.0}°: ", wd_values[wd_idx]);
+            println!("WS={:.0}m/s → Farm Power={:.0}kW", 
+                     ws_values[ws_idx], farm_power[[wd_idx, ws_idx]] / 1000.0);
+        }
     }
 
     println!("\nExample 5 completed successfully!");

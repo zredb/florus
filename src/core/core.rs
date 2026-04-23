@@ -30,6 +30,18 @@ pub struct Core {
     // Runtime fields
     pub grid: Option<Box<dyn Grid>>,
     pub state: State,
+    
+    // Wind data metadata for reshaping (WindRose information)
+    pub wind_data_info: Option<WindDataInfo>,
+}
+
+/// Information about wind data structure for reshaping results
+#[derive(Debug, Clone)]
+pub struct WindDataInfo {
+    pub wind_directions: Vec<f64>,
+    pub wind_speeds: Vec<f64>,
+    pub n_wind_directions: usize,
+    pub n_wind_speeds: usize,
 }
 
 impl fmt::Debug for Core {
@@ -61,6 +73,7 @@ impl Clone for Core {
             floris_version: self.floris_version.clone(),
             grid: None, // Grid needs to be recreated
             state: self.state.clone(),
+            wind_data_info: self.wind_data_info.clone(),
         }
     }
 }
@@ -97,7 +110,6 @@ impl Core {
     ///
     /// This method performs all initialization steps equivalent to Python's __attrs_post_init__
     pub fn from_config(config: FlorisConfig) -> crate::Result<Self> {
-        dbg!("Initializing Core from config: {:?}", &config);
         // Create flow field
         let wind_speeds = Array1::from_vec(config.flow_field.wind_speeds.clone());
         let wind_directions = Array1::from_vec(config.flow_field.wind_directions.clone());
@@ -147,6 +159,7 @@ impl Core {
             floris_version: config.floris_version.clone(),
             grid: None,
             state,
+            wind_data_info: None, // Default to None for YAML-based initialization
         };
 
         // Initialize grid based on solver type

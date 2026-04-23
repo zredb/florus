@@ -79,7 +79,7 @@ impl TurbineLibrary {
         for file in &internal_turbine_files {
             if Path::new(file).exists() {
                 match self.load_turbine_from_file(file) {
-                    Ok(_) => println!("Successfully loaded {}", file),
+                    Ok(_) => {},  // Silent success
                     Err(e) => eprintln!("Failed to load {}: {}", file, e),
                 }
             } else {
@@ -106,7 +106,7 @@ impl TurbineLibrary {
         // 加载收集到的外部风机文件
         for file_path in external_files_to_load {
             match self.load_turbine_from_file(&file_path) {
-                Ok(_) => println!("Successfully loaded external turbine: {}", file_path),
+                Ok(_) => {},  // Silent success
                 Err(e) => eprintln!("Failed to load external turbine {}: {}", file_path, e),
             }
         }

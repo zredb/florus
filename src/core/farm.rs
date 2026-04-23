@@ -435,7 +435,9 @@ impl Farm {
     }
 
     pub fn set_yaw_angles(&mut self, yaw_angles: Array2) {
-        self.yaw_angles = yaw_angles;
+        self.yaw_angles = yaw_angles.clone();
+        // Also update sorted array to keep them in sync
+        self.yaw_angles_sorted = yaw_angles;
     }
 
     pub fn set_yaw_angles_to_ref_yaw(&mut self, n_findex: usize) {
@@ -467,7 +469,9 @@ impl Farm {
     }
 
     pub fn set_power_setpoints(&mut self, power_setpoints: Array2) {
-        self.power_setpoints = power_setpoints;
+        self.power_setpoints = power_setpoints.clone();
+        // Also update sorted array to keep them in sync
+        self.power_setpoints_sorted = power_setpoints;
     }
 
     pub fn set_power_setpoints_to_ref_power(&mut self, n_findex: usize) {
@@ -603,23 +607,24 @@ impl Farm {
     pub fn initialize_control_arrays(&mut self, n_findex: usize) {
         let n_turbines = self.n_turbines();
 
-        self.yaw_angles = Array2::zeros((n_findex, n_turbines));
-        self.yaw_angles_sorted = Array2::zeros((n_findex, n_turbines));
-
-        self.tilt_angles = Array2::zeros((n_findex, n_turbines));
-        self.tilt_angles_sorted = Array2::zeros((n_findex, n_turbines));
-
-        self.power_setpoints = Array2::zeros((n_findex, n_turbines));
-        self.power_setpoints_sorted = Array2::zeros((n_findex, n_turbines));
-
-        self.awc_modes = NdArray2::from_elem((n_findex, n_turbines), "baseline".to_string());
-        self.awc_modes_sorted = NdArray2::from_elem((n_findex, n_turbines), "baseline".to_string());
-
-        self.awc_amplitudes = Array2::zeros((n_findex, n_turbines));
-        self.awc_amplitudes_sorted = Array2::zeros((n_findex, n_turbines));
-
-        self.awc_frequencies = Array2::zeros((n_findex, n_turbines));
-        self.awc_frequencies_sorted = Array2::zeros((n_findex, n_turbines));
+        // Only initialize if arrays don't exist or have wrong size
+        // This preserves user-set values like yaw_angles during optimization
+        let needs_init = self.yaw_angles.dim().0 != n_findex || self.yaw_angles.dim().1 != n_turbines;
+        
+        if needs_init {
+            self.yaw_angles = Array2::zeros((n_findex, n_turbines));
+            self.yaw_angles_sorted = Array2::zeros((n_findex, n_turbines));
+            self.tilt_angles = Array2::zeros((n_findex, n_turbines));
+            self.tilt_angles_sorted = Array2::zeros((n_findex, n_turbines));
+            self.power_setpoints = Array2::zeros((n_findex, n_turbines));
+            self.power_setpoints_sorted = Array2::zeros((n_findex, n_turbines));
+            self.awc_modes = NdArray2::from_elem((n_findex, n_turbines), "baseline".to_string());
+            self.awc_modes_sorted = NdArray2::from_elem((n_findex, n_turbines), "baseline".to_string());
+            self.awc_amplitudes = Array2::zeros((n_findex, n_turbines));
+            self.awc_amplitudes_sorted = Array2::zeros((n_findex, n_turbines));
+            self.awc_frequencies = Array2::zeros((n_findex, n_turbines));
+            self.awc_frequencies_sorted = Array2::zeros((n_findex, n_turbines));
+        }
     }
 
     /// Set turbine layout

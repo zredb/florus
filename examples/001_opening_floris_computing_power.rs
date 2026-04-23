@@ -24,18 +24,39 @@ fn main() -> florus::Result<()> {
     let farm_power = fmodel.get_farm_power() / 1000.0;
 
     println!("The turbine power matrix should be of dimensions 4 (n_findex) X 2 (n_turbines)");
-    for (i, row) in turbine_powers.axis_iter(Axis(0)).enumerate() {
-        println!("  findex {}: {:?}", i, row.as_slice().unwrap());
+    // Print the full array similar to Python's numpy output
+    for i in 0..turbine_powers.shape()[0] {
+        if i == 0 {
+            print!("[");
+        } else {
+            print!(" ");
+        }
+        print!("[");
+        for j in 0..turbine_powers.shape()[1] {
+            if j > 0 {
+                print!(" ");
+            }
+            print!("{:12.8}", turbine_powers[[i, j]]);
+        }
+        print!("]");
+        if i < turbine_powers.shape()[0] - 1 {
+            println!();
+        } else {
+            println!("]");
+        }
     }
-    println!(
-        "Shape: ({}, {})",
-        turbine_powers.shape()[0],
-        turbine_powers.shape()[1]
-    );
+    println!("Shape:  ({}, {})", turbine_powers.shape()[0], turbine_powers.shape()[1]);
 
     println!("\nThe farm power should be a 1D array of length 4 (n_findex)");
-    println!("Farm power (kW): {:?}", farm_power.as_slice().unwrap());
-    println!("Shape: ({},)", farm_power.shape()[0]);
+    print!("[");
+    for i in 0..farm_power.shape()[0] {
+        if i > 0 {
+            print!(" ");
+        }
+        print!("{:12.8}", farm_power[i]);
+    }
+    println!("]");
+    println!("Shape:  ({},)", farm_power.shape()[0]);
 
     Ok(())
 }
