@@ -396,3 +396,158 @@ mod tests {
         let _ = std::fs::remove_file("test_rotor.png");
     }
 }
+
+/// Cut plane data structure for visualization
+#[derive(Debug, Clone)]
+pub struct CutPlaneData {
+    pub x1: Vec<f64>,
+    pub x2: Vec<f64>,
+    pub u: Vec<f64>,
+    pub resolution: (usize, usize),
+}
+
+/// Visualize a cut plane with contour plot
+///
+/// This function creates a 2D contour plot of wind speed from cut plane data.
+///
+/// # Arguments
+/// * `cut_plane` - CutPlaneData containing the plane data
+/// * `output_path` - Path to save the output image
+/// * `min_speed` - Minimum wind speed for color scale
+/// * `max_speed` - Maximum wind speed for color scale
+/// * `cmap_name` - Colormap name (coolwarm, viridis, plasma, etc.)
+/// * `color_bar` - Whether to show color bar
+/// * `title` - Plot title
+pub fn visualize_cut_plane<P: AsRef<Path>>(
+    cut_plane: &crate::core::cut_plane::CutPlane,
+    output_path: P,
+    min_speed: Option<f64>,
+    max_speed: Option<f64>,
+    cmap_name: &str,
+    color_bar: bool,
+    title: &str,
+) -> Result<()> {
+    use crate::core::cut_plane::CutPlane;
+    
+    // Get data from cut plane
+    let x1 = &cut_plane.data.x1;
+    let x2 = &cut_plane.data.x2;
+    let u = &cut_plane.data.u;
+    
+    if x1.is_empty() || x2.is_empty() || u.is_empty() {
+        anyhow::bail!("Cut plane data is empty");
+    }
+    
+    // Calculate min/max speeds
+    let vmin = min_speed.unwrap_or(u.iter().cloned().fold(f64::INFINITY, |a, b| a.min(b)));
+    let vmax = max_speed.unwrap_or(u.iter().cloned().fold(f64::NEG_INFINITY, |a, b| a.max(b)));
+    
+    // Get colormap function
+    let colormap_fn = get_colormap(cmap_name);
+    
+    // Create the plot
+    let root = BitMapBackend::new(output_path.as_ref(), (1200, 800)).into_drawing_area();
+    root.fill(&WHITE)?;
+    
+    let title_text = if title.is_empty() {
+        "Flow Visualization".to_string()
+    } else {
+        title.to_string()
+    };
+    
+    let mut chart = ChartBuilder::on(&root)
+        .caption(&title_text, ("sans-serif", 25).into_font())
+        .margin(10)
+        .x_label_area_size(60)
+        .y_label_area_size(80)
+        .build_cartesian_2d(
+            x1.iter().cloned().fold(f64::INFINITY, f64::min)..x1.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+            x2.iter().cloned().fold(f64::INFINITY, f64::min)..x2.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+        )?;
+    
+    chart.configure_mesh()
+        .x_desc("X Position (m)")
+        .y_desc("Y Position (m)")
+        .draw()?;
+    
+    // Draw contour using rectangles
+    let n_points = x1.len();
+    let grid_size = (n_points as f64).sqrt() as usize;
+    
+    for i in 0..n_points {
+        let normalized = ((u[i] - vmin) / (vmax - vmin)).clamp(0.0, 1.0);
+        let color = colormap_fn(normalized);
+        
+        chart.draw_series(std::iter::once(
+            Circle::new((x1[i], x2[i]), 5, color.filled()),
+        ))?;
+    }
+    
+    // Add color bar if requested
+    if color_bar {
+        let color_bar_x = x1.iter().cloned().fold(f64::INFINITY, f64::min) 
+            + (x1.iter().cloned().fold(f64::NEG_INFINITY, f64::max) - x1.iter().cloned().fold(f64::INFINITY, f64::min)) * 1.05;
+        
+        for i in 0..100 {
+            let t = i as f64 / 100.0;
+            let speed = vmin + t * (vmax - vmin);
+            let y_pos = x2.iter().cloned().fold(f64::INFINITY, f64::min) 
+                + t * (x2.iter().cloned().fold(f64::NEG_INFINITY, f64::max) - x2.iter().cloned().fold(f64::INFINITY, f64::min));
+            let color = colormap_fn(t);
+            
+            chart.draw_series(std::iter::once(
+                Rectangle::new(
+                    [(color_bar_x, y_pos), (color_bar_x + 10.0, y_pos + 5.0)],
+                    color.filled(),
+                ),
+            ))?;
+        }
+    }
+    
+    root.present()?;
+    
+    println!("  Saved cut plane visualization to: {}", output_path.as_ref().display());
+    Ok(())
+}
+
+/// Visualize cut plane with turbine rotors
+pub fn visualize_cut_plane_with_rotors<P: AsRef<Path>>(
+    cut_plane: &crate::core::cut_plane::CutPlane,
+    fmodel: &crate::FlorisModel,
+    output_path: P,
+    min_speed: Option<f64>,
+    max_speed: Option<f64>,
+    cmap_name: &str,
+    show_rotors: bool,
+    color_bar: bool,
+    title: &str,
+) -> Result<()> {
+    // First visualize the cut plane
+    visualize_cut_plane(cut_plane, &output_path, min_speed, max_speed, cmap_name, color_bar, title)?;
+    
+    // TODO: Add turbine rotor visualization
+    // This would require overlaying turbine positions and rotor orientations
+    
+    Ok(())
+}
+
+/// Visualize cut plane with turbine rotors and labels
+pub fn visualize_cut_plane_with_rotors_and_labels<P: AsRef<Path>>(
+    cut_plane: &crate::core::cut_plane::CutPlane,
+    fmodel: &crate::FlorisModel,
+    output_path: P,
+    min_speed: Option<f64>,
+    max_speed: Option<f64>,
+    cmap_name: &str,
+    turbine_names: &[&str],
+    show_rotors: bool,
+    color_bar: bool,
+    title: &str,
+) -> Result<()> {
+    // First visualize the cut plane
+    visualize_cut_plane(cut_plane, &output_path, min_speed, max_speed, cmap_name, color_bar, title)?;
+    
+    // TODO: Add turbine rotor and label visualization
+    
+    Ok(())
+}

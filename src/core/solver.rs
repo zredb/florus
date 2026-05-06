@@ -94,6 +94,7 @@ pub fn sequential_solver(
     let n_findex = grid.n_findex();
 
     let shape = grid.x_sorted().shape();
+    let grid_second_dim = shape[1]; // This could be n_turbines or total_points depending on grid type
     let grid_y_dim = shape[2];
     let grid_z_dim = shape[3];
 
@@ -104,7 +105,8 @@ pub fn sequential_solver(
 
     // Initialize wake field arrays
     // This stores the combined wake deficit (in velocity units, not ratio)
-    let mut wake_field: Array4 = Array::zeros((n_findex, n_turbines, grid_y_dim, grid_z_dim));
+    // Use grid_second_dim instead of n_turbines to support FlowFieldPlanarGrid
+    let mut wake_field: Array4 = Array::zeros((n_findex, grid_second_dim, grid_y_dim, grid_z_dim));
 
     // Prepare combination model function arguments
     let _combination_model_args = model_manager

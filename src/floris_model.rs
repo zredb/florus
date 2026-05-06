@@ -907,6 +907,371 @@ impl FlorisModel {
         &self.core.flow_field
     }
 
+    /// Calculate horizontal plane at specified height
+    ///
+    /// # Arguments
+    /// * `height` - Height above ground (m)
+    /// * `x_resolution` - Number of grid points in x direction
+    /// * `y_resolution` - Number of grid points in y direction
+    ///
+    /// # Returns
+    /// CutPlane containing the horizontal slice of the flow field
+    pub fn calculate_horizontal_plane(
+        &self,
+        height: f64,
+        x_resolution: usize,
+        y_resolution: usize,
+    ) -> crate::Result<crate::core::cut_plane::CutPlane> {
+        use crate::core::grid::FlowFieldPlanarGrid;
+        use ndarray::Array;
+
+        // Create a copy for visualization
+        let mut fmodel_viz = self.clone();
+
+        // Get turbine coordinates, diameters, and hub heights
+        let n_turbines = fmodel_viz.core.farm.n_turbines();
+        let mut turbine_coords = Array::zeros((n_turbines, 2));
+        let mut turbine_diams = Array::zeros(n_turbines);
+        let mut turbine_hub_heights = Array::zeros(n_turbines);
+        
+        for i in 0..n_turbines {
+            turbine_coords[[i, 0]] = fmodel_viz.core.farm.layout_x[i];
+            turbine_coords[[i, 1]] = fmodel_viz.core.farm.layout_y[i];
+            turbine_diams[i] = fmodel_viz.core.farm.turbines[i].turbine_type.rotor_diameter;
+            turbine_hub_heights[i] = fmodel_viz.core.farm.turbines[i].turbine_type.hub_height;
+        }
+
+        // Get wind directions for first findex only
+        let wind_dirs = Array::from_vec(vec![fmodel_viz.core.flow_field.wind_directions[0]]);
+
+        // Create FlowFieldPlanarGrid for horizontal plane (normal_vector="z")
+        let planar_grid = FlowFieldPlanarGrid::new(
+            turbine_coords,
+            turbine_diams,
+            turbine_hub_heights,
+            wind_dirs,
+            [x_resolution, y_resolution],
+            "z".to_string(),
+            height,
+            None,  // x1_bounds
+            None,  // x2_bounds
+        )?;
+
+        // Set the grid
+        fmodel_viz.core.grid = Some(Box::new(planar_grid));
+
+        // Reinitialize flow field with new grid
+        if let Some(ref grid) = fmodel_viz.core.grid {
+            fmodel_viz.core.flow_field.initialize_flow_field(
+                grid.grid_shape(),
+                grid.z_sorted(),
+                &grid.hub_heights(),
+            );
+        }
+
+        // Mark as initialized
+        fmodel_viz.core.state.initialized = true;
+
+        // Solve for visualization (single findex)
+        fmodel_viz.core.solve_for_viz()?;
+
+        // Extract data from the solved flow field
+        let u_sorted = &fmodel_viz.core.flow_field.u_sorted;
+        let v_sorted = &fmodel_viz.core.flow_field.v_sorted;
+        let w_sorted = &fmodel_viz.core.flow_field.w_sorted;
+
+        if let Some(ref grid) = fmodel_viz.core.grid {
+            // Get inertial frame coordinates for horizontal plane
+            let x_inertial = grid.x_sorted_inertial_frame();
+            let y_inertial = grid.y_sorted_inertial_frame();
+            let z_inertial = grid.z_sorted_inertial_frame();
+
+            // Extract first findex (findex=0)
+            let x_flat = x_inertial.slice(ndarray::s![0, .., 0, 0]);
+            let y_flat = y_inertial.slice(ndarray::s![0, .., 0, 0]);
+            let z_flat = z_inertial.slice(ndarray::s![0, .., 0, 0]);
+            let u_flat = u_sorted.slice(ndarray::s![0, .., 0, 0]);
+            let v_flat = v_sorted.slice(ndarray::s![0, .., 0, 0]);
+            let w_flat = w_sorted.slice(ndarray::s![0, .., 0, 0]);
+
+            // Filter to only include points at the specified height (within tolerance)
+            let tol = 0.1;
+            let mut x1_vals = Vec::new();
+            let mut x2_vals = Vec::new();
+            let mut x3_vals = Vec::new();
+            let mut u_vals = Vec::new();
+            let mut v_vals = Vec::new();
+            let mut w_vals = Vec::new();
+
+            for i in 0..x_flat.len() {
+                if (z_flat[i] - height).abs() < tol {
+                    x1_vals.push(x_flat[i]);
+                    x2_vals.push(y_flat[i]);
+                    x3_vals.push(z_flat[i]);
+                    u_vals.push(u_flat[i]);
+                    v_vals.push(v_flat[i]);
+                    w_vals.push(w_flat[i]);
+                }
+            }
+
+            // Create CutPlane
+            let cut_plane = crate::core::cut_plane::CutPlane {
+                data: crate::core::cut_plane::CutPlaneData {
+                    x1: Array::from_vec(x1_vals),
+                    x2: Array::from_vec(x2_vals),
+                    x3: Array::from_vec(x3_vals),
+                    u: Array::from_vec(u_vals),
+                    v: Array::from_vec(v_vals),
+                    w: Array::from_vec(w_vals),
+                },
+                normal_vector: "z".to_string(),
+                resolution: (x_resolution, y_resolution),
+            };
+
+            Ok(cut_plane)
+        } else {
+            anyhow::bail!("Grid not initialized after setting planar grid.");
+        }
+    }
+
+    /// Calculate a y-plane (vertical plane along wind direction)
+    pub fn calculate_y_plane(
+        &self,
+        x_resolution: usize,
+        z_resolution: usize,
+        crossstream_dist: f64,
+    ) -> crate::Result<crate::core::cut_plane::CutPlane> {
+        use crate::core::grid::FlowFieldPlanarGrid;
+        use ndarray::Array;
+
+        // Create a copy for visualization
+        let mut fmodel_viz = self.clone();
+
+        // Get turbine coordinates, diameters, and hub heights
+        let n_turbines = fmodel_viz.core.farm.n_turbines();
+        let mut turbine_coords = Array::zeros((n_turbines, 2));
+        let mut turbine_diams = Array::zeros(n_turbines);
+        let mut turbine_hub_heights = Array::zeros(n_turbines);
+        
+        for i in 0..n_turbines {
+            turbine_coords[[i, 0]] = fmodel_viz.core.farm.layout_x[i];
+            turbine_coords[[i, 1]] = fmodel_viz.core.farm.layout_y[i];
+            turbine_diams[i] = fmodel_viz.core.farm.turbines[i].turbine_type.rotor_diameter;
+            turbine_hub_heights[i] = fmodel_viz.core.farm.turbines[i].turbine_type.hub_height;
+        }
+
+        // Get wind directions for first findex only
+        let wind_dirs = Array::from_vec(vec![fmodel_viz.core.flow_field.wind_directions[0]]);
+
+        // Create FlowFieldPlanarGrid for y-plane (normal_vector="y")
+        let planar_grid = FlowFieldPlanarGrid::new(
+            turbine_coords,
+            turbine_diams,
+            turbine_hub_heights,
+            wind_dirs,
+            [x_resolution, z_resolution],
+            "y".to_string(),
+            crossstream_dist,
+            None,  // x1_bounds
+            None,  // x2_bounds
+        )?;
+
+        // Set the grid
+        fmodel_viz.core.grid = Some(Box::new(planar_grid));
+
+        // Reinitialize flow field with new grid
+        if let Some(ref grid) = fmodel_viz.core.grid {
+            fmodel_viz.core.flow_field.initialize_flow_field(
+                grid.grid_shape(),
+                grid.z_sorted(),
+                &grid.hub_heights(),
+            );
+        }
+
+        // Mark as initialized
+        fmodel_viz.core.state.initialized = true;
+
+        // Solve for visualization (single findex)
+        fmodel_viz.core.solve_for_viz()?;
+
+        // Extract data from the solved flow field
+        let u_sorted = &fmodel_viz.core.flow_field.u_sorted;
+        let v_sorted = &fmodel_viz.core.flow_field.v_sorted;
+        let w_sorted = &fmodel_viz.core.flow_field.w_sorted;
+
+        if let Some(ref grid) = fmodel_viz.core.grid {
+            // Get inertial frame coordinates for y-plane
+            let x_inertial = grid.x_sorted_inertial_frame();
+            let y_inertial = grid.y_sorted_inertial_frame();
+            let z_inertial = grid.z_sorted_inertial_frame();
+
+            // Extract first findex (findex=0)
+            let x_flat = x_inertial.slice(ndarray::s![0, .., 0, 0]);
+            let y_flat = y_inertial.slice(ndarray::s![0, .., 0, 0]);
+            let z_flat = z_inertial.slice(ndarray::s![0, .., 0, 0]);
+            let u_flat = u_sorted.slice(ndarray::s![0, .., 0, 0]);
+            let v_flat = v_sorted.slice(ndarray::s![0, .., 0, 0]);
+            let w_flat = w_sorted.slice(ndarray::s![0, .., 0, 0]);
+
+            // Filter to only include points at the specified crossstream distance (within tolerance)
+            let tol = 0.1;
+            let mut x1_vals = Vec::new();
+            let mut x2_vals = Vec::new();
+            let mut x3_vals = Vec::new();
+            let mut u_vals = Vec::new();
+            let mut v_vals = Vec::new();
+            let mut w_vals = Vec::new();
+
+            for i in 0..x_flat.len() {
+                if (y_flat[i] - crossstream_dist).abs() < tol {
+                    x1_vals.push(x_flat[i]);
+                    x2_vals.push(z_flat[i]);
+                    x3_vals.push(y_flat[i]);
+                    u_vals.push(u_flat[i]);
+                    v_vals.push(v_flat[i]);
+                    w_vals.push(w_flat[i]);
+                }
+            }
+
+            // Create CutPlane
+            let cut_plane = crate::core::cut_plane::CutPlane {
+                data: crate::core::cut_plane::CutPlaneData {
+                    x1: Array::from_vec(x1_vals),
+                    x2: Array::from_vec(x2_vals),
+                    x3: Array::from_vec(x3_vals),
+                    u: Array::from_vec(u_vals),
+                    v: Array::from_vec(v_vals),
+                    w: Array::from_vec(w_vals),
+                },
+                normal_vector: "y".to_string(),
+                resolution: (x_resolution, z_resolution),
+            };
+
+            Ok(cut_plane)
+        } else {
+            anyhow::bail!("Grid not initialized after setting planar grid.");
+        }
+    }
+
+    /// Calculate a cross-plane (vertical plane across wind direction)
+    pub fn calculate_cross_plane(
+        &self,
+        y_resolution: usize,
+        z_resolution: usize,
+        downstream_dist: f64,
+    ) -> crate::Result<crate::core::cut_plane::CutPlane> {
+        use crate::core::grid::FlowFieldPlanarGrid;
+        use ndarray::Array;
+
+        // Create a copy for visualization
+        let mut fmodel_viz = self.clone();
+
+        // Get turbine coordinates, diameters, and hub heights
+        let n_turbines = fmodel_viz.core.farm.n_turbines();
+        let mut turbine_coords = Array::zeros((n_turbines, 2));
+        let mut turbine_diams = Array::zeros(n_turbines);
+        let mut turbine_hub_heights = Array::zeros(n_turbines);
+        
+        for i in 0..n_turbines {
+            turbine_coords[[i, 0]] = fmodel_viz.core.farm.layout_x[i];
+            turbine_coords[[i, 1]] = fmodel_viz.core.farm.layout_y[i];
+            turbine_diams[i] = fmodel_viz.core.farm.turbines[i].turbine_type.rotor_diameter;
+            turbine_hub_heights[i] = fmodel_viz.core.farm.turbines[i].turbine_type.hub_height;
+        }
+
+        // Get wind directions for first findex only
+        let wind_dirs = Array::from_vec(vec![fmodel_viz.core.flow_field.wind_directions[0]]);
+
+        // Create FlowFieldPlanarGrid for cross-plane (normal_vector="x")
+        let planar_grid = FlowFieldPlanarGrid::new(
+            turbine_coords,
+            turbine_diams,
+            turbine_hub_heights,
+            wind_dirs,
+            [y_resolution, z_resolution],
+            "x".to_string(),
+            downstream_dist,
+            None,  // x1_bounds
+            None,  // x2_bounds
+        )?;
+
+        // Set the grid
+        fmodel_viz.core.grid = Some(Box::new(planar_grid));
+
+        // Reinitialize flow field with new grid
+        if let Some(ref grid) = fmodel_viz.core.grid {
+            fmodel_viz.core.flow_field.initialize_flow_field(
+                grid.grid_shape(),
+                grid.z_sorted(),
+                &grid.hub_heights(),
+            );
+        }
+
+        // Mark as initialized
+        fmodel_viz.core.state.initialized = true;
+
+        // Solve for visualization (single findex)
+        fmodel_viz.core.solve_for_viz()?;
+
+        // Extract data from the solved flow field
+        let u_sorted = &fmodel_viz.core.flow_field.u_sorted;
+        let v_sorted = &fmodel_viz.core.flow_field.v_sorted;
+        let w_sorted = &fmodel_viz.core.flow_field.w_sorted;
+
+        if let Some(ref grid) = fmodel_viz.core.grid {
+            // Get inertial frame coordinates for cross-plane
+            let x_inertial = grid.x_sorted_inertial_frame();
+            let y_inertial = grid.y_sorted_inertial_frame();
+            let z_inertial = grid.z_sorted_inertial_frame();
+
+            // Extract first findex (findex=0)
+            let x_flat = x_inertial.slice(ndarray::s![0, .., 0, 0]);
+            let y_flat = y_inertial.slice(ndarray::s![0, .., 0, 0]);
+            let z_flat = z_inertial.slice(ndarray::s![0, .., 0, 0]);
+            let u_flat = u_sorted.slice(ndarray::s![0, .., 0, 0]);
+            let v_flat = v_sorted.slice(ndarray::s![0, .., 0, 0]);
+            let w_flat = w_sorted.slice(ndarray::s![0, .., 0, 0]);
+
+            // Filter to only include points at the specified downstream distance (within tolerance)
+            let tol = 0.1;
+            let mut x1_vals = Vec::new();
+            let mut x2_vals = Vec::new();
+            let mut x3_vals = Vec::new();
+            let mut u_vals = Vec::new();
+            let mut v_vals = Vec::new();
+            let mut w_vals = Vec::new();
+
+            for i in 0..x_flat.len() {
+                if (x_flat[i] - downstream_dist).abs() < tol {
+                    x1_vals.push(y_flat[i]);
+                    x2_vals.push(z_flat[i]);
+                    x3_vals.push(x_flat[i]);
+                    u_vals.push(u_flat[i]);
+                    v_vals.push(v_flat[i]);
+                    w_vals.push(w_flat[i]);
+                }
+            }
+
+            // Create CutPlane
+            let cut_plane = crate::core::cut_plane::CutPlane {
+                data: crate::core::cut_plane::CutPlaneData {
+                    x1: Array::from_vec(x1_vals),
+                    x2: Array::from_vec(x2_vals),
+                    x3: Array::from_vec(x3_vals),
+                    u: Array::from_vec(u_vals),
+                    v: Array::from_vec(v_vals),
+                    w: Array::from_vec(w_vals),
+                },
+                normal_vector: "x".to_string(),
+                resolution: (y_resolution, z_resolution),
+            };
+
+            Ok(cut_plane)
+        } else {
+            anyhow::bail!("Grid not initialized after setting planar grid.");
+        }
+    }
+
     /// Get state reference (immutable)
     pub fn state(&self) -> &State {
         &self.core.state

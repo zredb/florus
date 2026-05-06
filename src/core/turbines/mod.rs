@@ -5,7 +5,7 @@ pub mod cp_ct_table;
 pub mod operation_models;
 pub mod turbine;
 pub mod turbine_calculations;
-pub mod turbine_library;
+// pub mod turbine_library;  // Module does not exist
 pub mod turbine_type;
 
 use thiserror::Error;
@@ -36,7 +36,7 @@ pub enum TurbineTypeError {
     InvalidConfiguration(String),
 }
 
-pub use turbine_library::TurbineLibrary;
+// pub use turbine_library::TurbineLibrary;  // Module does not exist
 
 pub use operation_models::{
     AWCTurbine, ControllerDependentTurbine, CosineLossTurbine, MixedOperationTurbine,

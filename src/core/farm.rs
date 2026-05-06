@@ -1,5 +1,4 @@
 use crate::core::turbines::turbine_type::TurbineType;
-use crate::core::turbines::TurbineLibrary;
 use crate::core::{AveragingMethod, State, Turbine, TurbineGrid};
 use crate::types::{Array1, Array2, Float, NumericDict};
 use crate::utilities::load_yaml;
@@ -85,37 +84,22 @@ impl Farm {
             );
         }
 
-        // 确保TurbineLibrary已经被初始化
-        if TurbineLibrary::get_loaded_turbines().is_empty() {
-            // 如果还没有初始化，这里应该预先加载一些默认类型
-            // 或者您可以确保在创建Farm之前调用TurbineLibrary::initialize()之类的函数
-            TurbineLibrary::init_if_needed()?;
-        }
-
-        // 获取TurbineType引用
-        let mut tts = Vec::new();
-        for t in turbine_types {
-            match TurbineLibrary::get_turbine(t) {
-                Some(turbine_type) => tts.push(turbine_type),
-                None => {
-                    anyhow::bail!(
-                        "Turbine type '{}' not found in turbine library. Available types: {:?}",
-                        t,
-                        TurbineLibrary::get_loaded_turbines()
-                    );
-                }
-            }
-        }
-
-        // 如果只有一个类型，扩展到所有涡轮机
-        let turbine_types = if tts.len() == 1 && n_turbines > 1 {
-            vec![tts[0].clone(); n_turbines]
-        } else {
-            tts
-        };
+        // 加载TurbineType
         let mut turbines = Vec::new();
-        for tt in turbine_types {
-            turbines.push(Turbine { turbine_type: tt });
+        if turbine_types.len() == 1 {
+            // Single turbine type for all turbines
+            let turbine_path = format!("turbine_library/{}.yaml", turbine_types[0]);
+            let turbine_type = TurbineType::load_turbine_type(&turbine_path)
+                .map_err(|e| anyhow::anyhow!("Failed to load turbine type '{}': {}", turbine_types[0], e))?;
+            turbines = vec![Turbine { turbine_type }; n_turbines];
+        } else {
+            // Multiple turbine types, one per turbine
+            for t in turbine_types {
+                let turbine_path = format!("turbine_library/{}.yaml", t);
+                let turbine_type = TurbineType::load_turbine_type(&turbine_path)
+                    .map_err(|e| anyhow::anyhow!("Failed to load turbine type '{}': {}", t, e))?;
+                turbines.push(Turbine { turbine_type });
+            }
         }
 
         let mut farm = Self {

@@ -9,6 +9,7 @@ use std::any::Any;
 pub struct FlowFieldPlanarGrid {
     pub turbine_coordinates: Array2,
     pub turbine_diameters: Array1,
+    pub turbine_hub_heights: Array1,  // Added to store hub heights
     pub wind_directions: Array1,
     pub grid_resolution: [usize; 2], // [nx1, nx2]
     pub normal_vector: String, // "x", "y", or "z"
@@ -34,6 +35,7 @@ impl FlowFieldPlanarGrid {
     pub fn new(
         turbine_coordinates: Array2,
         turbine_diameters: Array1,
+        turbine_hub_heights: Array1,
         wind_directions: Array1,
         grid_resolution: [usize; 2],
         normal_vector: String,
@@ -94,13 +96,17 @@ impl FlowFieldPlanarGrid {
                 }
                 "x" => {
                     // Cross plane: x2 is z-direction
-                    let max_z = z.iter().cloned().fold(Float::NEG_INFINITY, Float::max);
-                    (0.001, 6.0 * max_z)
+                    // Use turbine_hub_heights to determine z range
+                    let min_height = turbine_hub_heights.iter().cloned().fold(Float::INFINITY, Float::min);
+                    let max_height = turbine_hub_heights.iter().cloned().fold(Float::NEG_INFINITY, Float::max);
+                    (min_height - 2.0 * max_diameter, max_height + 2.0 * max_diameter)
                 }
                 "y" => {
                     // Y-plane: x2 is z-direction
-                    let max_z = z.iter().cloned().fold(Float::NEG_INFINITY, Float::max);
-                    (0.001, 6.0 * max_z)
+                    // Use turbine_hub_heights to determine z range
+                    let min_height = turbine_hub_heights.iter().cloned().fold(Float::INFINITY, Float::min);
+                    let max_height = turbine_hub_heights.iter().cloned().fold(Float::NEG_INFINITY, Float::max);
+                    (min_height - 2.0 * max_diameter, max_height + 2.0 * max_diameter)
                 }
                 _ => {
                     return Err(anyhow::anyhow!(
@@ -268,6 +274,7 @@ impl FlowFieldPlanarGrid {
         Ok(Self {
             turbine_coordinates,
             turbine_diameters,
+            turbine_hub_heights,
             wind_directions,
             grid_resolution,
             normal_vector,
@@ -328,6 +335,10 @@ impl Grid for FlowFieldPlanarGrid {
     }
     fn resolution(&self) -> usize {
         self.grid_resolution[0]
+    }
+    fn hub_heights(&self) -> Array1 {
+        // Return the stored turbine hub heights
+        self.turbine_hub_heights.clone()
     }
     fn as_any(&self) -> &dyn Any {
         self

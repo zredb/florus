@@ -40,10 +40,17 @@ impl GaussVelocity {
 impl VelocityModel for GaussVelocity {
     fn prepare_function(
         &self,
-        _grid: &dyn Grid,
-        _flow_field: &FlowField,
+        grid: &dyn Grid,
+        flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array4>> {
-        Ok(HashMap::new())
+        let mut params = HashMap::new();
+        
+        // Add wind_veer to parameters
+        let wind_veer_value = flow_field.wind_veer;
+        let wind_veer_array = Array4::from_elem(grid.x_sorted().dim(), wind_veer_value);
+        params.insert("wind_veer".to_string(), wind_veer_array);
+        
+        Ok(params)
     }
 
     fn function(
@@ -59,7 +66,7 @@ impl VelocityModel for GaussVelocity {
         hub_height: Float,
         rotor_diameter: Float,
         turbine_index: usize,
-        _model_args: &HashMap<String, Array4>,
+        model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4> {
         let r0 = rotor_diameter / 2.0;
         let shape = x.shape();
@@ -69,6 +76,13 @@ impl VelocityModel for GaussVelocity {
         let n_z = shape[3];
 
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
+
+        // Get wind veer from model_args
+        let wind_veer = if let Some(wind_veer_arr) = model_args.get("wind_veer") {
+            wind_veer_arr[[0, 0, 0, 0]] // Assuming it's constant across all dimensions
+        } else {
+            0.0 // Default value
+        };
 
         // Calculate turbine center coordinates as mean of all grid points
         // This matches Python FLORIS behavior: np.mean(grid.x_sorted[:, i:i+1], axis=(2, 3))
@@ -118,13 +132,14 @@ impl VelocityModel for GaussVelocity {
 
         // Initial wake width (sigma at x0)
         let sigma_z0 = rotor_diameter * 0.5 * (uR / (u_initial + u0)).sqrt();
-        let sigma_y0 = sigma_z0 * cosd(yaw);
+        let sigma_y0 = sigma_z0 * cosd(yaw) * cosd(wind_veer);  // Apply wind veer correction
 
         // Start of far wake (x0)
         let x0 = rotor_diameter * cosd(yaw) * (1.0 + sqrt_one_minus_ct)
             / (2.0_f64.sqrt()
                 * (4.0 * self.alpha * turbulence_intensity
                     + 2.0 * self.beta * (1.0 - sqrt_one_minus_ct)));
+        let x0 = x0 + x_i;  // Add turbine location to x0
 
         // Wake expansion rate
         let ky = self.ka * turbulence_intensity + self.kb;
@@ -148,15 +163,18 @@ impl VelocityModel for GaussVelocity {
                         // Determine if in near wake or far wake
                         let (sigma_y, sigma_z) = if x_point < x_i + x0 {
                             // Near wake region - linear interpolation
-                            let near_wake_ramp_up = (x_point - x_i) / x0;
-                            let near_wake_ramp_down = (x_i + x0 - x_point) / x0;
+                            let near_wake_ramp_up = (x_point - x_i) / (x0 - x_i);
+                            let near_wake_ramp_down = (x0 - x_point) / (x0 - x_i);
 
-                            let sy =
-                                near_wake_ramp_down * 0.501 * rotor_diameter * (ct / 2.0).sqrt()
-                                    + near_wake_ramp_up * sigma_y0;
-                            let sz =
-                                near_wake_ramp_down * 0.501 * rotor_diameter * (ct / 2.0).sqrt()
-                                    + near_wake_ramp_up * sigma_z0;
+                            let sy_base = 0.501 * rotor_diameter * (ct / 2.0).sqrt();
+                            let sz_base = 0.501 * rotor_diameter * (ct / 2.0).sqrt();
+                            
+                            let sy = near_wake_ramp_down * sy_base + near_wake_ramp_up * sigma_y0;
+                            let sy = sy * ((x_point >= x_i) as i32 as f64) + sy_base * ((x_point < x_i) as i32 as f64);
+                            
+                            let sz = near_wake_ramp_down * sz_base + near_wake_ramp_up * sigma_z0;
+                            let sz = sz * ((x_point >= x_i) as i32 as f64) + sz_base * ((x_point < x_i) as i32 as f64);
+                            
                             (sy, sz)
                         } else {
                             // Far wake region
@@ -175,18 +193,30 @@ impl VelocityModel for GaussVelocity {
                         let dy = y_point - wake_center_y;
                         let dz = z_point - hub_height;
 
-                        // Elliptic Gaussian profile
-                        let r = dy * dy / (2.0 * sigma_y * sigma_y)
-                            + dz * dz / (2.0 * sigma_z * sigma_z);
-
+                        // Elliptic Gaussian profile with wind veer consideration
+                        let wind_veer_rad = wind_veer.to_radians();
+                        let cos_veer_sq = cosd(wind_veer).powi(2);
+                        let sin_veer_sq = sind(wind_veer).powi(2);
+                        let sin_2veer = sind(2.0 * wind_veer);
+                        
+                        let a = (cos_veer_sq / (2.0 * sigma_y * sigma_y)) + (sin_veer_sq / (2.0 * sigma_z * sigma_z));
+                        let b = (-sin_2veer / (4.0 * sigma_y * sigma_y)) + (sin_2veer / (4.0 * sigma_z * sigma_z));
+                        let c_coeff = (sin_veer_sq / (2.0 * sigma_y * sigma_y)) + (cos_veer_sq / (2.0 * sigma_z * sigma_z));
+                        
+                        let dy_offset = dy;
+                        let dz_offset = dz;
+                        
+                        let r_squared = a * (dy_offset * dy_offset)
+                            - 2.0 * b * dy_offset * dz_offset
+                            + c_coeff * (dz_offset * dz_offset);
+                        
                         // C coefficient for velocity deficit
-                        let d = 1.0
-                            - (ct * cosd(yaw)
-                                / (8.0 * sigma_y * sigma_z / (rotor_diameter * rotor_diameter)));
-                        let c = 1.0 - d.max(0.0).sqrt();
-
+                        let d = 1.0 - (ct * cosd(yaw) / (8.0 * sigma_y * sigma_z / (rotor_diameter * rotor_diameter)));
+                        let d_clipped = d.max(0.0).min(1.0);  // Use max/min instead of clamp for compatibility
+                        let c = 1.0 - d_clipped.sqrt();
+                        
                         // Gaussian function
-                        let deficit = c * (-r).exp();
+                        let deficit = c * (-r_squared).exp();
 
                         if deficit > 1e-10 {
                             velocity_deficit[[fi, ti, iy, iz]] = deficit;

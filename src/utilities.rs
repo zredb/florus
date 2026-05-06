@@ -102,7 +102,12 @@ pub fn rotate_coordinates_rel_west(
             
             x[[fi, ti]] = x_orig * cos_angle - y_orig * sin_angle + x_center;
             y[[fi, ti]] = x_orig * sin_angle + y_orig * cos_angle + y_center;
-            z[[fi, ti]] = turbine_coordinates[[ti, 2]];
+            // Use 0.0 for z if turbine_coordinates only has 2 columns
+            z[[fi, ti]] = if turbine_coordinates.shape()[1] > 2 {
+                turbine_coordinates[[ti, 2]]
+            } else {
+                0.0
+            };
             
             x_center_of_rotation[[fi, ti]] = x_center;
             y_center_of_rotation[[fi, ti]] = y_center;
@@ -141,8 +146,18 @@ pub fn reverse_rotate_coordinates_rel_west(
         let sin_angle = angle.sin();
         
         for ti in 0..shape[1] {
-            let x_center = x_center_of_rotation[[fi, ti]];
-            let y_center = y_center_of_rotation[[fi, ti]];
+            // For planar grids, x_center_of_rotation may have fewer turbines than grid points
+            // Use the first turbine's center if ti is out of bounds
+            let x_center = if ti < x_center_of_rotation.shape()[1] {
+                x_center_of_rotation[[fi, ti]]
+            } else {
+                x_center_of_rotation[[fi, 0]]
+            };
+            let y_center = if ti < y_center_of_rotation.shape()[1] {
+                y_center_of_rotation[[fi, ti]]
+            } else {
+                y_center_of_rotation[[fi, 0]]
+            };
             
             for i in 0..shape[2] {
                 for j in 0..shape[3] {

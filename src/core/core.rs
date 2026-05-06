@@ -181,6 +181,14 @@ impl Core {
         let coords = self.farm.coordinates();
         let rotor_diameters = self.farm.rotor_diameters.clone();
         let wind_directions = self.flow_field.wind_directions.clone();
+        
+        // Get hub heights from farm turbines
+        use ndarray::Array;
+        let n_turbines = self.farm.n_turbines();
+        let mut hub_heights = Array::zeros(n_turbines);
+        for i in 0..n_turbines {
+            hub_heights[i] = self.farm.turbines[i].turbine_type.hub_height;
+        }
 
         match self.solver.solver_type {
             SolverType::TurbineGrid => {
@@ -233,6 +241,7 @@ impl Core {
                 let grid = FlowFieldPlanarGrid::new(
                     coords,
                     rotor_diameters,
+                    hub_heights,
                     wind_directions,
                     grid_resolution,
                     normal_vector,
@@ -379,6 +388,24 @@ impl Core {
                     sequential_solver(&self.farm, &mut self.flow_field, cubature_grid, &self.wake)?;
                 }
             }
+        } else if let Some(planar_grid) = grid_ref.as_any().downcast_ref::<FlowFieldPlanarGrid>() {
+            // Use FlowFieldPlanarGrid for visualization
+            // This is similar to solve_for_viz in Python
+            // For planar grids, we use the generic solver dispatch
+            match vel_model.as_str() {
+                "empirical_gauss" => {
+                    empirical_gauss_solver(
+                        &self.farm,
+                        &mut self.flow_field,
+                        planar_grid,
+                        &self.wake,
+                    )?;
+                }
+                _ => {
+                    // For other models, use sequential solver with dyn Grid
+                    sequential_solver(&self.farm, &mut self.flow_field, planar_grid, &self.wake)?;
+                }
+            }
         } else {
             anyhow::bail!("Unsupported grid type for solver");
         }
@@ -386,6 +413,32 @@ impl Core {
         self.finalize();
 
         Ok(())
+    }
+
+    /// Solve for visualization with FlowFieldPlanarGrid
+    ///
+    /// This method is specifically designed for visualization purposes.
+    /// It should be used with FlowFieldPlanarGrid after setting up the grid.
+    pub fn solve_for_viz(&mut self) -> crate::Result<()> {
+        // Initialize flow field with the planar grid
+        if self.grid.is_none() {
+            anyhow::bail!("Grid must be initialized before calling solve_for_viz()");
+        }
+
+        let grid = self.grid.as_ref().unwrap();
+        
+        // Initialize velocity field using FlowField's method
+        self.flow_field.initialize_flow_field(
+            grid.grid_shape(),
+            grid.z_sorted(),
+            &grid.hub_heights(),
+        );
+
+        // Mark as initialized
+        self.state.initialized = true;
+
+        // Call the main solver which will handle FlowFieldPlanarGrid
+        self.steady_state_atmospheric_condition()
     }
 
     /// Finalize the calculation - unsort values to match user-supplied order
