@@ -10,12 +10,9 @@
 /// and then computing a Gaussian-weighted average of the results.
 
 use florus::{Array1, FlorisModel};
-use florus::core::turbines::TurbineLibrary;
 use std::f64::consts::PI;
 
 fn main() -> florus::Result<()> {
-    TurbineLibrary::init_if_needed()?;
-
     // Instantiate FLORIS model
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 

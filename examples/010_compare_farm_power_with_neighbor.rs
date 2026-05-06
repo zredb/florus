@@ -9,11 +9,8 @@
 /// expanded farm that includes neighbors.
 
 use florus::{Array1, FlorisModel};
-use florus::core::turbines::TurbineLibrary;
 
 fn main() -> florus::Result<()> {
-    TurbineLibrary::init_if_needed()?;
-
     // Instantiate FLORIS using the GCH model
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 

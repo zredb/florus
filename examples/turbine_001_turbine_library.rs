@@ -10,9 +10,6 @@ use florus::{FlorisModel, Result};
 fn main() -> Result<()> {
     println!("=== Reference Turbines ===\n");
 
-    // Initialize the FLORIS model with GCH
-    let fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-
     // Get list of available turbine types from the library
     println!("Available turbine types in library:\n");
     

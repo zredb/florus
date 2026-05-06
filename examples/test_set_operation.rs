@@ -38,11 +38,11 @@ fn main() -> Result<()> {
     )?;
 
     println!("Initial state:");
-    println!("  Turbines: {}", fmodel.core.farm.n_turbines());
-    println!("  Findex: {}", fmodel.core.flow_field.n_findex);
-    println!("  Yaw angles: {:?}", fmodel.core.farm.yaw_angles);
-    println!("  Power setpoints: {:?}", fmodel.core.farm.power_setpoints);
-    println!("  AWC modes: {:?}", fmodel.core.farm.awc_modes);
+    println!("  Turbines: {}", fmodel.n_turbines());
+    println!("  Findex: {}", fmodel.n_findex());
+    println!("  Yaw angles: {:?}", fmodel.get_yaw_angles());
+    println!("  Power setpoints: {:?}", fmodel.get_power_setpoints());
+    println!("  AWC modes: {:?}", fmodel.get_awc_modes());
     println!();
 
     // Test 1: Set yaw angles
@@ -56,7 +56,7 @@ fn main() -> Result<()> {
         None,  // awc_frequencies
         None,  // disable_turbines
     )?;
-    println!("  Yaw angles after set: {:?}", fmodel.core.farm.yaw_angles);
+    println!("  Yaw angles after set: {:?}", fmodel.get_yaw_angles());
     println!();
 
     // Test 2: Set power setpoints
@@ -70,13 +70,12 @@ fn main() -> Result<()> {
         None,  // awc_frequencies
         None,  // disable_turbines
     )?;
-    println!("  Power setpoints after set: {:?}", fmodel.core.farm.power_setpoints);
+    println!("  Power setpoints after set: {:?}", fmodel.get_power_setpoints());
     println!();
 
     // Test 3: Set AWC modes
     println!("Test 3: Setting AWC modes");
-    use florus::types::NdArray2;
-    let awc_modes = NdArray2::from_shape_vec((1, 3), vec!["baseline".to_string(), "helix".to_string(), "baseline".to_string()])?;
+    let awc_modes = Array2::from_shape_vec((1, 3), vec!["baseline".to_string(), "helix".to_string(), "baseline".to_string()])?;
     fmodel.set_operation(
         None,  // yaw_angles
         None,  // power_setpoints
@@ -85,7 +84,7 @@ fn main() -> Result<()> {
         None,  // awc_frequencies
         None,  // disable_turbines
     )?;
-    println!("  AWC modes after set: {:?}", fmodel.core.farm.awc_modes);
+    println!("  AWC modes after set: {:?}", fmodel.get_awc_modes());
     println!();
 
     // Test 4: Set AWC amplitudes and frequencies
@@ -100,13 +99,13 @@ fn main() -> Result<()> {
         Some(awc_frequencies),
         None,  // disable_turbines
     )?;
-    println!("  AWC amplitudes after set: {:?}", fmodel.core.farm.awc_amplitudes);
-    println!("  AWC frequencies after set: {:?}", fmodel.core.farm.awc_frequencies);
+    println!("  AWC amplitudes after set: {:?}", fmodel.get_awc_amplitudes());
+    println!("  AWC frequencies after set: {:?}", fmodel.get_awc_frequencies());
     println!();
 
     // Test 5: Disable turbines
     println!("Test 5: Disabling turbines");
-    let disable_turbines = NdArray2::from_shape_vec((1, 3), vec![false, true, false])?;
+    let disable_turbines = Array2::from_shape_vec((1, 3), vec![false, true, false])?;
     fmodel.set_operation(
         None,  // yaw_angles
         None,  // power_setpoints
@@ -115,15 +114,15 @@ fn main() -> Result<()> {
         None,  // awc_frequencies
         Some(disable_turbines),
     )?;
-    println!("  Yaw angles after disable: {:?}", fmodel.core.farm.yaw_angles);
-    println!("  Power setpoints after disable: {:?}", fmodel.core.farm.power_setpoints);
+    println!("  Yaw angles after disable: {:?}", fmodel.get_yaw_angles());
+    println!("  Power setpoints after disable: {:?}", fmodel.get_power_setpoints());
     println!();
 
     // Test 6: Set all parameters at once
     println!("Test 6: Setting all parameters at once");
     let yaw_angles = Array2::from_shape_vec((1, 3), vec![5.0, 10.0, 15.0])?;
     let power_setpoints = Array2::from_shape_vec((1, 3), vec![4800000.0, 4600000.0, 4400000.0])?;
-    let awc_modes = NdArray2::from_shape_vec((1, 3), vec!["baseline".to_string(); 3])?;
+    let awc_modes = Array2::from_shape_vec((1, 3), vec!["baseline".to_string(); 3])?;
     let awc_amplitudes = Array2::from_shape_vec((1, 3), vec![2.0, 3.0, 4.0])?;
     let awc_frequencies = Array2::from_shape_vec((1, 3), vec![0.1, 0.15, 0.2])?;
     
@@ -135,11 +134,11 @@ fn main() -> Result<()> {
         Some(awc_frequencies),
         None,  // disable_turbines
     )?;
-    println!("  Yaw angles: {:?}", fmodel.core.farm.yaw_angles);
-    println!("  Power setpoints: {:?}", fmodel.core.farm.power_setpoints);
-    println!("  AWC modes: {:?}", fmodel.core.farm.awc_modes);
-    println!("  AWC amplitudes: {:?}", fmodel.core.farm.awc_amplitudes);
-    println!("  AWC frequencies: {:?}", fmodel.core.farm.awc_frequencies);
+    println!("  Yaw angles: {:?}", fmodel.get_yaw_angles());
+    println!("  Power setpoints: {:?}", fmodel.get_power_setpoints());
+    println!("  AWC modes: {:?}", fmodel.get_awc_modes());
+    println!("  AWC amplitudes: {:?}", fmodel.get_awc_amplitudes());
+    println!("  AWC frequencies: {:?}", fmodel.get_awc_frequencies());
     println!();
 
     println!("=== set_operation Method Test Complete! ===");

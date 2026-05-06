@@ -18,6 +18,7 @@ pub mod wind_data;
 pub use floris_config::FlorisConfig;
 pub use floris_model::FlorisModel;
 pub use types::{Array1, Array2, Array3, Array4, Float};
+pub use wind_data::TimeSeries;
 
 /// Result type for FLORIS operations
 pub type Result<T> = std::result::Result<T, anyhow::Error>;

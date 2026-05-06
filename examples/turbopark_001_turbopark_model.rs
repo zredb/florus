@@ -12,7 +12,7 @@ fn main() -> Result<()> {
 
     // Try to load TurboPark configuration
     match FlorisModel::from_file("examples/inputs/turbopark.yaml") {
-        Ok(fmodel) => {
+        Ok(mut fmodel) => {
             println!("TurboPark model loaded successfully!\n");
             
             fmodel.set_layout(

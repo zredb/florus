@@ -859,6 +859,46 @@ impl FlorisModel {
         self.core.farm.n_turbines()
     }
 
+    /// Get yaw angles array
+    /// 
+    /// # Returns
+    /// Array of shape `(n_findex, n_turbines)` containing yaw angles in degrees
+    pub fn get_yaw_angles(&self) -> &Array2 {
+        &self.core.farm.yaw_angles
+    }
+
+    /// Get power setpoints array
+    /// 
+    /// # Returns
+    /// Array of shape `(n_findex, n_turbines)` containing power setpoints in Watts
+    pub fn get_power_setpoints(&self) -> &Array2 {
+        &self.core.farm.power_setpoints
+    }
+
+    /// Get AWC modes array
+    /// 
+    /// # Returns
+    /// Array of shape `(n_findex, n_turbines)` containing AWC mode strings
+    pub fn get_awc_modes(&self) -> &NdArray2<String> {
+        &self.core.farm.awc_modes
+    }
+
+    /// Get AWC amplitudes array
+    /// 
+    /// # Returns
+    /// Array of shape `(n_findex, n_turbines)` containing AWC amplitudes in degrees
+    pub fn get_awc_amplitudes(&self) -> &Array2 {
+        &self.core.farm.awc_amplitudes
+    }
+
+    /// Get AWC frequencies array
+    /// 
+    /// # Returns
+    /// Array of shape `(n_findex, n_turbines)` containing AWC frequencies in Hz
+    pub fn get_awc_frequencies(&self) -> &Array2 {
+        &self.core.farm.awc_frequencies
+    }
+
     /// Get reference wind height
     pub fn reference_wind_height(&self) -> Float {
         self.core.flow_field.reference_wind_height

@@ -4,11 +4,8 @@
 /// using frequency-weighted averaging.
 
 use florus::{Array1, FlorisModel};
-use florus::core::turbines::TurbineLibrary;
 
 fn main() -> florus::Result<()> {
-    TurbineLibrary::init_if_needed()?;
-
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
     // Set to a 3-turbine layout

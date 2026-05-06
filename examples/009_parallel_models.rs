@@ -12,11 +12,8 @@
 /// This example shows how the same FlorisModel can be used in different contexts.
 
 use florus::{Array1, FlorisModel};
-use florus::core::turbines::TurbineLibrary;
 
 fn main() -> florus::Result<()> {
-    TurbineLibrary::init_if_needed()?;
-
     println!("========== Parallel Models Concept ==========\n");
 
     // Instantiate the FlorisModel

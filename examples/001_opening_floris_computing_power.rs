@@ -1,10 +1,7 @@
 use florus::{Array1, FlorisModel};
-use florus::core::turbines::TurbineLibrary;
 use ndarray::Axis;
 
 fn main() -> florus::Result<()> {
-    TurbineLibrary::init_if_needed()?;
-
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
     fmodel.set_layout(

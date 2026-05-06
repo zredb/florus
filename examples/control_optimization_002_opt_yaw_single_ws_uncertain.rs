@@ -53,21 +53,21 @@ fn main() -> Result<()> {
         ..Default::default()
     };
     
-    let mut yaw_opt = YawOptimizationSR::new(&fmodel)?;
+    let mut yaw_opt = YawOptimizationSR::new();
     let result = yaw_opt.optimize(&mut fmodel, Some(config))?;
 
     println!("\nOptimization completed!");
-    println!("  - Baseline farm power: {:.0} W", result.baseline_farm_power);
-    println!("  - Optimized farm power: {:.0} W", result.optimized_farm_power);
+    println!("  - Baseline farm power: {:.0} W", result.baseline_power);
+    println!("  - Optimized farm power: {:.0} W", result.optimized_power);
     println!("  - Power improvement: {:.0} W", result.power_improvement);
     println!("  - Improvement percentage: {:.2}%", result.improvement_percentage);
 
     // Show optimal yaw angles for first few wind directions
     println!("\nOptimal yaw angles (first 5 wind directions):");
-    for i in 0..5.min(result.optimal_yaw_angles.nrows()) {
-        print!("  WD={:.0}°: ", result.wind_directions[i]);
-        for ti in 0..result.optimal_yaw_angles.ncols() {
-            print!("T{}={:.1}° ", ti, result.optimal_yaw_angles[[i, ti]]);
+    for i in 0..5.min(result.yaw_angles.nrows()) {
+        print!("  Row {}: ", i);
+        for ti in 0..result.yaw_angles.ncols() {
+            print!("T{}={:.1}° ", ti, result.yaw_angles[[i, ti]]);
         }
         println!();
     }
