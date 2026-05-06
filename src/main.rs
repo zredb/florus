@@ -1,5 +1,5 @@
 fn main() -> anyhow::Result<()> {
-    println!("FLORIS-RS - Rust Implementation of FLORIS Wind Farm Simulator");
+    println!("FLORUS - Rust Implementation of FLORIS Wind Farm Simulator");
     println!("=============================================================\n");
     
     // Example: Create a simple 2-turbine wind farm

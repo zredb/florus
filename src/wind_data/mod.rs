@@ -1,4 +1,4 @@
-//! Wind data structures for FLORIS-RS
+//! Wind data structures for FLORUS
 //!
 //! Provides wind data objects to hold ambient wind conditions including:
 //! - TimeSeries: Time series wind data
@@ -122,7 +122,9 @@ fn check_and_identify_wind_direction_step(wind_directions: &ArrayView1) -> Valid
 }
 
 /// 检查并识别风向步长（处理跨越360°的情况）
-fn check_and_identify_wind_direction_step_cyclic(wind_directions: &ArrayView1) -> ValidationResult<f64> {
+fn check_and_identify_wind_direction_step_cyclic(
+    wind_directions: &ArrayView1,
+) -> ValidationResult<f64> {
     let n = wind_directions.len();
 
     if n < 2 {
@@ -233,8 +235,6 @@ pub fn validate_wind_arrays(
 fn is_monotonically_increasing(arr: &ArrayView1) -> bool {
     arr.windows(2).into_iter().all(|w| w[1] > w[0])
 }
-
-
 
 /// 检查并识别普通数组的步长
 fn check_and_identify_step_size(arr: &ArrayView1, is_wind_speed: bool) -> ValidationResult<f64> {

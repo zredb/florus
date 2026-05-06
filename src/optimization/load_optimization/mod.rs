@@ -1,4 +1,4 @@
-//! Load optimization module for FLORIS-RS
+//! Load optimization module for FLORUS
 //!
 //! This module implements load-aware turbine optimization that balances power production
 //! with variable operating costs (VOC). It extends FLORIS beyond power maximization to:

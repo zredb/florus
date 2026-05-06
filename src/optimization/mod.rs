@@ -1,5 +1,5 @@
 use crate::core::Farm;
-/// Optimization module for FLORIS-RS
+/// Optimization module for FLORUS
 ///
 /// Provides optimization functions for wind farm control:
 /// - Yaw angle optimization (yaw module)

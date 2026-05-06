@@ -1,4 +1,4 @@
-//! Yaw optimization module for FLORIS-RS
+//! Yaw optimization module for FLORUS
 //!
 //! Provides optimization algorithms for wind turbine yaw control including:
 //! - Base optimizer with common functionality (yaw_optimization_base)

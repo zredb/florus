@@ -1,4 +1,4 @@
-//! Utility functions for FLORIS-RS
+//! Utility functions for FLORUS
 //!
 //! Corresponds to utilities.py in the Python implementation
 

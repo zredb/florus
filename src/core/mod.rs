@@ -1,4 +1,4 @@
-/// Core data structures for FLORIS-RS
+/// Core data structures for FLORUS
 ///
 /// Corresponds to core/ module in Python implementation
 pub mod core;

@@ -1,4 +1,4 @@
-/// Type definitions for FLORIS-RS
+/// Type definitions for FLORUS
 ///
 /// Corresponds to type_dec.py in Python implementation
 use ndarray::{Array1 as NdArray1, Array2 as NdArray2, Array3 as NdArray3, Array4 as NdArray4};

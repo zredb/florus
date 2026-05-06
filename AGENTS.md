@@ -1,4 +1,4 @@
-# FLORIS-RS Agent Guidelines
+# FLORUS Agent Guidelines
 
 ## Build/Test Commands
 - **Build**: `cargo build --release`
