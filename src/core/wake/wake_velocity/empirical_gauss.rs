@@ -61,11 +61,11 @@ impl VelocityModel for EmpiricalGaussVelocityDeficit {
         x: Array4,
         y: Array4,
         z: Array4,
-        axial_induction: Float,
+        axial_induction: Array2,
         deflection_field: Array2,
-        _yaw_angle: Float,
-        turbulence_intensity: Float,
-        _thrust_coefficient: Float,
+        _yaw_angle: Array2,
+        turbulence_intensity: Array2,
+        _thrust_coefficient: Array2,
         hub_height: Float,
         rotor_diameter: Float,
         turbine_index: usize,
@@ -94,6 +94,9 @@ impl VelocityModel for EmpiricalGaussVelocityDeficit {
             // Get deflection at the wake source turbine
             let deflection_at_source = deflection_field[[fi, turbine_index]];
 
+            let a_i = axial_induction[[fi, turbine_index]];
+            let ti_i = turbulence_intensity[[fi, turbine_index]];
+
             for ti in 0..n_turbines {
                 for iy in 0..n_y {
                     for iz in 0..n_z {
@@ -113,10 +116,8 @@ impl VelocityModel for EmpiricalGaussVelocityDeficit {
 
                         // Empirical sigma calculation
                         let downstream_x = x_point - x_wake_source;
-                        let sigma_y =
-                            self.calculate_sigma_y(downstream_x, r0, turbulence_intensity);
-                        let sigma_z =
-                            self.calculate_sigma_z(downstream_x, r0, turbulence_intensity);
+                        let sigma_y = self.calculate_sigma_y(downstream_x, r0, ti_i);
+                        let sigma_z = self.calculate_sigma_z(downstream_x, r0, ti_i);
 
                         // Gaussian profile
                         let exponent =
@@ -124,12 +125,8 @@ impl VelocityModel for EmpiricalGaussVelocityDeficit {
                         let profile = (-exponent).exp();
 
                         // Maximum deficit with empirical corrections
-                        let deficit_0 = self.calculate_deficit(
-                            axial_induction,
-                            downstream_x,
-                            r0,
-                            turbulence_intensity,
-                        );
+                        let deficit_0 =
+                            self.calculate_deficit(a_i, downstream_x, r0, ti_i);
 
                         if profile > 1e-10 {
                             velocity_deficit[[fi, ti, iy, iz]] = deficit_0 * profile;
@@ -273,6 +270,7 @@ mod tests {
             v: empty_4d.clone(),
             w: empty_4d.clone(),
             turbulence_intensity_field: empty_4d.clone(),
+            dudz_initial_sorted: empty_4d.clone(),
             turbulence_intensity_field_sorted: empty_4d,
         }
     }

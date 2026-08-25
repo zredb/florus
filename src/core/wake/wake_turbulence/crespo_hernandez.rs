@@ -1,30 +1,37 @@
 //! Crespo-Hernandez wake turbulence model
 //!
-//! Based on Crespo et al. with Hernandez - wake-added turbulence intensity
+//! Wake-added turbulence intensity following Crespo et al., ported from
+//! FLORIS v4.6.4 `core/wake_turbulence/crespo_hernandez.py`.
 
-use crate::types::{Float, Array1};
+use crate::types::{Array1, Array4, Float};
 use crate::core::wake::{BaseModel, TurbulenceModel};
-use crate::core::{Grid, FlowField};
+use crate::core::{FlowField, Grid};
 use std::collections::HashMap;
 
 /// Crespo-Hernandez wake turbulence model parameters
 #[derive(Debug, Clone)]
 pub struct CrespoHernandez {
     pub base: BaseModel,
-    pub c: Float,
-    pub p: Float,
+    pub initial: Float,
+    pub constant: Float,
+    pub ai: Float,
+    pub downstream: Float,
 }
 
 impl CrespoHernandez {
-    pub fn new(c: Float, p: Float) -> Self {
+    pub fn new(initial: Float, constant: Float, ai: Float, downstream: Float) -> Self {
         let mut params = HashMap::new();
-        params.insert("c".to_string(), c);
-        params.insert("p".to_string(), p);
-        
+        params.insert("initial".to_string(), initial);
+        params.insert("constant".to_string(), constant);
+        params.insert("ai".to_string(), ai);
+        params.insert("downstream".to_string(), downstream);
+
         Self {
             base: BaseModel::new(params, "scalar"),
-            c,
-            p,
+            initial,
+            constant,
+            ai,
+            downstream,
         }
     }
 }
@@ -40,45 +47,31 @@ impl TurbulenceModel for CrespoHernandez {
 
     fn function(
         &self,
-        ambient_turbulence_intensity: Float,
-        rotor_diameter_eff: Float,
-        downstream_distance: Array1,
-        turbine_type_parameters: &HashMap<String, Float>,
-        _model_args: &HashMap<String, Array1>,
-    ) -> anyhow::Result<Array1> {
-        let c = turbine_type_parameters.get("c")
-            .copied()
-            .unwrap_or(self.c);
-        let _p = turbine_type_parameters.get("p")
-            .copied()
-            .unwrap_or(self.p);
+        ambient_turbulence_intensity: &Array4,
+        x: &Array4,
+        x_i: &Array4,
+        rotor_diameter: Float,
+        axial_induction: &Array4,
+    ) -> anyhow::Result<Array4> {
+        // delta_x = x - x_i  (x_i broadcasts over the [findex, 1, 1, 1] axis)
+        let delta_x = x - x_i;
 
-        let shape = downstream_distance.shape();
-        let n_distances = shape[0];
+        // Upstream points (delta_x <= 0.1) are pinned to 1.0 so the power law
+        // stays finite; downstream points keep their true distance.
+        let upstream_mask = delta_x.mapv(|v| v <= 0.1);
+        let downstream_mask = delta_x.mapv(|v| v > -0.1);
+        let delta_x_eff = &delta_x * downstream_mask.mapv(|b| if b { 1.0 } else { 0.0 })
+            + upstream_mask.mapv(|b| if b { 1.0 } else { 0.0 });
 
-        let mut wake_added_ti = Array1::zeros(n_distances);
+        let axial = axial_induction.mapv(|v| v.powf(self.ai));
+        let ambient = ambient_turbulence_intensity.mapv(|v| v.powf(self.initial));
+        let ratio = (&delta_x_eff / rotor_diameter).mapv(|v| v.powf(self.downstream));
 
-        for i in 0..n_distances {
-            let x = downstream_distance[i];
-            
-            if x <= 0.0 {
-                wake_added_ti[i] = 0.0;
-                continue;
-            }
+        let ti = (axial * ambient * ratio).mapv(|v| self.constant * v);
 
-            let x_normalized = x / rotor_diameter_eff;
-            
-            if x_normalized > 0.0 {
-                let added_ti = c * (x_normalized).sqrt();
-                wake_added_ti[i] = added_ti.min(0.5);
-            }
-        }
-
-        let total_ti: Array1 = wake_added_ti.mapv(|ti_added| {
-            (ambient_turbulence_intensity.powi(2) + ti_added.powi(2)).sqrt()
-        });
-
-        Ok(total_ti)
+        // Zero out the upstream region (delta_x <= -0.1); keep downstream added TI.
+        let result = ti * downstream_mask.mapv(|b| if b { 1.0 } else { 0.0 });
+        Ok(result)
     }
 }
 
@@ -89,50 +82,36 @@ mod tests {
 
     #[test]
     fn test_crespo_hernandez_creation() {
-        let crespo = CrespoHernandez::new(0.9, 0.9);
-        assert_eq!(crespo.c, 0.9);
-        assert_eq!(crespo.p, 0.9);
+        let crespo = CrespoHernandez::new(0.1, 0.9, 0.8, -0.32);
+        assert_eq!(crespo.initial, 0.1);
+        assert_eq!(crespo.constant, 0.9);
+        assert_eq!(crespo.ai, 0.8);
+        assert_eq!(crespo.downstream, -0.32);
     }
 
     #[test]
-    fn test_crespo_hernandez_turbulence() {
-        let crespo = CrespoHernandez::new(0.9, 0.9);
-        let ambient_ti = 0.06;
-        let rotor_d = 126.0;
-        let downstream = Array1::from_vec(vec![100.0, 200.0, 500.0]);
-        
-        let result = crespo.function(
-            ambient_ti,
-            rotor_d,
-            downstream,
-            &HashMap::new(),
-            &HashMap::new()
-        );
-        assert!(result.is_ok());
-        
-        let ti = result.unwrap();
-        for &val in ti.iter() {
-            assert!(val >= ambient_ti);
-        }
+    fn test_crespo_hernandez_downstream_positive() {
+        // Single findex, single turbine grid point downstream of source.
+        let crespo = CrespoHernandez::new(0.1, 0.9, 0.8, -0.32);
+        let ambient = Array4::from_elem((1, 1, 1, 1), 0.06);
+        let x = Array4::from_elem((1, 1, 1, 1), 500.0);
+        let x_i = Array4::from_elem((1, 1, 1, 1), 0.0);
+        let ai = Array4::from_elem((1, 1, 1, 1), 0.25);
+        let result = crespo.function(&ambient, &x, &x_i, 126.0, &ai).unwrap();
+        // delta_x = 500 > 0 -> downstream, ti = 0.9 * 0.25^0.8 * 0.06^0.1 * (500/126)^(-0.32)
+        let expected = 0.9 * 0.25_f64.powf(0.8) * 0.06_f64.powf(0.1) * (500.0 / 126.0_f64).powf(-0.32);
+        assert_relative_eq!(result[[0, 0, 0, 0]], expected, epsilon = 1e-12);
     }
 
     #[test]
-    fn test_crespo_hernandez_at_zero_distance() {
-        let crespo = CrespoHernandez::new(0.9, 0.9);
-        let ambient_ti = 0.06;
-        let rotor_d = 126.0;
-        let downstream = Array1::from_vec(vec![0.0]);
-        
-        let result = crespo.function(
-            ambient_ti,
-            rotor_d,
-            downstream,
-            &HashMap::new(),
-            &HashMap::new()
-        );
-        assert!(result.is_ok());
-        
-        let ti = result.unwrap();
-        assert_relative_eq!(ti[0], ambient_ti);
+    fn test_crespo_hernandez_upstream_zero() {
+        // Point upstream of the source gets masked to 0.
+        let crespo = CrespoHernandez::new(0.1, 0.9, 0.8, -0.32);
+        let ambient = Array4::from_elem((1, 1, 1, 1), 0.06);
+        let x = Array4::from_elem((1, 1, 1, 1), -100.0);
+        let x_i = Array4::from_elem((1, 1, 1, 1), 0.0);
+        let ai = Array4::from_elem((1, 1, 1, 1), 0.25);
+        let result = crespo.function(&ambient, &x, &x_i, 126.0, &ai).unwrap();
+        assert_relative_eq!(result[[0, 0, 0, 0]], 0.0, epsilon = 1e-12);
     }
 }

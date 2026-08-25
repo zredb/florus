@@ -1,73 +1,65 @@
-//! Example: Generate Value Table
+//! Example: Value Generation Methods
 //!
-//! This example demonstrates how to generate and work with wind condition value tables,
-//! showing the relationship between wind speed, direction, and power output.
+//! Demonstrates generating electricity value tables using custom function
+//! and piecewise linear methods.
 //!
 //! Corresponds to: examples_wind_data/003_generate_value.py
 
-use florus::{FlorisModel, Result};
+use florus::wind_data::WindRose;
+use ndarray::Array1;
 
-fn main() -> Result<()> {
-    println!("=== Generate Wind Condition Value Table ===\n");
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("=== Value Generation Methods ===\n");
 
-    // Initialize FLORIS model
-    let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-    
-    // Set a simple 2-turbine layout
-    fmodel.set_layout(
-        &ndarray::arr1(&[0.0, 500.0]),
-        &ndarray::arr1(&[0.0, 0.0]),
+    let wind_directions = Array1::from_vec(vec![0.0, 120.0, 240.0]);
+    let wind_speeds = Array1::from_vec(vec![4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0, 18.0]);
+    let ti_table = ndarray::arr2(&[
+        [0.12, 0.10, 0.08, 0.07, 0.06, 0.06, 0.05, 0.05],
+        [0.11, 0.09, 0.07, 0.07, 0.06, 0.05, 0.05, 0.04],
+        [0.10, 0.08, 0.07, 0.06, 0.06, 0.05, 0.05, 0.04],
+    ]);
+    let frequency_table = ndarray::arr2(&[
+        [0.02, 0.04, 0.08, 0.12, 0.08, 0.04, 0.02, 0.01],
+        [0.01, 0.03, 0.06, 0.10, 0.06, 0.03, 0.01, 0.00],
+        [0.01, 0.02, 0.05, 0.08, 0.05, 0.02, 0.01, 0.01],
+    ]);
+
+    let mut wind_rose = WindRose::new(
+        wind_directions,
+        wind_speeds.clone(),
+        ti_table,
+        Some(frequency_table),
+        None,
+        false,
+        None,
+        None,
     )?;
 
-    // Create a grid of wind conditions
-    let wind_speeds = vec![6.0, 8.0, 10.0, 12.0, 14.0];
-    let wind_directions = vec![240.0, 270.0, 300.0];
-    let ti = 0.06;
+    // Method 1: Custom value function (value = 100/ws)
+    println!("Method 1: Custom value function (value = 100/wind_speed)");
+    let custom_value_func = |_wd: f64, ws: f64| -> f64 { 100.0 / ws };
+    wind_rose.assign_value_using_wd_ws_function(&custom_value_func, false);
 
-    println!("Power Output Matrix (kW)");
-    println!("Wind Direction vs Wind Speed\n");
-
-    // Header
-    print!("{:<12} |", "WD \\ WS");
-    for ws in &wind_speeds {
-        print!(" {:>10.1}", ws);
-    }
-    println!();
-    print!("{}", "-".repeat(13));
-    for _ in &wind_speeds {
-        print!("|{}", "-".repeat(11));
-    }
-    println!();
-
-    // Data rows
-    for wd in &wind_directions {
-        print!("{:>10.0}° |", wd);
-        
-        for ws in &wind_speeds {
-            fmodel.set_wind_conditions(
-                ndarray::arr1(&[*ws]),
-                ndarray::arr1(&[*wd]),
-                ndarray::arr1(&[ti]),
-            )?;
-            fmodel.run()?;
-
-            let powers = fmodel.get_turbine_powers();
-            let farm_power: f64 = powers.row(0).sum() / 1000.0;
-            print!(" {:>10.1}", farm_power);
+    if let Some(ref vt) = wind_rose.value_table {
+        println!("  WS (m/s) | Value ($/MWh)");
+        println!("  ---------|-------------");
+        for (j, &ws) in wind_speeds.iter().enumerate() {
+            println!("  {:8.1} | {:11.2}", ws, vt[[0, j]]);
         }
-        println!();
     }
 
-    println!("\n=== Analysis ===");
-    println!("This table shows:");
-    println!("  - Power varies with both wind speed and direction");
-    println!("  - Wake effects reduce power at certain directions");
-    println!("  - Higher wind speeds generally produce more power");
-    println!("  - Direction affects wake alignment between turbines");
+    // Method 2: Piecewise linear
+    println!("\nMethod 2: Piecewise linear (SPP market approximation)");
+    wind_rose.assign_value_piecewise_linear(1.425, 4.5, 0.0, -0.135, false, false);
+
+    if let Some(ref vt) = wind_rose.value_table {
+        println!("  WS (m/s) | Value ($/MWh)");
+        println!("  ---------|-------------");
+        for (j, &ws) in wind_speeds.iter().enumerate() {
+            println!("  {:8.1} | {:11.2}", ws, vt[[0, j]]);
+        }
+    }
 
     println!("\n=== Example Complete ===");
-    println!("\nNote: Full value table generation would create comprehensive");
-    println!("lookup tables for AEP calculations and optimization.");
-
     Ok(())
 }

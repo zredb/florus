@@ -42,16 +42,18 @@ impl OperationModel for PeakShavingTurbine {
             peak_normal_thrust_prime = peak_normal_thrust_prime.max(ws * ws * ct);
         }
 
+        let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
         let rotor_avg_velocities = crate::core::rotor_velocity::average_velocity(
-            ctx.velocities,
-            ctx.average_method,
-            ctx.cubature_weights,
+            &velocities_dyn,
+            None,
+            &ctx.average_method,
+            None, // TODO: cubature_weights conversion from Array2 to Array1 needed
         )?;
 
         let mut result = ndarray::Array::zeros((n_findex, n_turbines));
         for i in 0..n_findex {
             for j in 0..n_turbines {
-                let vel = rotor_avg_velocities[[i, j, 0]];
+                let vel = rotor_avg_velocities[[i, j]];
 
                 // Replace zeros with small value to avoid division
                 let safe_vel = vel.max(0.01);
@@ -112,10 +114,12 @@ impl OperationModel for PeakShavingTurbine {
         let n_findex = ctx.air_density.len();
         let n_turbines = ctx.velocities.shape()[1];
 
+        let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
         let rotor_avg_velocities = crate::core::rotor_velocity::average_velocity(
-            ctx.velocities,
-            ctx.average_method,
-            ctx.cubature_weights,
+            &velocities_dyn,
+            None,
+            &ctx.average_method,
+            None, // TODO: cubature_weights conversion from Array2 to Array1 needed
         )?;
 
         let wind_speeds = &params.power_table.keys;
@@ -128,7 +132,7 @@ impl OperationModel for PeakShavingTurbine {
         let mut thrust_coeff = ndarray::Array::zeros((n_findex, n_turbines));
         for i in 0..n_findex {
             for j in 0..n_turbines {
-                let vel = rotor_avg_velocities[[i, j, 0]];
+                let vel = rotor_avg_velocities[[i, j]];
 
                 // Apply air density correction for thrust (uses 1/2 power because thrust ~ v²)
                 let air_density_correction =

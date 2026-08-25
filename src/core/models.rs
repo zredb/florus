@@ -38,16 +38,19 @@ pub trait VelocityModel {
 
     /// Main velocity deficit function
     /// turbine_index: which turbine is the wake source (for position lookup)
+    /// axial_induction, yaw_angle, turbulence_intensity, thrust_coefficient are
+    /// per-findex arrays of shape (n_findex, n_turbines), matching the Python
+    /// implementation which broadcasts these as (n_findex, 1, 1, 1).
     fn function(
         &self,
         x: Array4,
         y: Array4,
         z: Array4,
-        axial_induction: Float,
+        axial_induction: Array2,
         deflection_field: Array2,
-        yaw_angle: Float,
-        turbulence_intensity: Float,
-        thrust_coefficient: Float,
+        yaw_angle: Array2,
+        turbulence_intensity: Array2,
+        thrust_coefficient: Array2,
         hub_height: Float,
         rotor_diameter: Float,
         turbine_index: usize,
@@ -87,14 +90,23 @@ pub trait TurbulenceModel {
     ) -> anyhow::Result<HashMap<String, Array1>>;
 
     /// Main turbulence function
+    ///
+    /// Computes the wake-added turbulence intensity on the full grid (4D) for a
+    /// single wake source turbine `i`, used by the WAT clamp in `sequential_solver`.
+    ///
+    /// * `ambient_turbulence_intensity`: shape `[findex, 1, 1, 1]` (inflow TI)
+    /// * `x`: full grid x, shape `[findex, n_turbines, grid_y, grid_z]`
+    /// * `x_i`: source turbine mean x, shape `[findex, 1, 1, 1]`
+    /// * `rotor_diameter`: source turbine rotor diameter (scalar)
+    /// * `axial_induction`: source turbine axial induction, shape `[findex, 1, 1, 1]`
     fn function(
         &self,
-        ambient_turbulence_intensity: Float,
-        rotor_diameter_eff: Float,
-        downstream_distance: Array1,
-        turbine_type_parameters: &HashMap<String, Float>,
-        model_args: &HashMap<String, Array1>,
-    ) -> anyhow::Result<Array1>;
+        ambient_turbulence_intensity: &Array4,
+        x: &Array4,
+        x_i: &Array4,
+        rotor_diameter: Float,
+        axial_induction: &Array4,
+    ) -> anyhow::Result<Array4>;
 }
 
 /// Wake combination model trait

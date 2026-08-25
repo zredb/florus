@@ -58,11 +58,11 @@ impl VelocityModel for GaussLegacyVelocityDeficit {
         x: Array4,
         y: Array4,
         z: Array4,
-        axial_induction: Float,
+        axial_induction: Array2,
         deflection_field: Array2,
-        _yaw_angle: Float,
-        turbulence_intensity: Float,
-        _thrust_coefficient: Float,
+        _yaw_angle: Array2,
+        turbulence_intensity: Array2,
+        _thrust_coefficient: Array2,
         hub_height: Float,
         rotor_diameter: Float,
         turbine_index: usize,
@@ -113,12 +113,12 @@ impl VelocityModel for GaussLegacyVelocityDeficit {
                         let sigma_y = self.calculate_sigma_y(
                             x_point - x_wake_source,
                             r0,
-                            turbulence_intensity,
+                            turbulence_intensity[[fi, turbine_index]],
                         );
                         let sigma_z = self.calculate_sigma_z(
                             x_point - x_wake_source,
                             r0,
-                            turbulence_intensity,
+                            turbulence_intensity[[fi, turbine_index]],
                         );
 
                         // Gaussian profile
@@ -127,8 +127,11 @@ impl VelocityModel for GaussLegacyVelocityDeficit {
                         let profile = (-exponent).exp();
 
                         // Maximum deficit
-                        let deficit_0 =
-                            self.calculate_deficit(axial_induction, x_point - x_wake_source, r0);
+                        let deficit_0 = self.calculate_deficit(
+                            axial_induction[[fi, turbine_index]],
+                            x_point - x_wake_source,
+                            r0,
+                        );
 
                         if profile > 1e-10 {
                             velocity_deficit[[fi, ti, iy, iz]] = deficit_0 * profile;
@@ -270,6 +273,7 @@ mod tests {
             v: empty_4d.clone(),
             w: empty_4d.clone(),
             turbulence_intensity_field: empty_4d.clone(),
+            dudz_initial_sorted: empty_4d.clone(),
             turbulence_intensity_field_sorted: empty_4d,
         }
     }

@@ -49,6 +49,10 @@ pub struct FlowField {
     /// Turbulence intensity field
     pub turbulence_intensity_field: Array4,
     pub turbulence_intensity_field_sorted: Array4,
+
+    /// Derivative of the initial wind speed w.r.t. z (dudz), used by the
+    /// yaw-added recovery (GCH) mechanism. Mirrors flow_field.py:dudz_initial_sorted.
+    pub dudz_initial_sorted: Array4,
 }
 
 impl FlowField {
@@ -103,6 +107,7 @@ impl FlowField {
             v: empty_4d.clone(),
             w: empty_4d.clone(),
             turbulence_intensity_field: empty_4d.clone(),
+            dudz_initial_sorted: empty_4d.clone(),
             turbulence_intensity_field_sorted: empty_4d,
         })
     }
@@ -146,6 +151,33 @@ impl FlowField {
                         };
                         
                         self.u_initial_sorted[[fi, ti, iy, iz]] = ws_ref * height_factor;
+                    }
+                }
+            }
+        }
+
+        // Compute dudz_initial_sorted (derivative of initial velocity w.r.t. z),
+        // used by the yaw-added recovery (GCH) mechanism. Mirrors flow_field.py.
+        self.dudz_initial_sorted = Array::zeros((n_findex, n_turbines, n_y, n_z));
+        for fi in 0..n_findex {
+            // Get reference height (use first turbine's hub height if reference_wind_height is -1)
+            let h_ref = if self.reference_wind_height < 0.0 {
+                if hub_heights.len() > 0 { hub_heights[0] } else { 90.0 }
+            } else {
+                self.reference_wind_height
+            };
+            let prefactor = self.wind_shear * (1.0 / h_ref).powf(self.wind_shear);
+            for ti in 0..n_turbines {
+                for iy in 0..n_y {
+                    for iz in 0..n_z {
+                        let height = z_grid[[fi, ti, iy, iz]];
+                        let dwind = if height != 0.0 {
+                            prefactor * height.powf(self.wind_shear - 1.0)
+                        } else {
+                            0.0
+                        };
+                        self.dudz_initial_sorted[[fi, ti, iy, iz]] =
+                            self.u_initial_sorted[[fi, ti, iy, iz]] * dwind;
                     }
                 }
             }

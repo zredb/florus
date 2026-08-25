@@ -124,31 +124,17 @@ impl LookupTable {
             return self.values[n - 1];
         }
 
+        // 二分查找插值区间 [lo, hi]，满足 ws[lo] <= wind_speed <= ws[hi]
         let mut lo = 0;
         let mut hi = n - 1;
 
-        while lo < hi {
+        while hi - lo > 1 {
             let mid = (lo + hi) / 2;
             if wind_speed < ws[mid] {
                 hi = mid;
             } else {
-                lo = mid + 1;
+                lo = mid;
             }
-        }
-
-        if lo >= n {
-            return self.values[n - 1];
-        }
-
-        let lo_val = if lo > 0 {
-            self.values[lo - 1]
-        } else {
-            self.values[0]
-        };
-        let _hi_val = self.values[lo];
-
-        if hi == lo {
-            return lo_val;
         }
 
         let x0 = ws[lo];

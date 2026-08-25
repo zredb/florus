@@ -2,7 +2,7 @@
 
 use super::{CpCtError, Dimension, DimensionRange, InterpolationMethod, MultiDimTable};
 use crate::types::Array2;
-use crate::types::DynArray;
+use crate::types::ArrayD;
 use csv::Reader;
 use ordered_float::OrderedFloat;
 use std::collections::{BTreeSet, HashSet};
@@ -100,7 +100,7 @@ impl CsvDataLoader {
     fn convert_to_arrays(
         dimensions: &[DimensionRange],
         records: &[csv::StringRecord],
-    ) -> Result<(DynArray, DynArray), CpCtError> {
+    ) -> Result<(ArrayD, ArrayD), CpCtError> {
         if records.is_empty() {
             return Err(CpCtError::InvalidCsvFormat("没有数据记录".to_string()));
         }
@@ -179,10 +179,10 @@ impl CsvDataLoader {
         }
 
         // 转换为ndarray数组
-        let cp_data = DynArray::from_shape_vec(dim_lengths.clone(), cp_data_vec)
+        let cp_data = ArrayD::from_shape_vec(dim_lengths.clone(), cp_data_vec)
             .map_err(|e| CpCtError::InvalidCsvFormat(format!("无法创建CP数组: {}", e)))?;
 
-        let ct_data = DynArray::from_shape_vec(dim_lengths, ct_data_vec)
+        let ct_data = ArrayD::from_shape_vec(dim_lengths, ct_data_vec)
             .map_err(|e| CpCtError::InvalidCsvFormat(format!("无法创建CT数组: {}", e)))?;
 
         Ok((cp_data, ct_data))

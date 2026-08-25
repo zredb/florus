@@ -1,23 +1,16 @@
-//! Example: Visualize Cross Plane (from examples_visualizations folder)
+//! Example: Visualize Cross Plane
 //!
-//! Demonstrate visualizing a plane cut vertically through the flow field across the wind direction.
-//! This corresponds to `examples_visualizations/003_visualize_cross_plane.py` in Python FLORIS.
+//! Demonstrates vertical plane visualization perpendicular to the wind direction.
 //!
-//! Note: Full cross-plane calculation requires implementing calculate_cross_plane() method.
-//! This example uses horizontal plane as a placeholder to demonstrate the concept.
+//! Corresponds to: examples_visualizations/003_visualize_cross_plane.py
 
 use florus::{FlorisModel, Result};
 use florus::visualization::*;
 
 fn main() -> Result<()> {
-    println!("=== Cross Plane Visualization Example ===\n");
-    println!("This example demonstrates cross-stream plane visualization concepts.");
-    println!("Note: Full cross-plane implementation requires calculate_cross_plane() method.\n");
+    println!("=== Cross Plane Visualization ===\n");
 
-    // Initialize FLORIS
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-
-    // Set a 1 turbine layout
     fmodel.set_layout(
         &ndarray::arr1(&[0.0]),
         &ndarray::arr1(&[0.0]),
@@ -27,43 +20,30 @@ fn main() -> Result<()> {
         ndarray::arr1(&[270.0]),
         ndarray::arr1(&[0.06]),
     )?;
-
-    // Create output directory
-    std::fs::create_dir_all("output/examples_visualizations")?;
-
-    println!("Running simulation...");
     fmodel.run()?;
 
-    // Since calculate_cross_plane() is not yet implemented, we'll use horizontal plane
-    // as a demonstration of flow visualization capabilities
-    println!("\nNote: Full cross-plane visualization requires implementing:");
-    println!("  - calculate_cross_plane() method in FlorisModel");
-    println!("  - Vertical plane extraction perpendicular to wind direction");
-    println!("  - Y-Z coordinate system at specified downstream distance\n");
+    std::fs::create_dir_all("output/examples_visualizations")?;
 
-    // Demonstrate with horizontal plane instead
-    println!("Creating horizontal plane visualization as demonstration...");
-    match visualize_horizontal_plane(
-        &fmodel,
-        "output/examples_visualizations/cross_plane_demo.png",
-        Some(3.0),   // Min speed
-        Some(9.0),   // Max speed
-        Some("Horizontal Plane (Cross-plane not yet implemented)"),
-    ) {
-        Ok(_) => {
-            println!("   ✓ Saved to output/examples_visualizations/cross_plane_demo.png");
-            println!("   ℹ This shows horizontal plane at hub height");
-            println!("   ℹ True cross-plane would show vertical slice at downstream_dist=500m");
+    println!("Calculating cross-plane (perpendicular to wind at 500m downstream)...");
+    match fmodel.calculate_cross_plane(100, 100, 500.0) {
+        Ok(cut_plane) => {
+            println!("  Cross-plane computed successfully");
+            match visualize_cut_plane(
+                &cut_plane,
+                "output/examples_visualizations/cross_plane.png",
+                Some(3.0),
+                Some(9.0),
+                "coolwarm",
+                true,
+                "Cross Plane at 500m",
+            ) {
+                Ok(_) => println!("  Saved to output/examples_visualizations/cross_plane.png"),
+                Err(e) => eprintln!("  Visualization error: {}", e),
+            }
         }
-        Err(e) => eprintln!("   ✗ Error: {}", e),
+        Err(e) => eprintln!("  Cross-plane calculation error: {}", e),
     }
 
-    println!("\n=== Cross Plane Example Complete ===");
-    println!("\nTo fully implement cross-plane visualization:");
-    println!("  1. Add calculate_cross_plane() to FlorisModel");
-    println!("  2. Extract vertical slice at specified downstream_dist");
-    println!("  3. Interpolate flow field onto Y-Z grid perpendicular to wind");
-    println!("  4. Visualize with appropriate axis labels and aspect ratio");
-
+    println!("\n=== Example Complete ===");
     Ok(())
 }

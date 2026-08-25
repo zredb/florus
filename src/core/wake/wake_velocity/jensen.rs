@@ -44,11 +44,11 @@ impl VelocityModel for JensenVelocity {
         x: Array4,
         y: Array4,
         _z: Array4,
-        axial_induction: Float,
+        axial_induction: Array2,
         deflection_field: Array2,
-        _yaw_angle: Float,
-        turbulence_intensity: Float,
-        _thrust_coefficient: Float,
+        _yaw_angle: Array2,
+        turbulence_intensity: Array2,
+        _thrust_coefficient: Array2,
         _hub_height: Float,
         rotor_diameter: Float,
         turbine_index: usize,
@@ -79,7 +79,12 @@ impl VelocityModel for JensenVelocity {
             let r0 = rotor_diameter / 2.0;
 
             // Calculate base deficit at source
-            let deficit_0 = self.calculate_deficit(axial_induction, x_wake_source, r0, turbulence_intensity);
+            let deficit_0 = self.calculate_deficit(
+                axial_induction[[fi, turbine_index]],
+                x_wake_source,
+                r0,
+                turbulence_intensity[[fi, turbine_index]],
+            );
 
             // Apply deficit to all downstream grid points
             for ti in 0..n_turbines {

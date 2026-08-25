@@ -201,17 +201,17 @@ impl FlorisModel {
     /// 3. Applies yaw cosine correction
     /// 4. Uses power curve interpolation directly from cp_ct_table
     pub fn get_turbine_powers(&self) -> Array2 {
-        use crate::core::turbines::cp_ct_table::TableConditions;
-        
         let n_findex = self.core.flow_field.n_findex;
         let n_turbines = self.core.farm.n_turbines();
-        // Use unsorted arrays to match Python FLORIS behavior
         let yaw_angles = &self.core.farm.yaw_angles;
         let tilt_angles = &self.core.farm.tilt_angles;
 
         let mut powers = Array::zeros((n_findex, n_turbines));
-        // Use unsorted velocity field
         let velocities = &self.core.flow_field.u;
+
+        if velocities.shape()[0] == 0 || velocities.shape()[1] == 0 {
+            return powers;
+        }
 
         for ti in 0..n_turbines {
             if ti >= self.core.farm.turbines.len() {
@@ -219,7 +219,7 @@ impl FlorisModel {
             }
 
             let turbine = &self.core.farm.turbines[ti];
-            
+
             let ref_air_density = turbine.turbine_type.power_thrust_table.ref_air_density.unwrap_or(1.225);
             let cosine_loss_exponent_yaw = turbine.turbine_type.power_thrust_table.cosine_loss_exponent_yaw.unwrap_or(1.88);
             let cosine_loss_exponent_tilt = turbine.turbine_type.power_thrust_table.cosine_loss_exponent_tilt.unwrap_or(1.88);
@@ -246,11 +246,20 @@ impl FlorisModel {
                 let tilt_correction = (cosd(tilt) / cosd(ref_tilt)).powf(cosine_loss_exponent_tilt / 3.0);
                 rotor_effective_velocity *= tilt_correction;
 
+                use crate::core::turbines::cp_ct_table::TableConditions;
                 let mut conditions = TableConditions::default();
                 conditions.wind_speed = rotor_effective_velocity;
                 let power_kw = turbine.turbine_type.power_thrust_table.cp_ct_table.get_cp(&conditions).unwrap_or(0.0);
 
-                powers[[fi, ti]] = power_kw * 1000.0;
+                let mut power_val = power_kw * 1000.0;
+
+                // Apply power setpoint limit (simple-derating)
+                let sp = self.core.farm.power_setpoints[[fi, ti]];
+                if sp < crate::core::POWER_SETPOINT_DEFAULT {
+                    power_val = power_val.min(sp);
+                }
+
+                powers[[fi, ti]] = power_val;
             }
         }
 
@@ -772,14 +781,17 @@ impl FlorisModel {
 
         match spec {
             OperationModelSpec::Single(model) => {
-                // Apply same model to all turbines
-                // In full implementation, this would update turbine definitions
                 log::info!(
                     "Setting operation model '{}' for all {} turbines",
                     model,
                     n_turbines
                 );
-                // TODO: Update turbine_type configurations
+                // Update the operation model on each turbine's TurbineType
+                for turbine in self.core.farm.turbines.iter_mut() {
+                    let new_tt = turbine.turbine_type.with_operation_model(&model);
+                    turbine.turbine_type = std::sync::Arc::new(new_tt);
+                }
+                self.core.state.initialized = false;
             }
             OperationModelSpec::Multiple(models) => {
                 if models.len() != n_turbines {
@@ -794,7 +806,11 @@ impl FlorisModel {
                     n_turbines,
                     models
                 );
-                // TODO: Update individual turbine_type configurations
+                for (turbine, model) in self.core.farm.turbines.iter_mut().zip(models.iter()) {
+                    let new_tt = turbine.turbine_type.with_operation_model(model);
+                    turbine.turbine_type = std::sync::Arc::new(new_tt);
+                }
+                self.core.state.initialized = false;
             }
         }
 
@@ -1326,6 +1342,7 @@ impl FlorisModel {
         self.core
             .farm
             .initialize_control_arrays(self.core.flow_field.n_findex);
+        self.core.farm.set_tilt_to_ref_tilt(self.core.flow_field.n_findex);
         self.core.grid = None;
         Ok(())
     }
@@ -1350,7 +1367,8 @@ impl FlorisModel {
         self.core
             .farm
             .initialize_control_arrays(self.core.flow_field.n_findex);
-        
+        self.core.farm.set_tilt_to_ref_tilt(self.core.flow_field.n_findex);
+
         // Clear wind_data_info for flat TimeSeries mode
         self.core.wind_data_info = None;
         
@@ -1385,7 +1403,8 @@ impl FlorisModel {
         self.core
             .farm
             .initialize_control_arrays(self.core.flow_field.n_findex);
-        
+        self.core.farm.set_tilt_to_ref_tilt(self.core.flow_field.n_findex);
+
         // Store WindRose information for reshaping
         self.core.wind_data_info = Some(crate::core::core::WindDataInfo {
             wind_directions: unique_wind_directions,
@@ -1653,6 +1672,7 @@ impl FlorisModel {
         self.core
             .farm
             .initialize_control_arrays(self.core.flow_field.n_findex);
+        self.core.farm.set_tilt_to_ref_tilt(self.core.flow_field.n_findex);
 
         // Reset grid (will be recreated on next run)
         self.core.grid = None;

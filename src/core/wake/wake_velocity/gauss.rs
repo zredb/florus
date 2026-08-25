@@ -58,17 +58,16 @@ impl VelocityModel for GaussVelocity {
         x: Array4,
         y: Array4,
         z: Array4,
-        _axial_induction: Float,
+        _axial_induction: Array2,
         deflection_field: Array2,
-        yaw_angle: Float,
-        turbulence_intensity: Float,
-        thrust_coefficient: Float,
+        yaw_angle: Array2,
+        turbulence_intensity: Array2,
+        thrust_coefficient: Array2,
         hub_height: Float,
         rotor_diameter: Float,
         turbine_index: usize,
         model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4> {
-        let r0 = rotor_diameter / 2.0;
         let shape = x.shape();
         let n_findex = shape[0];
         let n_turbines = shape[1];
@@ -106,85 +105,83 @@ impl VelocityModel for GaussVelocity {
             }
         }
 
-        let x_i = x_i_array[[0, turbine_index]];
-        let y_i = y_i_array[[0, turbine_index]];
-
-        // Turbine upstream of reference point (x < 0) doesn't generate a wake
-        if x_i < 0.0 {
-            return Ok(velocity_deficit);
-        }
-
-        // Opposite sign convention in this model
-        let yaw = -yaw_angle;
-
-        let ct = thrust_coefficient;
-        if ct <= 0.0 {
-            return Ok(velocity_deficit);
-        }
-
-        let sqrt_one_minus_ct = (1.0 - ct).sqrt();
-
-        // Calculate initial wake parameters
-        // uR and u0 are used to determine initial wake width
-        let u_initial = 1.0; // Normalized
-        let uR = u_initial * ct / (2.0 * (1.0 - sqrt_one_minus_ct));
-        let u0 = u_initial * sqrt_one_minus_ct;
-
-        // Initial wake width (sigma at x0)
-        let sigma_z0 = rotor_diameter * 0.5 * (uR / (u_initial + u0)).sqrt();
-        let sigma_y0 = sigma_z0 * cosd(yaw) * cosd(wind_veer);  // Apply wind veer correction
-
-        // Start of far wake (x0)
-        let x0 = rotor_diameter * cosd(yaw) * (1.0 + sqrt_one_minus_ct)
-            / (2.0_f64.sqrt()
-                * (4.0 * self.alpha * turbulence_intensity
-                    + 2.0 * self.beta * (1.0 - sqrt_one_minus_ct)));
-        let x0 = x0 + x_i;  // Add turbine location to x0
-
-        // Wake expansion rate
-        let ky = self.ka * turbulence_intensity + self.kb;
-        let kz = self.ka * turbulence_intensity + self.kb;
-
         for fi in 0..n_findex {
+            let x_i = x_i_array[[fi, turbine_index]];
+            let y_i = y_i_array[[fi, turbine_index]];
+
+            // Turbine upstream of reference point (x < 0) doesn't generate a wake
+            if x_i < 0.0 {
+                continue;
+            }
+
+            // Opposite sign convention in this model
+            let yaw = -yaw_angle[[fi, turbine_index]];
+
+            let ct = thrust_coefficient[[fi, turbine_index]];
+            if ct <= 0.0 {
+                continue;
+            }
+
+            let ti = turbulence_intensity[[fi, turbine_index]];
+
+            let sqrt_one_minus_ct = (1.0 - ct).sqrt();
+
+            // Calculate initial wake parameters
+            // uR and u0 are used to determine initial wake width
+            let u_initial = 1.0; // Normalized
+            let uR = u_initial * ct / (2.0 * (1.0 - sqrt_one_minus_ct));
+            let u0 = u_initial * sqrt_one_minus_ct;
+
+            // Initial wake width (sigma at x0)
+            let sigma_z0 = rotor_diameter * 0.5 * (uR / (u_initial + u0)).sqrt();
+            let sigma_y0 = sigma_z0 * cosd(yaw) * cosd(wind_veer);  // Apply wind veer correction
+
+            // Start of the far wake (x0), relative to the rotor plane.
+            // Matches Python: x0 = D * cosd(yaw) * (1 + sqrt(1-ct)) / (sqrt(2) * (4*alpha*TI + 2*beta*(1-sqrt(1-ct)))) + x_i
+            let x0 = rotor_diameter * cosd(yaw) * (1.0 + sqrt_one_minus_ct)
+                / (2.0_f64.sqrt()
+                    * (4.0 * self.alpha * ti
+                        + 2.0 * self.beta * (1.0 - sqrt_one_minus_ct)));
+            let x0 = x0 + x_i;  // Add turbine location to x0
+
+            // Wake expansion rate
+            let ky = self.ka * ti + self.kb;
+            let kz = self.ka * ti + self.kb;
+
             let deflection_at_source = deflection_field[[fi, turbine_index]];
 
-            for ti in 0..n_turbines {
+            for ti_grid in 0..n_turbines {
                 for iy in 0..n_y {
                     for iz in 0..n_z {
-                        let x_point = x[[fi, ti, iy, iz]];
+                        let x_point = x[[fi, ti_grid, iy, iz]];
 
                         // Only apply if this point is downstream of the wake source
                         if x_point <= x_i + 0.1 {
                             continue;
                         }
 
-                        let downstream_dist = x_point - x_i;
-
                         // Determine if in near wake or far wake
-                        let (sigma_y, sigma_z) = if x_point < x_i + x0 {
+                        let (sigma_y, sigma_z) = if x_point < x0 {
                             // Near wake region - linear interpolation
                             let near_wake_ramp_up = (x_point - x_i) / (x0 - x_i);
                             let near_wake_ramp_down = (x0 - x_point) / (x0 - x_i);
 
                             let sy_base = 0.501 * rotor_diameter * (ct / 2.0).sqrt();
                             let sz_base = 0.501 * rotor_diameter * (ct / 2.0).sqrt();
-                            
+
                             let sy = near_wake_ramp_down * sy_base + near_wake_ramp_up * sigma_y0;
-                            let sy = sy * ((x_point >= x_i) as i32 as f64) + sy_base * ((x_point < x_i) as i32 as f64);
-                            
                             let sz = near_wake_ramp_down * sz_base + near_wake_ramp_up * sigma_z0;
-                            let sz = sz * ((x_point >= x_i) as i32 as f64) + sz_base * ((x_point < x_i) as i32 as f64);
-                            
+
                             (sy, sz)
                         } else {
                             // Far wake region
-                            let sy = ky * (downstream_dist - x0) + sigma_y0;
-                            let sz = kz * (downstream_dist - x0) + sigma_z0;
+                            let sy = ky * (x_point - x0) + sigma_y0;
+                            let sz = kz * (x_point - x0) + sigma_z0;
                             (sy, sz)
                         };
 
-                        let y_point = y[[fi, ti, iy, iz]];
-                        let z_point = z[[fi, ti, iy, iz]];
+                        let y_point = y[[fi, ti_grid, iy, iz]];
+                        let z_point = z[[fi, ti_grid, iy, iz]];
 
                         // Wake center at this x position (with deflection)
                         let wake_center_y = y_i + deflection_at_source;
@@ -198,28 +195,28 @@ impl VelocityModel for GaussVelocity {
                         let cos_veer_sq = cosd(wind_veer).powi(2);
                         let sin_veer_sq = sind(wind_veer).powi(2);
                         let sin_2veer = sind(2.0 * wind_veer);
-                        
+
                         let a = (cos_veer_sq / (2.0 * sigma_y * sigma_y)) + (sin_veer_sq / (2.0 * sigma_z * sigma_z));
                         let b = (-sin_2veer / (4.0 * sigma_y * sigma_y)) + (sin_2veer / (4.0 * sigma_z * sigma_z));
                         let c_coeff = (sin_veer_sq / (2.0 * sigma_y * sigma_y)) + (cos_veer_sq / (2.0 * sigma_z * sigma_z));
-                        
+
                         let dy_offset = dy;
                         let dz_offset = dz;
-                        
+
                         let r_squared = a * (dy_offset * dy_offset)
                             - 2.0 * b * dy_offset * dz_offset
                             + c_coeff * (dz_offset * dz_offset);
-                        
+
                         // C coefficient for velocity deficit
                         let d = 1.0 - (ct * cosd(yaw) / (8.0 * sigma_y * sigma_z / (rotor_diameter * rotor_diameter)));
                         let d_clipped = d.max(0.0).min(1.0);  // Use max/min instead of clamp for compatibility
                         let c = 1.0 - d_clipped.sqrt();
-                        
+
                         // Gaussian function
                         let deficit = c * (-r_squared).exp();
 
                         if deficit > 1e-10 {
-                            velocity_deficit[[fi, ti, iy, iz]] = deficit;
+                            velocity_deficit[[fi, ti_grid, iy, iz]] = deficit;
                         }
                     }
                 }
@@ -324,6 +321,7 @@ mod tests {
             v: empty_4d.clone(),
             w: empty_4d.clone(),
             turbulence_intensity_field: empty_4d.clone(),
+            dudz_initial_sorted: empty_4d.clone(),
             turbulence_intensity_field_sorted: empty_4d,
         }
     }

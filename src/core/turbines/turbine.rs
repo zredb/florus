@@ -10,12 +10,14 @@ use crate::{
     types::{Array2, Array4, Float},
 };
 use ndarray::Array;
+use std::sync::Arc;
 
 /// Wind turbine representation with embedded turbine type
 #[derive(Debug, Clone)]
 pub struct Turbine {
     /// Turbine type containing all turbine parameters and curves
-    pub turbine_type: TurbineType,
+    /// Using Arc for shared ownership - TurbineType is immutable configuration data
+    pub turbine_type: Arc<TurbineType>,
 }
 
 impl Turbine {
@@ -23,146 +25,277 @@ impl Turbine {
     ///
     /// # Arguments
     /// * `velocities` - Wind velocities at turbine rotor (findex, n_turbines, n_points, n_grid)
+    /// * `air_density` - Air density [kg/m^3]
     /// * `yaw_angles` - Yaw angles [degrees]
     /// * `tilt_angles` - Tilt angles [degrees]
     /// * `average_method` - Method for averaging velocities
-    pub fn calculate_power(
+    pub fn power(
         &self,
         velocities: &Array4,
-        _air_density: Float,
+        air_density: Float,
         yaw_angles: Option<&Array2>,
         tilt_angles: Option<&Array2>,
         average_method: AveragingMethod,
     ) -> crate::Result<Array2> {
-        // Calculate rotor effective velocity
-        // Create ref_tilt array for single turbine
-        let n_findex = velocities.shape()[0];
-        let n_turbines = velocities.shape()[1];
-        let ref_tilt = Array::from_elem(
-            (n_findex, n_turbines),
-            self.turbine_type.power_thrust_table.ref_tilt.unwrap_or(5.0),
-        );
-        let correct_cp_ct_for_tilt = Array::from_elem(
-            (n_findex, n_turbines),
-            self.turbine_type.correct_cp_ct_for_tilt,
-        );
+        use crate::core::turbines::operation_models::{
+            OperationModel, TurbineContext, TurbineParameters,
+        };
 
-        let rotor_velocities = rotor_effective_velocity(
+        // Create lookup tables from cp_ct_table
+        let wind_speeds = self.turbine_type.power_thrust_table.cp_ct_table.wind_speeds();
+        
+        // Extract CP and CT values from the table
+        let (cp_values, ct_values) = match &self.turbine_type.power_thrust_table.cp_ct_table {
+            crate::core::turbines::cp_ct_table::CpCtTable::OneDimensional(table) => {
+                (&table.cp_values, &table.ct_values)
+            }
+            _ => {
+                // For multi-dimensional tables, we need to handle differently
+                // For now, return empty arrays (this should be improved)
+                return Err(anyhow::anyhow!("Multi-dimensional Cp/Ct tables not yet supported in Turbine::power"));
+            }
+        };
+
+        let power_table = crate::core::turbines::operation_models::LookupTable {
+            keys: ndarray::Array1::from_vec(wind_speeds.to_vec()),
+            values: cp_values.clone(),
+        };
+
+        let thrust_table = crate::core::turbines::operation_models::LookupTable {
+            keys: ndarray::Array1::from_vec(wind_speeds.to_vec()),
+            values: ct_values.clone(),
+        };
+
+        // Get ref_tilt value
+        let ref_tilt = self.turbine_type.power_thrust_table.ref_tilt.unwrap_or(5.0);
+
+        // Create turbine parameters
+        let params = TurbineParameters {
+            power_table,
+            thrust_table,
+            ref_air_density: self.turbine_type.power_thrust_table.ref_air_density.unwrap_or(1.225),
+            cosine_loss_exponent_yaw: self
+                .turbine_type
+                .power_thrust_table
+                .cosine_loss_exponent_yaw
+                .unwrap_or(2.0),
+            cosine_loss_exponent_tilt: self
+                .turbine_type
+                .power_thrust_table
+                .cosine_loss_exponent_tilt
+                .unwrap_or(2.0),
+            ref_tilt,
+            peak_shaving_fraction: self
+                .turbine_type
+                .power_thrust_table
+                .peak_shaving_fraction
+                .unwrap_or(0.0),
+            peak_shaving_ti_threshold: self
+                .turbine_type
+                .power_thrust_table
+                .peak_shaving_ti_threshold
+                .unwrap_or(0.0),
+        };
+
+        // Create air density array
+        let n_findex = velocities.shape()[0];
+        let air_density_array = Array::from_elem(n_findex, air_density);
+
+        // Create turbine context
+        let ctx = TurbineContext {
             velocities,
-            average_method,
-            None,
+            air_density: &air_density_array,
             yaw_angles,
             tilt_angles,
-            Some(&ref_tilt),
-            None,
-            None,
-            Some(&correct_cp_ct_for_tilt),
-        )?;
+            power_setpoints: None,
+            turbulence_intensities: None,
+            awc_amplitudes: None,
+            cubature_weights: None,
+            correct_cp_ct_for_tilt: None,
+            average_method,
+        };
 
-        let shape = rotor_velocities.shape();
-        let mut power_output = Array::zeros((shape[0], shape[1]));
-
-        // Calculate power for each turbine at each condition
-        for fi in 0..shape[0] {
-            for ti in 0..shape[1] {
-                let v = rotor_velocities[[fi, ti, 0]];
-
-                let wind_speed = self
-                    .turbine_type
-                    .power_thrust_table
-                    .cp_ct_table
-                    .wind_speeds();
-                if fi == 0 && ti == 0 {
-                    log::warn!("DEBUG: v={}, ws[0]={}, ws[-1]={}", v, wind_speed[0], wind_speed[wind_speed.len() - 1]);
-                }
-
-                if v < wind_speed[0] || v > wind_speed[wind_speed.len() - 1] {
-                    power_output[[fi, ti]] = 0.0;
-                } else {
-                    let mut conditions = TableConditions::default();
-                    conditions.wind_speed = v;
-                    let power_kw = self.turbine_type.power_thrust_table.cp_ct_table.get_cp(&conditions).unwrap();
-                    let power_watts = power_kw * 1000.0;
-                    if fi == 0 && ti == 0 {
-                        eprintln!("DEBUG: v={}, power_kw={}, power_watts={}", v, power_kw, power_watts);
-                    }
-
-                    // Apply yaw correction from operation model
-                    if let Some(yaw) = yaw_angles {
-                        let yaw_rad = yaw[[fi, ti]].to_radians();
-                        let operation_model = self.turbine_type.operation_model.as_ref();
-                        let loss_factor = operation_model.power_loss_factor(yaw_rad, 2.0);
-                        power_output[[fi, ti]] = power_watts * loss_factor;
-                    } else {
-                        power_output[[fi, ti]] = power_watts;
-                    }
-                }
-            }
-        }
-
-        Ok(power_output)
+        // Call the operation model's power method
+        self.turbine_type.operation_model.power(&params, &ctx)
     }
 
     /// Calculate thrust coefficient for given velocities
-    pub fn calculate_thrust_coefficient(
+    pub fn thrust_coefficient(
         &self,
         velocities: &Array4,
+        air_density: Float,
         yaw_angles: Option<&Array2>,
         tilt_angles: Option<&Array2>,
         average_method: AveragingMethod,
     ) -> crate::Result<Array2> {
-        // Create ref_tilt array for single turbine
-        let n_findex = velocities.shape()[0];
-        let n_turbines = velocities.shape()[1];
-        let ref_tilt = Array::from_elem(
-            (n_findex, n_turbines),
-            self.turbine_type.power_thrust_table.ref_tilt.unwrap_or(5.0),
-        );
-        let correct_cp_ct_for_tilt = Array::from_elem(
-            (n_findex, n_turbines),
-            self.turbine_type.correct_cp_ct_for_tilt,
-        );
+        use crate::core::turbines::operation_models::{
+            OperationModel, TurbineContext, TurbineParameters,
+        };
 
-        let rotor_velocities = rotor_effective_velocity(
+        // Create lookup tables from cp_ct_table
+        let wind_speeds = self.turbine_type.power_thrust_table.cp_ct_table.wind_speeds();
+        
+        // Extract CP and CT values from the table
+        let (cp_values, ct_values) = match &self.turbine_type.power_thrust_table.cp_ct_table {
+            crate::core::turbines::cp_ct_table::CpCtTable::OneDimensional(table) => {
+                (&table.cp_values, &table.ct_values)
+            }
+            _ => {
+                // For multi-dimensional tables, we need to handle differently
+                return Err(anyhow::anyhow!("Multi-dimensional Cp/Ct tables not yet supported in Turbine::thrust_coefficient"));
+            }
+        };
+
+        let power_table = crate::core::turbines::operation_models::LookupTable {
+            keys: ndarray::Array1::from_vec(wind_speeds.to_vec()),
+            values: cp_values.clone(),
+        };
+
+        let thrust_table = crate::core::turbines::operation_models::LookupTable {
+            keys: ndarray::Array1::from_vec(wind_speeds.to_vec()),
+            values: ct_values.clone(),
+        };
+
+        // Get ref_tilt value
+        let ref_tilt = self.turbine_type.power_thrust_table.ref_tilt.unwrap_or(5.0);
+
+        // Create turbine parameters
+        let params = TurbineParameters {
+            power_table,
+            thrust_table,
+            ref_air_density: self.turbine_type.power_thrust_table.ref_air_density.unwrap_or(1.225),
+            cosine_loss_exponent_yaw: self
+                .turbine_type
+                .power_thrust_table
+                .cosine_loss_exponent_yaw
+                .unwrap_or(2.0),
+            cosine_loss_exponent_tilt: self
+                .turbine_type
+                .power_thrust_table
+                .cosine_loss_exponent_tilt
+                .unwrap_or(2.0),
+            ref_tilt,
+            peak_shaving_fraction: self
+                .turbine_type
+                .power_thrust_table
+                .peak_shaving_fraction
+                .unwrap_or(0.0),
+            peak_shaving_ti_threshold: self
+                .turbine_type
+                .power_thrust_table
+                .peak_shaving_ti_threshold
+                .unwrap_or(0.0),
+        };
+
+        // Create air density array
+        let n_findex = velocities.shape()[0];
+        let air_density_array = Array::from_elem(n_findex, air_density);
+
+        // Create turbine context
+        let ctx = TurbineContext {
             velocities,
-            average_method,
-            None,
+            air_density: &air_density_array,
             yaw_angles,
             tilt_angles,
-            Some(&ref_tilt),
-            None,
-            None,
-            Some(&correct_cp_ct_for_tilt),
-        )?;
+            power_setpoints: None,
+            turbulence_intensities: None,
+            awc_amplitudes: None,
+            cubature_weights: None,
+            correct_cp_ct_for_tilt: None,
+            average_method,
+        };
 
-        let shape = rotor_velocities.shape();
-        let mut ct_output = Array::zeros((shape[0], shape[1]));
-
-        for fi in 0..shape[0] {
-            for ti in 0..shape[1] {
-                let v = rotor_velocities[[fi, ti, 0]];
-                let mut conditions = TableConditions::default();
-                conditions.wind_speed = v;
-                ct_output[[fi, ti]] = self
-                    .turbine_type
-                    .power_thrust_table
-                    .cp_ct_table
-                    .get_ct(&conditions)
-                    .unwrap_or(0.0);
-            }
-        }
-
-        Ok(ct_output)
+        // Call the operation model's thrust_coefficient method
+        self.turbine_type.operation_model.thrust_coefficient(&params, &ctx)
     }
 
-    /// Calculate axial induction factor from thrust coefficient
-    pub fn calculate_axial_induction(&self, ct: Float) -> Float {
-        // Using momentum theory relationship
-        if ct < 0.96 {
-            0.5 * (1.0 - (1.0 - ct).sqrt())
-        } else {
-            // High thrust region - empirical relationship
-            0.143 + (0.0203 - 0.6427 * (0.889 - ct)).sqrt()
-        }
+    /// Calculate axial induction factor for given velocities
+    pub fn axial_induction(
+        &self,
+        velocities: &Array4,
+        air_density: Float,
+        yaw_angles: Option<&Array2>,
+        tilt_angles: Option<&Array2>,
+        average_method: AveragingMethod,
+    ) -> crate::Result<Array2> {
+        use crate::core::turbines::operation_models::{
+            OperationModel, TurbineContext, TurbineParameters,
+        };
+
+        // Create lookup tables from cp_ct_table
+        let wind_speeds = self.turbine_type.power_thrust_table.cp_ct_table.wind_speeds();
+        
+        // Extract CP and CT values from the table
+        let (cp_values, ct_values) = match &self.turbine_type.power_thrust_table.cp_ct_table {
+            crate::core::turbines::cp_ct_table::CpCtTable::OneDimensional(table) => {
+                (&table.cp_values, &table.ct_values)
+            }
+            _ => {
+                // For multi-dimensional tables, we need to handle differently
+                return Err(anyhow::anyhow!("Multi-dimensional Cp/Ct tables not yet supported in Turbine::axial_induction"));
+            }
+        };
+
+        let power_table = crate::core::turbines::operation_models::LookupTable {
+            keys: ndarray::Array1::from_vec(wind_speeds.to_vec()),
+            values: cp_values.clone(),
+        };
+
+        let thrust_table = crate::core::turbines::operation_models::LookupTable {
+            keys: ndarray::Array1::from_vec(wind_speeds.to_vec()),
+            values: ct_values.clone(),
+        };
+
+        // Get ref_tilt value
+        let ref_tilt = self.turbine_type.power_thrust_table.ref_tilt.unwrap_or(5.0);
+
+        // Create turbine parameters
+        let params = TurbineParameters {
+            power_table,
+            thrust_table,
+            ref_air_density: self.turbine_type.power_thrust_table.ref_air_density.unwrap_or(1.225),
+            cosine_loss_exponent_yaw: self
+                .turbine_type
+                .power_thrust_table
+                .cosine_loss_exponent_yaw
+                .unwrap_or(2.0),
+            cosine_loss_exponent_tilt: self
+                .turbine_type
+                .power_thrust_table
+                .cosine_loss_exponent_tilt
+                .unwrap_or(2.0),
+            ref_tilt,
+            peak_shaving_fraction: self
+                .turbine_type
+                .power_thrust_table
+                .peak_shaving_fraction
+                .unwrap_or(0.0),
+            peak_shaving_ti_threshold: self
+                .turbine_type
+                .power_thrust_table
+                .peak_shaving_ti_threshold
+                .unwrap_or(0.0),
+        };
+
+        // Create air density array
+        let n_findex = velocities.shape()[0];
+        let air_density_array = Array::from_elem(n_findex, air_density);
+
+        // Create turbine context
+        let ctx = TurbineContext {
+            velocities,
+            air_density: &air_density_array,
+            yaw_angles,
+            tilt_angles,
+            power_setpoints: None,
+            turbulence_intensities: None,
+            awc_amplitudes: None,
+            cubature_weights: None,
+            correct_cp_ct_for_tilt: None,
+            average_method,
+        };
+
+        // Call the operation model's axial_induction method
+        self.turbine_type.operation_model.axial_induction(&params, &ctx)
     }
 }

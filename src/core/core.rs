@@ -97,7 +97,6 @@ impl Core {
 
         let config: FlorisConfig = serde_yaml::from_value(config_value)
             .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))?;
-
         Self::from_config(config)
     }
 

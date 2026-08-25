@@ -25,8 +25,8 @@ pub type ArrayView3<'a> = ndarray::ArrayView3<'a, Float>;
 pub type Array4 = NdArray4<Float>;
 pub type ArrayView4<'a> = ndarray::ArrayView4<'a, Float>;
 
-pub type DynArray = ndarray::ArrayD<Float>;
-pub type DynArrayView<'a> = ndarray::ArrayViewD<'a, Float>;
+pub type ArrayD = ndarray::ArrayD<Float>;
+pub type ArrayDView<'a> = ndarray::ArrayViewD<'a, Float>;
 
 /// Numeric dictionary type for configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

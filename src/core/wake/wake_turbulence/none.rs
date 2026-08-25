@@ -2,7 +2,7 @@
 //!
 //! No additional wake turbulence - ambient turbulence only
 
-use crate::types::{Float, Array1};
+use crate::types::{Array1, Array4, Float};
 use crate::core::wake::{BaseModel, TurbulenceModel};
 use crate::core::{Grid, FlowField};
 use std::collections::HashMap;
@@ -38,12 +38,12 @@ impl TurbulenceModel for NoneTurbulence {
 
     fn function(
         &self,
-        ambient_turbulence_intensity: Float,
-        _rotor_diameter_eff: Float,
-        downstream_distance: Array1,
-        _turbine_type_parameters: &HashMap<String, Float>,
-        _model_args: &HashMap<String, Array1>,
-    ) -> anyhow::Result<Array1> {
-        Ok(Array1::from_elem(downstream_distance.len(), ambient_turbulence_intensity))
+        _ambient_turbulence_intensity: &Array4,
+        x: &Array4,
+        _x_i: &Array4,
+        _rotor_diameter: Float,
+        _axial_induction: &Array4,
+    ) -> anyhow::Result<Array4> {
+        Ok(Array4::zeros(x.dim()))
     }
 }

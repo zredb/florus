@@ -84,11 +84,11 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
         x: Array4,
         y: Array4,
         z: Array4,
-        axial_induction: Float,
+        axial_induction: Array2,
         deflection_field: Array2,
-        _yaw_angle: Float,
-        turbulence_intensity: Float,
-        thrust_coefficient: Float,
+        _yaw_angle: Array2,
+        turbulence_intensity: Array2,
+        thrust_coefficient: Array2,
         hub_height: Float,
         rotor_diameter: Float,
         turbine_index: usize,
@@ -111,11 +111,14 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
             return Ok(velocity_deficit);
         }
 
-        let epsilon = calculate_epsilon(thrust_coefficient);
-
         for fi in 0..n_findex {
             // Get deflection at the wake source turbine
             let deflection_at_source = deflection_field[[fi, turbine_index]];
+
+            let epsilon = calculate_epsilon(thrust_coefficient[[fi, turbine_index]]);
+            let a_i = axial_induction[[fi, turbine_index]];
+            let ti_i = turbulence_intensity[[fi, turbine_index]];
+            let ct_i = thrust_coefficient[[fi, turbine_index]];
 
             for ti in 0..n_turbines {
                 for iy in 0..n_y {
@@ -136,20 +139,15 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
                         let r = (dy.powi(2) + dz.powi(2)).sqrt();
 
                         let x_dist = (x_point - x_wake_source) / rotor_diameter;
-                        let dw = turboparkgauss_wake_width(
-                            x_dist,
-                            turbulence_intensity,
-                            thrust_coefficient,
-                            self.a,
-                        );
-                        let sigma = (self.a * turbulence_intensity + epsilon + dw).max(epsilon);
+                        let dw = turboparkgauss_wake_width(x_dist, ti_i, ct_i, self.a);
+                        let sigma = (self.a * ti_i + epsilon + dw).max(epsilon);
                         let wake_width = sigma * rotor_diameter;
 
                         if wake_width > 0.0 {
                             let exponent = -r.powi(2) / (2.0 * wake_width.powi(2));
                             let profile = (-exponent).exp();
 
-                            let deficit_max = 2.0 * axial_induction / (1.0 + axial_induction);
+                            let deficit_max = 2.0 * a_i / (1.0 + a_i);
                             velocity_deficit[[fi, ti, iy, iz]] = deficit_max * profile;
 
                             if self.include_mirror_wake {
@@ -283,6 +281,7 @@ mod tests {
             v: empty_4d.clone(),
             w: empty_4d.clone(),
             turbulence_intensity_field: empty_4d.clone(),
+            dudz_initial_sorted: empty_4d.clone(),
             turbulence_intensity_field_sorted: empty_4d,
         }
     }

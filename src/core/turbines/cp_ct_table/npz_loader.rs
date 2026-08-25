@@ -1,8 +1,7 @@
 pub struct NpzDataLoader;
-use crate::types::{Array2, DynArray};
+use crate::types::{Array2, ArrayD};
 
 use super::{CpCtError, DimensionRange, MultiDimTable};
-use ndarray::ArrayD;
 use std::{fs::File, io::Read, path::Path};
 use zip::ZipArchive;
 
@@ -25,8 +24,8 @@ impl NpzDataLoader {
         let mut archive = ZipArchive::new(file)
             .map_err(|e| CpCtError::FileFormat(format!("无法解析NPZ文件: {}", e)))?;
 
-        let mut cp_data: Option<DynArray> = None;
-        let mut ct_data: Option<DynArray> = None;
+        let mut cp_data: Option<ArrayD> = None;
+        let mut ct_data: Option<ArrayD> = None;
         let mut dimensions: Vec<DimensionRange> = vec![];
 
         for i in 0..archive.len() {

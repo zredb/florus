@@ -72,6 +72,45 @@ pub struct TurbineType {
 }
 
 impl TurbineType {
+    /// Create a new TurbineType with a different operation model
+    pub fn with_operation_model(&self, model_name: &str) -> TurbineType {
+        let om = match model_name {
+            "simple" => Box::new(operation_models::simple::SimpleTurbine) as Box<dyn OperationModel>,
+            "cosine-loss" => Box::new(operation_models::cosine_loss::CosineLossTurbine) as Box<dyn OperationModel>,
+            "simple-derating" => Box::new(operation_models::simple_derating::SimpleDeratingTurbine) as Box<dyn OperationModel>,
+            "peak-shaving" => Box::new(operation_models::peak_shaving::PeakShavingTurbine) as Box<dyn OperationModel>,
+            "mixed" => Box::new(operation_models::mixed::MixedOperationTurbine) as Box<dyn OperationModel>,
+            "awc" => Box::new(operation_models::awc::AWCTurbine) as Box<dyn OperationModel>,
+            "unified-momentum" => Box::new(operation_models::unified_momentum::UnifiedMomentumTurbine) as Box<dyn OperationModel>,
+            "controller-dependent" => Box::new(operation_models::controller_dependent::ControllerDependentTurbine) as Box<dyn OperationModel>,
+            _ => {
+                warn!("Unknown operation model '{}', defaulting to cosine-loss", model_name);
+                Box::new(operation_models::cosine_loss::CosineLossTurbine) as Box<dyn OperationModel>
+            }
+        };
+
+        TurbineType {
+            name: self.name.clone(),
+            rotor_diameter: self.rotor_diameter,
+            hub_height: self.hub_height,
+            tsr: self.tsr,
+            rated_power: self.rated_power,
+            cut_in_wind_speed: self.cut_in_wind_speed,
+            cut_out_wind_speed: self.cut_out_wind_speed,
+            rated_wind_speed: self.rated_wind_speed,
+            max_yaw_angle: self.max_yaw_angle,
+            yaw_rate_limit: self.yaw_rate_limit,
+            generator_efficiency: self.generator_efficiency,
+            drive_train_efficiency: self.drive_train_efficiency,
+            additional_losses: self.additional_losses,
+            ti_ref: self.ti_ref,
+            power_thrust_table: self.power_thrust_table.clone(),
+            floating_tilt_table: self.floating_tilt_table.clone(),
+            correct_cp_ct_for_tilt: self.correct_cp_ct_for_tilt,
+            operation_model: om,
+        }
+    }
+
     pub fn load_turbine_type(path: &str) -> Result<TurbineType, TurbineTypeError> {
         let content = std::fs::read_to_string(path)?;
         let mut turbine_type: TurbineType = serde_yaml::from_str(&content)?;

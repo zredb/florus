@@ -7,7 +7,7 @@ mod npz_loader;
 pub use csv_loader::CsvDataLoader;
 use std::collections::HashMap;
 
-use crate::types::{Array1, DynArray, Float};
+use crate::types::{Array1, ArrayD, Float};
 use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -305,15 +305,15 @@ impl OneDimTable {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MultiDimTable {
     dimensions: Vec<DimensionRange>,
-    cp_data: DynArray,
-    ct_data: DynArray,
+    cp_data: ArrayD,
+    ct_data: ArrayD,
 }
 
 impl MultiDimTable {
     pub fn new(
         dimensions: Vec<DimensionRange>,
-        cp_data: DynArray,
-        ct_data: DynArray,
+        cp_data: ArrayD,
+        ct_data: ArrayD,
     ) -> Result<Self, CpCtError> {
         // 验证维度一致性
         Self::validate_dimensions(&dimensions, &cp_data, &ct_data)?;
@@ -326,15 +326,15 @@ impl MultiDimTable {
     }
     fn validate_dimensions(
         dimensions: &[DimensionRange],
-        cp_data: &DynArray,
-        ct_data: &DynArray,
+        cp_data: &ArrayD,
+        ct_data: &ArrayD,
     ) -> Result<(), CpCtError> {
         Self::validate_inline_data(dimensions, cp_data, ct_data)
     }
     fn validate_inline_data(
         dimensions: &[DimensionRange],
-        cp_data: &DynArray,
-        ct_data: &DynArray,
+        cp_data: &ArrayD,
+        ct_data: &ArrayD,
     ) -> Result<(), CpCtError> {
         // 验证维度数量
         if dimensions.len() != cp_data.ndim() {
@@ -413,7 +413,7 @@ impl MultiDimTable {
             .collect()
     }
 
-    fn interpolate_nd(&self, data: &DynArray, point: &[f64]) -> Result<f64, CpCtError> {
+    fn interpolate_nd(&self, data: &ArrayD, point: &[f64]) -> Result<f64, CpCtError> {
         match self.dimensions.len() {
             0 => Err(CpCtError::DimensionMismatch("没有维度".to_string())),
             1 => self.interpolate_1d(data, point[0]),
@@ -423,7 +423,7 @@ impl MultiDimTable {
         }
     }
 
-    fn interpolate_1d(&self, data: &DynArray, x: f64) -> Result<f64, CpCtError> {
+    fn interpolate_1d(&self, data: &ArrayD, x: f64) -> Result<f64, CpCtError> {
         let values = &self.dimensions[0].values;
 
         if x <= values[0] {
@@ -444,7 +444,7 @@ impl MultiDimTable {
         Err(CpCtError::InterpolationFailed("一维插值失败".to_string()))
     }
 
-    fn interpolate_2d(&self, data: &DynArray, x: f64, y: f64) -> Result<f64, CpCtError> {
+    fn interpolate_2d(&self, data: &ArrayD, x: f64, y: f64) -> Result<f64, CpCtError> {
         let x_values = &self.dimensions[0].values;
         let y_values = &self.dimensions[1].values;
 
@@ -471,7 +471,7 @@ impl MultiDimTable {
         Ok(result / ((x2 - x1) * (y2 - y1)))
     }
 
-    fn interpolate_3d(&self, data: &DynArray, x: f64, y: f64, z: f64) -> Result<f64, CpCtError> {
+    fn interpolate_3d(&self, data: &ArrayD, x: f64, y: f64, z: f64) -> Result<f64, CpCtError> {
         // 三线性插值实现
         let x_values = &self.dimensions[0].values;
         let y_values = &self.dimensions[1].values;

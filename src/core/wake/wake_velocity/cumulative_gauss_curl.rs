@@ -152,11 +152,11 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
         x: Array4,
         y: Array4,
         z: Array4,
-        _axial_induction: Float,
+        _axial_induction: Array2,
         deflection_field: Array2,
-        _yaw_angle: Float,
-        turbulence_intensity: Float,
-        thrust_coefficient: Float,
+        _yaw_angle: Array2,
+        turbulence_intensity: Array2,
+        thrust_coefficient: Array2,
         hub_height: Float,
         rotor_diameter: Float,
         turbine_index: usize,
@@ -179,12 +179,14 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
             return Ok(velocity_deficit);
         }
 
-        // Convert yaw angle to radians
-        let yaw_rad = _yaw_angle.to_radians();
-
         for fi in 0..n_findex {
             // Get deflection at the wake source turbine
             let deflection_at_source = deflection_field[[fi, turbine_index]];
+
+            // Convert yaw angle to radians
+            let yaw_rad = _yaw_angle[[fi, turbine_index]].to_radians();
+            let ti_i = turbulence_intensity[[fi, turbine_index]];
+            let ct_i = thrust_coefficient[[fi, turbine_index]];
 
             for ti in 0..n_turbines {
                 for iy in 0..n_y {
@@ -211,8 +213,8 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
                         let downstream_x = x_point - x_wake_source;
                         let sigma = calculate_wake_spread(
                             downstream_x,
-                            turbulence_intensity,
-                            thrust_coefficient,
+                            ti_i,
+                            ct_i,
                             rotor_diameter,
                             self,
                         );
@@ -221,7 +223,7 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
                         let curl_correction = self.calculate_curl_correction(
                             downstream_x,
                             yaw_rad,
-                            thrust_coefficient,
+                            ct_i,
                             rotor_diameter,
                             dz,
                         );
@@ -229,7 +231,7 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
                         let sigma_effective = sigma * curl_correction;
 
                         // Calculate deficit
-                        let deficit = gaussian_deficit(r, sigma_effective, thrust_coefficient);
+                        let deficit = gaussian_deficit(r, sigma_effective, ct_i);
 
                         // Wake curl causes velocity to increase at edges
                         let curl_deficit = deficit * curl_correction;
@@ -389,6 +391,7 @@ mod tests {
             v: empty_4d.clone(),
             w: empty_4d.clone(),
             turbulence_intensity_field: empty_4d.clone(),
+            dudz_initial_sorted: empty_4d.clone(),
             turbulence_intensity_field_sorted: empty_4d,
         }
     }

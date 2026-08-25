@@ -59,7 +59,9 @@ impl Clone for WakeModelManager {
                 ),
             ),
             turbulence_model: Box::new(
-                crate::core::wake_turbulence::crespo_hernandez::CrespoHernandez::new(0.9, 0.9),
+                crate::core::wake_turbulence::crespo_hernandez::CrespoHernandez::new(
+                    0.1, 0.9, 0.8, -0.32,
+                ),
             ),
             combination_model: Box::new(crate::core::wake_combination::FLS),
             enable_secondary_steering: self.enable_secondary_steering,
@@ -211,17 +213,19 @@ impl WakeModelManager {
             TurbulenceModelConfig::CrespoHernandez {
                 initial,
                 constant,
-                ai: _,
-                downstream: _,
+                ai,
+                downstream,
             } => Ok(Box::new(
                 crate::core::wake_turbulence::crespo_hernandez::CrespoHernandez::new(
-                    *initial, *constant,
+                    *initial, *constant, *ai, *downstream,
                 ),
             )),
             TurbulenceModelConfig::WakeInducedMixing { .. } => {
                 // WakeInducedMixing not fully implemented yet, use CrespoHernandez as fallback
                 Ok(Box::new(
-                    crate::core::wake_turbulence::crespo_hernandez::CrespoHernandez::new(0.9, 0.9),
+                    crate::core::wake_turbulence::crespo_hernandez::CrespoHernandez::new(
+                        0.1, 0.9, 0.8, -0.32,
+                    ),
                 ))
             }
             TurbulenceModelConfig::None => Ok(Box::new(

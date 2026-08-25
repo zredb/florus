@@ -99,6 +99,7 @@ use ndarray::Array;
             v: empty_4d.clone(),
             w: empty_4d.clone(),
             turbulence_intensity_field: empty_4d.clone(),
+            dudz_initial_sorted: empty_4d.clone(),
             turbulence_intensity_field_sorted: empty_4d,
         };
         let result = fls.prepare_function(&FakeGrid, &flow_field);

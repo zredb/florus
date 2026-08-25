@@ -46,10 +46,12 @@ impl OperationModel for UnifiedMomentumTurbine {
         let n_findex = ctx.air_density.len();
         let n_turbines = ctx.velocities.shape()[1];
 
+        let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
         let rotor_avg_velocities = crate::core::rotor_velocity::average_velocity(
-            ctx.velocities,
-            ctx.average_method,
-            ctx.cubature_weights,
+            &velocities_dyn,
+            None,
+            &ctx.average_method,
+            None, // TODO: cubature_weights conversion from Array2 to Array1 needed
         )?;
 
         let yaw_rad = yaw_angles.mapv(|y| y.to_radians());
@@ -58,7 +60,7 @@ impl OperationModel for UnifiedMomentumTurbine {
         let mut ct_base = ndarray::Array::zeros((n_findex, n_turbines));
         for i in 0..n_findex {
             for j in 0..n_turbines {
-                let vel = rotor_avg_velocities[[i, j, 0]];
+                let vel = rotor_avg_velocities[[i, j]];
                 ct_base[[i, j]] = params.thrust_table.interpolate(vel).clamp(0.0001, 0.9999);
             }
         }
@@ -99,7 +101,7 @@ impl OperationModel for UnifiedMomentumTurbine {
         let mut power = ndarray::Array::zeros((n_findex, n_turbines));
         for i in 0..n_findex {
             for j in 0..n_turbines {
-                let vel = rotor_avg_velocities[[i, j, 0]];
+                let vel = rotor_avg_velocities[[i, j]];
                 let mut effective_vel = vel * density_correction;
 
                 // Apply yaw correction to effective velocity
@@ -130,10 +132,12 @@ impl OperationModel for UnifiedMomentumTurbine {
         let n_findex = ctx.air_density.len();
         let n_turbines = ctx.velocities.shape()[1];
 
+        let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
         let rotor_avg_velocities = crate::core::rotor_velocity::average_velocity(
-            ctx.velocities,
-            ctx.average_method,
-            ctx.cubature_weights,
+            &velocities_dyn,
+            None,
+            &ctx.average_method,
+            None, // TODO: cubature_weights conversion from Array2 to Array1 needed
         )?;
 
         let yaw_rad = yaw_angles.mapv(|y| y.to_radians());
@@ -142,7 +146,7 @@ impl OperationModel for UnifiedMomentumTurbine {
         let mut ct_base = ndarray::Array::zeros((n_findex, n_turbines));
         for i in 0..n_findex {
             for j in 0..n_turbines {
-                let vel = rotor_avg_velocities[[i, j, 0]];
+                let vel = rotor_avg_velocities[[i, j]];
 
                 // Apply air density correction for thrust (uses 1/2 power because thrust ~ v²)
                 let air_density_correction =

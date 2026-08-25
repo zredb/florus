@@ -1,70 +1,103 @@
-//! Example: Control Types Overview
+//! Example: Simple-Derating Control
 //!
-//! This example demonstrates the different control types available in FLORUS:
-//! yaw angles, tilt angles, and power setpoints.
+//! Demonstrates the simple-derating operation model in FLORUS.
+//! The simple-derating model allows specifying a power setpoint for each turbine,
+//! limiting power output to at most the setpoint.
 //!
-//! Corresponds to: examples_control_types/001_control_types_overview.py
+//! Corresponds to: examples_control_types/001_derating_control.py
 
 use florus::{FlorisModel, Result};
+use ndarray::Array1;
 
 fn main() -> Result<()> {
-    println!("=== Control Types Overview ===\n");
+    println!("=== Simple-Derating Control Example ===\n");
 
-    // Initialize FLORIS model
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-    
-    // Set a simple 2-turbine layout
+
+    // Set a 2-turbine layout first (must be before set_operation_model)
     fmodel.set_layout(
-        &ndarray::arr1(&[0.0, 500.0]),
+        &ndarray::arr1(&[0.0, 1000.0]),
         &ndarray::arr1(&[0.0, 0.0]),
     )?;
 
-    // Set wind conditions
-    fmodel.set_wind_conditions(
-        ndarray::arr1(&[8.0]),
-        ndarray::arr1(&[270.0]),
-        ndarray::arr1(&[0.06]),
-    )?;
+    // Change to the simple-derating operation model (AFTER set_layout)
+    fmodel.set_operation_model("simple-derating")?;
 
-    println!("Available Control Types:\n");
-    println!("1. Yaw Angles (degrees)");
-    println!("   - Controls turbine orientation relative to wind");
-    println!("   - Used for wake steering");
-    println!("   - Range: typically -30° to +30°\n");
+    // Set constant wind conditions over N=50 time steps
+    let n = 50;
+    let wind_speeds = Array1::from_vec(vec![10.0; n]);
+    let wind_directions = Array1::from_vec(vec![270.0; n]);
+    let turbulence_intensities = Array1::from_vec(vec![0.06; n]);
+    fmodel.set_wind_conditions(wind_speeds, wind_directions, turbulence_intensities)?;
 
-    println!("2. Tilt Angles (degrees)");
-    println!("   - Controls rotor tilt from horizontal");
-    println!("   - Used for vertical wake deflection");
-    println!("   - Important for floating turbines\n");
-
-    println!("3. Power Setpoints (Watts)");
-    println!("   - Maximum power output limit");
-    println!("   - Used for curtailment");
-    println!("   - Can reduce power below available\n");
-
-    println!("4. Active Wake Mixing Control");
-    println!("   - Induces additional mixing in wake");
-    println!("   - Accelerates wake recovery");
-    println!("   - Requires specific turbine capabilities\n");
-
-    // Demonstrate setting yaw angles
-    println!("--- Demonstrating Yaw Control ---\n");
-    fmodel.set_yaw_angles(ndarray::arr2(&[[10.0, 0.0]]))?;
     fmodel.run()?;
-    let powers = fmodel.get_turbine_powers();
-    println!("With T0 yawed 10°:");
-    println!("  T0: {:.2} kW", powers[[0, 0]] / 1000.0);
-    println!("  T1: {:.2} kW", powers[[0, 1]] / 1000.0);
-    println!("  Total: {:.2} kW\n", (powers[[0, 0]] + powers[[0, 1]]) / 1000.0);
+    let turbine_powers_orig = fmodel.get_turbine_powers();
 
-    println!("=== Analysis ===");
-    println!("Control types enable:");
-    println!("  - Wake steering (yaw)");
-    println!("  - Vertical wake control (tilt)");
-    println!("  - Power curtailment (setpoints)");
-    println!("  - Advanced wake mixing (AWC)");
+    println!("Baseline (no derating):");
+    println!("  Upstream (T0):   {:.2} kW", turbine_powers_orig[[0, 0]] / 1000.0);
+    println!("  Downstream (T1): {:.2} kW", turbine_powers_orig[[0, 1]] / 1000.0);
+
+    // Create power setpoints sweeping from 1 kW to 6000 kW for both turbines
+    let setpoints: Vec<f64> = (0..n)
+        .map(|i| 1000.0 + (i as f64) * (5999000.0 / (n - 1) as f64))
+        .collect();
+
+    // Both turbines get the same setpoint sweep
+    let mut power_setpoints = ndarray::Array2::zeros((n, 2));
+    for i in 0..n {
+        power_setpoints[[i, 0]] = setpoints[i];
+        power_setpoints[[i, 1]] = setpoints[i];
+    }
+
+    fmodel.set_operation(
+        None,
+        Some(power_setpoints.clone()),
+        None, None, None, None,
+    )?;
+    fmodel.run()?;
+    let turbine_powers_derated = fmodel.get_turbine_powers();
+
+    println!("\nWith derating (power setpoints applied to both turbines):");
+    println!("{:<18} | {:<15} | {:<15} | {:<15}", "Setpoint (kW)", "T0 Power (kW)", "T1 Power (kW)", "Farm (kW)");
+    println!("{}", "-".repeat(68));
+    for i in [0, n / 4, n / 2, 3 * n / 4, n - 1] {
+        println!(
+            "{:<18.1} | {:<15.2} | {:<15.2} | {:<15.2}",
+            setpoints[i] / 1000.0,
+            turbine_powers_derated[[i, 0]] / 1000.0,
+            turbine_powers_derated[[i, 1]] / 1000.0,
+            (turbine_powers_derated[[i, 0]] + turbine_powers_derated[[i, 1]]) / 1000.0,
+        );
+    }
+
+    // Now compute available power at downstream turbine
+    // Set upstream turbine setpoints to sweep, downstream set to default (unlimited)
+    let mut power_setpoints_avail = ndarray::Array2::zeros((n, 2));
+    for i in 0..n {
+        power_setpoints_avail[[i, 0]] = setpoints[i];
+        power_setpoints_avail[[i, 1]] = 1e12; // unlimited
+    }
+
+    fmodel.set_operation(
+        None,
+        Some(power_setpoints_avail),
+        None, None, None, None,
+    )?;
+    fmodel.run()?;
+    let turbine_powers_avail = fmodel.get_turbine_powers();
+
+    println!("\nAvailable power at downstream turbine (unlimited setpoint):");
+    println!("{:<18} | {:<15} | {:<15}", "Setpoint (kW)", "T0 Power (kW)", "T1 Available (kW)");
+    println!("{}", "-".repeat(52));
+    for i in [0, n / 4, n / 2, 3 * n / 4, n - 1] {
+        println!(
+            "{:<18.1} | {:<15.2} | {:<15.2}",
+            setpoints[i] / 1000.0,
+            turbine_powers_avail[[i, 0]] / 1000.0,
+            turbine_powers_avail[[i, 1]] / 1000.0,
+        );
+    }
 
     println!("\n=== Example Complete ===");
-
     Ok(())
 }

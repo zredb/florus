@@ -231,11 +231,11 @@ impl VelocityModel for TurbOParkVelocityDeficit {
         x: Array4,
         y: Array4,
         z: Array4,
-        _axial_induction: Float,
+        _axial_induction: Array2,
         deflection_field: Array2,
-        _yaw_angle: Float,
-        turbulence_intensity: Float,
-        thrust_coefficient: Float,
+        _yaw_angle: Array2,
+        turbulence_intensity: Array2,
+        thrust_coefficient: Array2,
         hub_height: Float,
         rotor_diameter: Float,
         turbine_index: usize,
@@ -259,12 +259,15 @@ impl VelocityModel for TurbOParkVelocityDeficit {
             return Ok(velocity_deficit);
         }
 
-        let epsilon = calculate_epsilon(thrust_coefficient);
-        let c = calculate_peak_deficit(thrust_coefficient, self.a * turbulence_intensity + epsilon);
-
         for fi in 0..n_findex {
             // Get deflection at the wake source turbine
             let deflection_at_source = deflection_field[[fi, turbine_index]];
+
+            let epsilon = calculate_epsilon(thrust_coefficient[[fi, turbine_index]]);
+            let c = calculate_peak_deficit(
+                thrust_coefficient[[fi, turbine_index]],
+                self.a * turbulence_intensity[[fi, turbine_index]] + epsilon,
+            );
 
             for ti in 0..n_turbines {
                 for iy in 0..n_y {
@@ -287,12 +290,14 @@ impl VelocityModel for TurbOParkVelocityDeficit {
                         let x_dist = (x_point - x_wake_source) / rotor_diameter;
                         let dw = characteristic_wake_width(
                             x_dist,
-                            turbulence_intensity,
-                            thrust_coefficient,
+                            turbulence_intensity[[fi, turbine_index]],
+                            thrust_coefficient[[fi, turbine_index]],
                             self.a,
                         );
-                        let sigma_downstream =
-                            (self.a * turbulence_intensity + epsilon + dw).max(epsilon);
+                        let sigma_downstream = (self.a * turbulence_intensity[[fi, turbine_index]]
+                            + epsilon
+                            + dw)
+                            .max(epsilon);
 
                         let normalized_r = r / (sigma_downstream * rotor_diameter);
                         let normalized_radius_down = r0 / (sigma_downstream * rotor_diameter);
@@ -448,6 +453,7 @@ mod tests {
             v: empty_4d.clone(),
             w: empty_4d.clone(),
             turbulence_intensity_field: empty_4d.clone(),
+            dudz_initial_sorted: empty_4d.clone(),
             turbulence_intensity_field_sorted: empty_4d,
         }
     }

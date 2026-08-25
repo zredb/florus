@@ -8,8 +8,11 @@ use serde_yaml::Value;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
+use std::sync::Arc;
 
-const POWER_SETPOINT_DEFAULT: Float = 5000.0; // 假设默认功率为5MW
+use crate::core::turbines::operation_models::POWER_SETPOINT_DEFAULT;
+
+const RATED_POWER_DEFAULT: Float = 5000.0;
 
 #[derive(Clone)]
 pub struct Farm {
@@ -87,18 +90,25 @@ impl Farm {
         // 加载TurbineType
         let mut turbines = Vec::new();
         if turbine_types.len() == 1 {
-            // Single turbine type for all turbines
+            // Single turbine type for all turbines - share the same Arc instance
             let turbine_path = format!("turbine_library/{}.yaml", turbine_types[0]);
             let turbine_type = TurbineType::load_turbine_type(&turbine_path)
                 .map_err(|e| anyhow::anyhow!("Failed to load turbine type '{}': {}", turbine_types[0], e))?;
-            turbines = vec![Turbine { turbine_type }; n_turbines];
+            let turbine_type_arc = Arc::new(turbine_type);
+            turbines = (0..n_turbines)
+                .map(|_| Turbine { 
+                    turbine_type: Arc::clone(&turbine_type_arc) 
+                })
+                .collect();
         } else {
             // Multiple turbine types, one per turbine
             for t in turbine_types {
                 let turbine_path = format!("turbine_library/{}.yaml", t);
                 let turbine_type = TurbineType::load_turbine_type(&turbine_path)
                     .map_err(|e| anyhow::anyhow!("Failed to load turbine type '{}': {}", t, e))?;
-                turbines.push(Turbine { turbine_type });
+                turbines.push(Turbine { 
+                    turbine_type: Arc::new(turbine_type) 
+                });
             }
         }
 
@@ -460,10 +470,10 @@ impl Farm {
 
     pub fn set_power_setpoints_to_ref_power(&mut self, n_findex: usize) {
         let n_turbines = self.n_turbines();
-        let power_setpoints = Array2::from_elem((n_findex, n_turbines), POWER_SETPOINT_DEFAULT);
+        let power_setpoints = Array2::from_elem((n_findex, n_turbines), RATED_POWER_DEFAULT);
         self.set_power_setpoints(power_setpoints);
         self.power_setpoints_sorted =
-            Array2::from_elem((n_findex, n_turbines), POWER_SETPOINT_DEFAULT);
+            Array2::from_elem((n_findex, n_turbines), RATED_POWER_DEFAULT);
     }
 
     pub fn set_awc_modes(&mut self, awc_modes: NdArray2<String>) {
@@ -600,8 +610,8 @@ impl Farm {
             self.yaw_angles_sorted = Array2::zeros((n_findex, n_turbines));
             self.tilt_angles = Array2::zeros((n_findex, n_turbines));
             self.tilt_angles_sorted = Array2::zeros((n_findex, n_turbines));
-            self.power_setpoints = Array2::zeros((n_findex, n_turbines));
-            self.power_setpoints_sorted = Array2::zeros((n_findex, n_turbines));
+            self.power_setpoints = Array2::from_elem((n_findex, n_turbines), POWER_SETPOINT_DEFAULT);
+            self.power_setpoints_sorted = Array2::from_elem((n_findex, n_turbines), POWER_SETPOINT_DEFAULT);
             self.awc_modes = NdArray2::from_elem((n_findex, n_turbines), "baseline".to_string());
             self.awc_modes_sorted = NdArray2::from_elem((n_findex, n_turbines), "baseline".to_string());
             self.awc_amplitudes = Array2::zeros((n_findex, n_turbines));
@@ -661,7 +671,7 @@ impl Farm {
 
         for ti in 0..n_turbines {
             if ti < turbines.len() {
-                let turbine_power = turbines[ti].calculate_power(
+                let turbine_power = turbines[ti].power(
                     velocities,
                     air_density,
                     yaw_angles,
@@ -681,6 +691,7 @@ impl Farm {
     /// Calculate thrust coefficient for array of turbines
     pub fn thrust_coefficient(
         velocities: &Array4,
+        air_density: Float,
         turbines: &[Turbine],
         yaw_angles: Option<&Array2>,
         tilt_angles: Option<&Array2>,
@@ -694,8 +705,9 @@ impl Farm {
 
         for ti in 0..n_turbines {
             if ti < turbines.len() {
-                let turbine_ct = turbines[ti].calculate_thrust_coefficient(
+                let turbine_ct = turbines[ti].thrust_coefficient(
                     velocities,
+                    air_density,
                     yaw_angles,
                     tilt_angles,
                     average_method,
@@ -713,27 +725,35 @@ impl Farm {
     /// Calculate axial induction from thrust coefficient
     pub fn axial_induction(
         velocities: &Array4,
+        air_density: Float,
         turbines: &[Turbine],
         yaw_angles: Option<&Array2>,
         tilt_angles: Option<&Array2>,
         average_method: AveragingMethod,
     ) -> crate::Result<Array2> {
-        let ct = Self::thrust_coefficient(
-            velocities,
-            turbines,
-            yaw_angles,
-            tilt_angles,
-            average_method,
-        )?;
+        // Call the turbine's axial_induction method directly
+        let shape = velocities.shape();
+        let n_findex = shape[0];
+        let n_turbines = shape[1];
 
-        let mut ai = Array::zeros(ct.dim());
+        let mut ai_output = Array::zeros((n_findex, n_turbines));
 
-        for ((i, j), &ct_val) in ct.indexed_iter() {
-            if j < turbines.len() {
-                ai[[i, j]] = turbines[j].calculate_axial_induction(ct_val);
+        for ti in 0..n_turbines {
+            if ti < turbines.len() {
+                let turbine_ai = turbines[ti].axial_induction(
+                    velocities,
+                    air_density,
+                    yaw_angles,
+                    tilt_angles,
+                    average_method,
+                )?;
+
+                for fi in 0..n_findex {
+                    ai_output[[fi, ti]] = turbine_ai[[fi, 0]];
+                }
             }
         }
 
-        Ok(ai)
+        Ok(ai_output)
     }
 }

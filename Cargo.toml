@@ -2,7 +2,7 @@
 name = "florus"
 version = "0.1.0"
 edition = "2021"
-authors = ["FLORIS Rust Translation"]
+authors = ["zredb@163.com"]
 description = "Rust implementation of FLORIS - A controls-oriented wind farm wake modeling software"
 license = "BSD-3-Clause"
 

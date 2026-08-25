@@ -26,5 +26,6 @@ pub use turbines::{
     AWCTurbine, ControllerDependentTurbine, CosineLossTurbine, MixedOperationTurbine,
      PeakShavingTurbine, SimpleDeratingTurbine, SimpleTurbine, Turbine,
     TurbineContext, TurbineParameters,  UnifiedMomentumTurbine,
+    POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED,
 };
 pub use wake::*;

@@ -21,16 +21,18 @@ impl OperationModel for SimpleTurbine {
         let n_findex = ctx.air_density.len();
         let n_turbines = ctx.velocities.shape()[1];
 
+        let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
         let rotor_avg_velocities = crate::core::rotor_velocity::average_velocity(
-            ctx.velocities,
-            ctx.average_method,
-            ctx.cubature_weights,
+            &velocities_dyn,
+            None,
+            &ctx.average_method,
+            None, // TODO: cubature_weights conversion from Array2 to Array1 needed
         )?;
 
         let mut power = ndarray::Array::zeros((n_findex, n_turbines));
         for i in 0..n_findex {
             for j in 0..n_turbines {
-                let vel = rotor_avg_velocities[[i, j, 0]];
+                let vel = rotor_avg_velocities[[i, j]];
                 let air_density_correction =
                     (ctx.air_density[i] / params.ref_air_density).powf(1.0 / 3.0);
                 let effective_vel = vel * air_density_correction;
@@ -49,16 +51,18 @@ impl OperationModel for SimpleTurbine {
         let n_findex = ctx.air_density.len();
         let n_turbines = ctx.velocities.shape()[1];
 
+        let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
         let rotor_avg_velocities = crate::core::rotor_velocity::average_velocity(
-            ctx.velocities,
-            ctx.average_method,
-            ctx.cubature_weights,
+            &velocities_dyn,
+            None,
+            &ctx.average_method,
+            None, // TODO: cubature_weights conversion from Array2 to Array1 needed
         )?;
 
         let mut thrust_coeff = ndarray::Array::zeros((n_findex, n_turbines));
         for i in 0..n_findex {
             for j in 0..n_turbines {
-                let vel = rotor_avg_velocities[[i, j, 0]];
+                let vel = rotor_avg_velocities[[i, j]];
 
                 // Apply air density correction for thrust (uses 1/2 power because thrust ~ v²)
                 let air_density_correction =
