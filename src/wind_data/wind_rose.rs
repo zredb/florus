@@ -828,25 +828,48 @@ impl WindData for WindRose {
         Array2,
         HeterogeneousInflowConfig,
     ) {
+        // Port of Python `_build_gridded_and_flattened_version`: if compute_zero_freq_occurrence is
+        // True all bins are kept, otherwise only bins with strictly positive frequency.
         let freq_table_unpack = self.get_freq_flat();
-        let wind_directions_unpack =
-            filter_by_nonzero_freq(&self.get_wd_flat(), &freq_table_unpack);
-        let wind_speeds_unpack = filter_by_nonzero_freq(&self.get_ws_flat(), &freq_table_unpack);
-        let ti_table_unpack = filter_by_nonzero_freq(&self.get_ti_flat(), &freq_table_unpack);
-        let freq_table_unpack_filtered =
-            filter_by_nonzero_freq(&self.get_freq_flat(), &freq_table_unpack);
+        let keep: Vec<bool> = if self.compute_zero_freq_occurrence {
+            vec![true; freq_table_unpack.len()]
+        } else {
+            freq_table_unpack.iter().map(|&f| f > 0.0).collect()
+        };
 
-        // Create 2D arrays from the filtered 1D arrays
+        let filter = |values: &Array1| -> Array1 {
+            values
+                .iter()
+                .zip(keep.iter())
+                .filter_map(|(&v, &k)| if k { Some(v) } else { None })
+                .collect()
+        };
+
+        let wind_directions_unpack = filter(&self.get_wd_flat());
+        let wind_speeds_unpack = filter(&self.get_ws_flat());
+        let ti_table_unpack = filter(&self.get_ti_flat());
+
+        // Rebuild 2D frequency/value tables from the mask (masked-out bins set to 0) so the
+        // returned tables keep their (n_dir, n_ws) shape.
         let n_dir = self.wind_directions.len();
         let n_ws = self.wind_speeds.len();
-        let freq_2d =
-            Array2::from_shape_vec((n_dir, n_ws), freq_table_unpack_filtered.to_vec()).unwrap();
+        let freq_2d = Array2::from_shape_fn((n_dir, n_ws), |(i, j)| {
+            if keep[i * n_ws + j] {
+                self.freq_table[[i, j]]
+            } else {
+                0.0
+            }
+        });
 
-        let value_2d = if let Some(value_flat) = self.get_value_flat() {
-            let value_table_unpack = filter_by_nonzero_freq(&value_flat, &freq_table_unpack);
-            Array2::from_shape_vec((n_dir, n_ws), value_table_unpack.to_vec()).unwrap()
-        } else {
-            Array2::from_elem((n_dir, n_ws), 1.0)
+        let value_2d = match &self.value_table {
+            Some(vt) => Array2::from_shape_fn((n_dir, n_ws), |(i, j)| {
+                if keep[i * n_ws + j] {
+                    vt[[i, j]]
+                } else {
+                    0.0
+                }
+            }),
+            None => Array2::from_elem((n_dir, n_ws), 1.0),
         };
 
         (
@@ -858,14 +881,6 @@ impl WindData for WindRose {
             self.heterogeneous_inflow_config(),
         )
     }
-}
-
-fn filter_by_nonzero_freq(values: &Array1, freq: &Array1) -> Array1 {
-    values
-        .iter()
-        .zip(freq.iter())
-        .filter_map(|(&v, &f)| if f > 0.0 { Some(v) } else { None })
-        .collect()
 }
 
 

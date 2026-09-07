@@ -1,0 +1,48 @@
+{
+  "single_condition": {
+    "turbine_powers": [
+      [
+        2547428.968358342,
+        960479.95
+      ]
+    ],
+    "farm_power": [
+      3507908.918358342
+    ],
+    "n_findex": 1,
+    "n_turbines": 2
+  },
+  "no_wake": {
+    "turbine_powers": [
+      [
+        3552140.809,
+        3552140.809
+      ]
+    ],
+    "farm_power": [
+      7104281.618
+    ]
+  },
+  "yaw_effect": {
+    "turbine_powers": [
+      [
+        2395927.9287,
+        1022563.4987
+      ]
+    ]
+  },
+  "disable_turbines": {
+    "turbine_powers": [
+      [
+        2547428.968,
+        960479.95,
+        562479.123
+      ],
+      [
+        0.0,
+        0.0,
+        562479.123
+      ]
+    ]
+  }
+}

@@ -48,11 +48,13 @@ fn main() -> Result<()> {
     let values: Vec<f64> = (0..n).map(|_| 25.0 + 10.0 * rng.gen::<f64>()).collect();
 
     println!("1. Creating TimeSeries object...");
-    let time_series = TimeSeries::new(
+    let time_series = TimeSeries::with_values(
         Array1::from(wind_directions.clone()),
         Array1::from(wind_speeds.clone()),
         Array1::from(turbulence_intensities.clone()),
-    )?;
+        Array1::from(values.clone()),
+    )
+    .unwrap();
     println!("   ✓ TimeSeries created with {} time steps", time_series.wind_directions.len());
 
     // The WindRose class is used to hold wind rose data, such as wind speed, wind direction,
@@ -254,21 +256,40 @@ fn main() -> Result<()> {
     println!("\n13. Testing compute_zero_freq_occurrence parameter...");
     let wind_directions_test = vec![200.0, 300.0];
     let wind_speeds_test = vec![5.0, 10.0];
-    // Use non-zero frequencies for all bins
-    let freq_table_test = ndarray::arr2(&[[0.25, 0.25], [0.25, 0.25]]);
-    
+    // Same freq table as the Python example: two bins have zero frequency.
+    let freq_table_test = ndarray::arr2(&[[0.5, 0.0], [0.5, 0.0]]);
+
     let wind_rose_zero_freq = WindRose::new(
         Array1::from(wind_directions_test.clone()),
         Array1::from(wind_speeds_test.clone()),
         Array2::from_elem((2, 2), 0.06),
         Some(freq_table_test.clone()),
         None,
-        false,  // compute_zero_freq_occurrence = False
+        false, // compute_zero_freq_occurrence = False
         None,
         None,
     )?;
     fmodel.set_wind_data(&wind_rose_zero_freq)?;
-    println!("   With non-zero frequencies: {} conditions", fmodel.n_findex());
+    println!(
+        "   Number of conditions with compute_zero_freq_occurrence = False: {}",
+        fmodel.n_findex()
+    );
+
+    let wind_rose_zero_freq_true = WindRose::new(
+        Array1::from(wind_directions_test.clone()),
+        Array1::from(wind_speeds_test.clone()),
+        Array2::from_elem((2, 2), 0.06),
+        Some(freq_table_test.clone()),
+        None,
+        true, // compute_zero_freq_occurrence = True
+        None,
+        None,
+    )?;
+    fmodel.set_wind_data(&wind_rose_zero_freq_true)?;
+    println!(
+        "   Number of conditions with compute_zero_freq_occurrence = True: {}",
+        fmodel.n_findex()
+    );
 
     // Set the wind conditions using the WindTIRose object
     println!("\n14. Setting FlorisModel with WindTIRose...");

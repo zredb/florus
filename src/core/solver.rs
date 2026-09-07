@@ -1,11 +1,13 @@
-use crate::core::grid::TurbineCubatureGrid;
+use crate::core::grid::{TurbineCubatureGrid, TurbineGrid};
 /// Wake solver algorithms
 ///
 /// Corresponds to core/solver.py in Python implementation
 use std::collections::HashMap;
 
 use crate::core::wake::WakeModelManager;
-use crate::core::wake::yaw_added_recovery::{calculate_transverse_velocity, yaw_added_turbulence_mixing};
+use crate::core::wake::yaw_added_recovery::{
+    calculate_transverse_velocity, wake_added_yaw, yaw_added_turbulence_mixing,
+};
 use crate::core::{Farm, FlowField, Grid};
 use crate::types::{Array1, Array2, Array4, Float};
 use anyhow::Result;
@@ -397,6 +399,390 @@ pub fn sequential_solver(
             }
         }
     }
+
+    // Store the evolved turbine TI (constant per rotor block) so downstream
+    // consumers (e.g. full_flow_sequential_solver) can read the averaged TI.
+    flow_field.turbulence_intensity_field_sorted = Array::zeros((
+        n_findex,
+        grid_second_dim,
+        grid_y_dim,
+        grid_z_dim,
+    ));
+    for fi in 0..n_findex {
+        for ti in 0..n_turbines {
+            for iy in 0..grid_y_dim {
+                for iz in 0..grid_z_dim {
+                    flow_field.turbulence_intensity_field_sorted[[fi, ti, iy, iz]] =
+                        turbine_turbulence_intensity[[fi, ti]];
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Full-flow sequential solver for visualization grids (planar/cross sections).
+///
+/// Port of `full_flow_sequential_solver(...)` in `core/solver.py`. Solves the
+/// wake on a fine turbine grid first, then evaluates each turbine's wake over
+/// the full flow-field grid (e.g. a `FlowFieldPlanarGrid`) using a synthetic
+/// grid so the velocity model's source turbine index resolves correctly.
+pub fn full_flow_sequential_solver(
+    farm: &Farm,
+    flow_field: &mut FlowField,
+    grid: &dyn Grid,
+    model_manager: &WakeModelManager,
+) -> Result<()> {
+    let n_turbines = farm.n_turbines();
+    let n_findex = grid.n_findex();
+    let grid_shape = grid.x_sorted().shape();
+    let n_points = grid_shape[1];
+    let grid_y_dim = grid_shape[2];
+    let grid_z_dim = grid_shape[3];
+
+    // Build a turbine grid to resolve per-turbine rotor-averaged quantities.
+    let turbine_grid = TurbineGrid::new(
+        farm.coordinates(),
+        farm.rotor_diameters().clone(),
+        flow_field.wind_directions.clone(),
+        3,
+    )?;
+
+    let mut turbine_grid_farm = farm.clone();
+    let mut turbine_grid_flow_field = flow_field.clone();
+    turbine_grid_farm.expand_farm_properties(n_findex, turbine_grid.sorted_coord_indices());
+    turbine_grid_flow_field
+        .initialize_flow_field(turbine_grid.grid_shape(), turbine_grid.z_sorted(), &turbine_grid.hub_heights());
+    turbine_grid_farm.initialize(turbine_grid.sorted_indices());
+    sequential_solver(
+        &turbine_grid_farm,
+        &mut turbine_grid_flow_field,
+        &turbine_grid,
+        model_manager,
+    )?;
+
+    // Source positions on the turbine grid (mean of each turbine's rotor block).
+    let source_x = mean_value_4d_slice(&turbine_grid.x_sorted().clone())?; // (n_findex, n_turbines)
+    let source_y = mean_value_4d_slice(&turbine_grid.y_sorted().clone())?;
+    let source_z = mean_value_4d_slice(&turbine_grid.z_sorted().clone())?;
+
+    // Full-flow grid coordinates.
+    let planar_x = grid.x_sorted().clone();
+    let planar_y = grid.y_sorted().clone();
+    let planar_z = grid.z_sorted().clone();
+
+    // Wake and transverse velocity fields over the full grid.
+    let mut wake_field: Array4 = Array::zeros((n_findex, n_points, grid_y_dim, grid_z_dim));
+    let mut v_wake: Array4 = Array::zeros((n_findex, n_points, grid_y_dim, grid_z_dim));
+    let mut w_wake: Array4 = Array::zeros((n_findex, n_points, grid_y_dim, grid_z_dim));
+
+    // Turbulence intensity field over the full grid, initialized to ambient.
+    let mut turbulence_intensity_field = Array::zeros((n_findex, n_points, grid_y_dim, grid_z_dim));
+    let mut ambient_turbulence_intensities =
+        Array::zeros((n_findex, n_points, grid_y_dim, grid_z_dim));
+    for fi in 0..n_findex {
+        for p in 0..n_points {
+            for iy in 0..grid_y_dim {
+                for iz in 0..grid_z_dim {
+                    ambient_turbulence_intensities[[fi, p, iy, iz]] =
+                        flow_field.turbulence_intensities[fi];
+                    turbulence_intensity_field[[fi, p, iy, iz]] =
+                        flow_field.turbulence_intensities[fi];
+                }
+            }
+        }
+    }
+
+    for i in 0..n_turbines {
+        // Per-turbine quantities from the turbine-grid solve.
+        let ct_all = Farm::thrust_coefficient(
+            &turbine_grid_flow_field.u_sorted,
+            turbine_grid_flow_field.air_density,
+            &turbine_grid_farm.turbines,
+            Some(&turbine_grid_farm.yaw_angles_sorted),
+            Some(&turbine_grid_farm.tilt_angles_sorted),
+            turbine_grid.average_method(),
+        )?;
+        let a_all = Farm::axial_induction(
+            &turbine_grid_flow_field.u_sorted,
+            turbine_grid_flow_field.air_density,
+            &turbine_grid_farm.turbines,
+            Some(&turbine_grid_farm.yaw_angles_sorted),
+            Some(&turbine_grid_farm.tilt_angles_sorted),
+            turbine_grid.average_method(),
+        )?;
+
+        let ct_i_scalar = ct_all[[0, i]];
+        let a_i_scalar = a_all[[0, i]];
+
+        // Per-findex scalars for the current turbine.
+        let mut yaw_arr = Array1::zeros(n_findex);
+        let mut ct_arr = Array1::zeros(n_findex);
+        let mut tsr_arr = Array1::zeros(n_findex);
+        let mut ai_arr = Array1::zeros(n_findex);
+        for fi in 0..n_findex {
+            yaw_arr[fi] = turbine_grid_farm.yaw_angles_sorted[[fi, i]];
+            ct_arr[fi] = ct_all[[fi, i]];
+            tsr_arr[fi] = turbine_grid_farm.tsrs_sorted[[fi, i]];
+            ai_arr[fi] = a_all[[fi, i]];
+        }
+
+        // Rotor-averaged turbulence intensity for this turbine (constant per block).
+        let ti_avg = mean_value_4d_slice(
+            &turbine_grid_flow_field
+                .turbulence_intensity_field_sorted
+                .slice(s![.., i..i + 1, .., ..])
+                .to_owned(),
+        )?;
+        let ti_i_scalar = ti_avg[[0, 0]];
+        let mut ti_arr = Array1::zeros(n_findex);
+        for fi in 0..n_findex {
+            ti_arr[fi] = ti_avg[[fi, 0]];
+        }
+
+        let rotor_diameter_i = turbine_grid_farm.rotor_diameters_sorted[[0, i]];
+        let hub_height_i = turbine_grid_farm.hub_heights_sorted[[0, i]];
+
+        // Effective yaw including secondary steering.
+        let mut effective_yaw_i = yaw_arr[0];
+        if model_manager.enable_secondary_steering {
+            let u_i = turbine_grid_flow_field
+                .u_sorted
+                .slice(s![.., i..i + 1, .., ..])
+                .to_owned();
+            let v_i = turbine_grid_flow_field
+                .v_sorted
+                .slice(s![.., i..i + 1, .., ..])
+                .to_owned();
+            let source_y_4d = source_y
+                .slice(s![.., i..i + 1])
+                .insert_axis(ndarray::Axis(2))
+                .insert_axis(ndarray::Axis(3));
+            let delta_y = &turbine_grid.y_sorted().slice(s![.., i..i + 1, .., ..]) - &source_y_4d;
+            let z_i_block = turbine_grid.z_sorted().slice(s![.., i..i + 1, .., ..]).to_owned();
+            let ct_4d = ct_arr.clone().into_shape((n_findex, 1, 1, 1))?;
+            let tsr_4d = tsr_arr.clone().into_shape((n_findex, 1, 1, 1))?;
+            let ai_4d = ai_arr.clone().into_shape((n_findex, 1, 1, 1))?;
+            let added_yaw = wake_added_yaw(
+                &u_i,
+                &v_i,
+                &turbine_grid_flow_field.u_initial_sorted,
+                &delta_y,
+                &z_i_block,
+                rotor_diameter_i,
+                hub_height_i,
+                &ct_4d,
+                &tsr_4d,
+                &ai_4d,
+                flow_field.wind_shear,
+                1.0,
+            );
+            effective_yaw_i += added_yaw[0];
+        }
+
+        // Source position for this turbine.
+        let x_i = source_x.slice(s![.., i..i + 1]).to_owned(); // (n_findex, 1)
+        let y_i = source_y.slice(s![.., i..i + 1]).to_owned();
+        let z_i = source_z.slice(s![.., i..i + 1]).to_owned();
+
+        // Deflection field at the source turbine.
+        let deflection_field = model_manager.deflection_model.function(
+            x_i.clone(),
+            y_i.clone(),
+            effective_yaw_i,
+            ti_i_scalar,
+            ct_i_scalar,
+            rotor_diameter_i,
+            &std::collections::HashMap::new(),
+        )?;
+        let deflection_value = deflection_field[[0, 0]];
+
+        // Distance from the source turbine to every full-grid point.
+        let mut delta_x = Array::zeros((n_findex, n_points, grid_y_dim, grid_z_dim));
+        let mut delta_y = Array::zeros((n_findex, n_points, grid_y_dim, grid_z_dim));
+        for fi in 0..n_findex {
+            for p in 0..n_points {
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        delta_x[[fi, p, iy, iz]] = planar_x[[fi, p, iy, iz]] - x_i[[fi, 0]];
+                        delta_y[[fi, p, iy, iz]] = planar_y[[fi, p, iy, iz]] - y_i[[fi, 0]];
+                    }
+                }
+            }
+        }
+
+        // Transverse velocities over the full grid.
+        if model_manager.enable_transverse_velocities {
+            let u_i = turbine_grid_flow_field
+                .u_sorted
+                .slice(s![.., i..i + 1, .., ..])
+                .to_owned();
+            let (vw, ww) = calculate_transverse_velocity(
+                &u_i,
+                &flow_field.u_initial_sorted,
+                &flow_field.dudz_initial_sorted,
+                &delta_x,
+                &delta_y,
+                &planar_z,
+                rotor_diameter_i,
+                hub_height_i,
+                &yaw_arr,
+                &ct_arr,
+                &tsr_arr,
+                &ai_arr,
+                flow_field.wind_shear,
+                1.0,
+            );
+            for fi in 0..n_findex {
+                for p in 0..n_points {
+                    for iy in 0..grid_y_dim {
+                        for iz in 0..grid_z_dim {
+                            v_wake[[fi, p, iy, iz]] += vw[[fi, p, iy, iz]];
+                            w_wake[[fi, p, iy, iz]] += ww[[fi, p, iy, iz]];
+                        }
+                    }
+                }
+            }
+        }
+
+        // Build the synthetic grid: first n_turbines blocks are the source
+        // turbines, the rest are the full-flow field points.
+        let total = n_turbines + n_points;
+        let mut x_full = Array::zeros((n_findex, total, 1, 1));
+        let mut y_full = Array::zeros((n_findex, total, 1, 1));
+        let mut z_full = Array::zeros((n_findex, total, 1, 1));
+        for fi in 0..n_findex {
+            for b in 0..n_turbines {
+                x_full[[fi, b, 0, 0]] = source_x[[fi, b]];
+                y_full[[fi, b, 0, 0]] = source_y[[fi, b]];
+                z_full[[fi, b, 0, 0]] = source_z[[fi, b]];
+            }
+            for p in 0..n_points {
+                x_full[[fi, n_turbines + p, 0, 0]] = planar_x[[fi, p, 0, 0]];
+                y_full[[fi, n_turbines + p, 0, 0]] = planar_y[[fi, p, 0, 0]];
+                z_full[[fi, n_turbines + p, 0, 0]] = planar_z[[fi, p, 0, 0]];
+            }
+        }
+
+        // Per-turbine broadcast arrays (only column `i` is read by the model).
+        let mut a_arr = Array::zeros((n_findex, total));
+        let mut defl_arr = Array::zeros((n_findex, total));
+        let mut yaw_bc = Array::zeros((n_findex, total));
+        let mut ti_bc = Array::zeros((n_findex, total));
+        let mut ct_bc = Array::zeros((n_findex, total));
+        for fi in 0..n_findex {
+            a_arr[[fi, i]] = a_i_scalar;
+            defl_arr[[fi, i]] = deflection_value;
+            yaw_bc[[fi, i]] = yaw_arr[fi];
+            ti_bc[[fi, i]] = ti_arr[fi];
+            ct_bc[[fi, i]] = ct_arr[fi];
+        }
+
+        let velocity_deficit = model_manager.velocity_model.function(
+            x_full,
+            y_full,
+            z_full,
+            a_arr,
+            defl_arr,
+            yaw_bc,
+            ti_bc,
+            ct_bc,
+            hub_height_i,
+            rotor_diameter_i,
+            i,
+            &std::collections::HashMap::new(),
+        )?;
+
+        // Relative deficit over the field points (drop the source blocks).
+        let mut velocity_deficit_absolute = Array::zeros((n_findex, n_points, grid_y_dim, grid_z_dim));
+        for fi in 0..n_findex {
+            for p in 0..n_points {
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        velocity_deficit_absolute[[fi, p, iy, iz]] = flow_field
+                            .u_initial_sorted[[fi, p, iy, iz]]
+                            * velocity_deficit[[fi, n_turbines + p, iy, iz]];
+                    }
+                }
+            }
+        }
+
+        wake_field = model_manager
+            .combination_model
+            .function(&wake_field, &velocity_deficit_absolute)?;
+
+        // Wake-added turbulence over the full grid.
+        let mut x_i_4d = Array4::zeros((n_findex, 1, 1, 1));
+        let mut ai_4d = Array4::zeros((n_findex, 1, 1, 1));
+        for fi in 0..n_findex {
+            x_i_4d[[fi, 0, 0, 0]] = x_i[[fi, 0]];
+            ai_4d[[fi, 0, 0, 0]] = a_i_scalar;
+        }
+        let mut wake_added_ti = model_manager.turbulence_model.function(
+            &ambient_turbulence_intensities,
+            &planar_x,
+            &x_i_4d,
+            rotor_diameter_i,
+            &ai_4d,
+        )?;
+        wake_added_ti = wake_added_ti.mapv(|v| if v.is_finite() { v } else { 0.0 });
+
+        let downstream_influence_length = 15.0 * rotor_diameter_i;
+        for fi in 0..n_findex {
+            for p in 0..n_points {
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        let area_overlap =
+                            if velocity_deficit_absolute[[fi, p, iy, iz]] > 0.05 { 1.0 } else { 0.0 };
+                        let downstream = planar_x[[fi, p, iy, iz]] > x_i[[fi, 0]]
+                            && (y_i[[fi, 0]] - planar_y[[fi, p, iy, iz]]).abs()
+                                < 2.0 * rotor_diameter_i
+                            && planar_x[[fi, p, iy, iz]]
+                                <= downstream_influence_length + x_i[[fi, 0]];
+                        let ti_added = if downstream {
+                            area_overlap * wake_added_ti[[fi, p, iy, iz]]
+                        } else {
+                            0.0
+                        };
+                        let ambient = ambient_turbulence_intensities[[fi, p, iy, iz]];
+                        let new_ti = (ti_added * ti_added + ambient * ambient).sqrt();
+                        if new_ti > turbulence_intensity_field[[fi, p, iy, iz]] {
+                            turbulence_intensity_field[[fi, p, iy, iz]] = new_ti;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update the full-flow sorted fields.
+        for fi in 0..n_findex {
+            for p in 0..n_points {
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        flow_field.u_sorted[[fi, p, iy, iz]] = (flow_field
+                            .u_initial_sorted[[fi, p, iy, iz]]
+                            - wake_field[[fi, p, iy, iz]])
+                            .max(0.0);
+                    }
+                }
+            }
+        }
+        if model_manager.enable_transverse_velocities {
+            for fi in 0..n_findex {
+                for p in 0..n_points {
+                    for iy in 0..grid_y_dim {
+                        for iz in 0..grid_z_dim {
+                            flow_field.v_sorted[[fi, p, iy, iz]] += v_wake[[fi, p, iy, iz]];
+                            flow_field.w_sorted[[fi, p, iy, iz]] += w_wake[[fi, p, iy, iz]];
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    flow_field.turbulence_intensity_field_sorted = turbulence_intensity_field;
 
     Ok(())
 }
