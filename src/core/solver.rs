@@ -4,10 +4,10 @@ use crate::core::grid::{TurbineCubatureGrid, TurbineGrid};
 /// Corresponds to core/solver.py in Python implementation
 use std::collections::HashMap;
 
-use crate::core::wake::WakeModelManager;
 use crate::core::wake::yaw_added_recovery::{
     calculate_transverse_velocity, wake_added_yaw, yaw_added_turbulence_mixing,
 };
+use crate::core::wake::WakeModelManager;
 use crate::core::{Farm, FlowField, Grid};
 use crate::types::{Array1, Array2, Array4, Float};
 use anyhow::Result;
@@ -162,9 +162,18 @@ pub fn sequential_solver(
         let hub_height_i = farm.hub_heights_sorted[[0, i]];
 
         // Current turbine velocity slices (captured before this turbine's wake is added)
-        let u_i = flow_field.u_sorted.slice(s![.., i..i + 1, .., ..]).to_owned();
-        let v_i = flow_field.v_sorted.slice(s![.., i..i + 1, .., ..]).to_owned();
-        let w_i = flow_field.w_sorted.slice(s![.., i..i + 1, .., ..]).to_owned();
+        let u_i = flow_field
+            .u_sorted
+            .slice(s![.., i..i + 1, .., ..])
+            .to_owned();
+        let v_i = flow_field
+            .v_sorted
+            .slice(s![.., i..i + 1, .., ..])
+            .to_owned();
+        let w_i = flow_field
+            .w_sorted
+            .slice(s![.., i..i + 1, .., ..])
+            .to_owned();
 
         // Calculate 2D mean values for deflection at turbine i's position
         let x_i = x_grid.slice(s![.., i..i + 1, .., ..]).to_owned();
@@ -351,9 +360,8 @@ pub fn sequential_solver(
                 // Downstream-influence mask (Python: x > x_i, |dy| < 2D, x <= 15D + x_i)
                 let dx = x_mean[[fi, j]] - x_mean[[fi, i]];
                 let dy = (y_mean[[fi, j]] - y_mean[[fi, i]]).abs();
-                let downstream_ok = dx > 0.0
-                    && dx <= downstream_influence_length
-                    && dy < 2.0 * rotor_diameter_i;
+                let downstream_ok =
+                    dx > 0.0 && dx <= downstream_influence_length && dy < 2.0 * rotor_diameter_i;
 
                 let ti_added = if downstream_ok {
                     area_overlap * wake_added_center
@@ -377,8 +385,7 @@ pub fn sequential_solver(
                     for iz in 0..grid_z_dim {
                         let wake_deficit = wake_field[[fi, ti, iy, iz]];
                         let u_initial = flow_field.u_initial_sorted[[fi, ti, iy, iz]];
-                        flow_field.u_sorted[[fi, ti, iy, iz]] =
-                            (u_initial - wake_deficit).max(0.0);
+                        flow_field.u_sorted[[fi, ti, iy, iz]] = (u_initial - wake_deficit).max(0.0);
                     }
                 }
             }
@@ -402,12 +409,8 @@ pub fn sequential_solver(
 
     // Store the evolved turbine TI (constant per rotor block) so downstream
     // consumers (e.g. full_flow_sequential_solver) can read the averaged TI.
-    flow_field.turbulence_intensity_field_sorted = Array::zeros((
-        n_findex,
-        grid_second_dim,
-        grid_y_dim,
-        grid_z_dim,
-    ));
+    flow_field.turbulence_intensity_field_sorted =
+        Array::zeros((n_findex, grid_second_dim, grid_y_dim, grid_z_dim));
     for fi in 0..n_findex {
         for ti in 0..n_turbines {
             for iy in 0..grid_y_dim {
@@ -452,8 +455,11 @@ pub fn full_flow_sequential_solver(
     let mut turbine_grid_farm = farm.clone();
     let mut turbine_grid_flow_field = flow_field.clone();
     turbine_grid_farm.expand_farm_properties(n_findex, turbine_grid.sorted_coord_indices());
-    turbine_grid_flow_field
-        .initialize_flow_field(turbine_grid.grid_shape(), turbine_grid.z_sorted(), &turbine_grid.hub_heights());
+    turbine_grid_flow_field.initialize_flow_field(
+        turbine_grid.grid_shape(),
+        turbine_grid.z_sorted(),
+        &turbine_grid.hub_heights(),
+    );
     turbine_grid_farm.initialize(turbine_grid.sorted_indices());
     sequential_solver(
         &turbine_grid_farm,
@@ -471,6 +477,12 @@ pub fn full_flow_sequential_solver(
     let planar_x = grid.x_sorted().clone();
     let planar_y = grid.y_sorted().clone();
     let planar_z = grid.z_sorted().clone();
+
+    // Prepare model-specific velocity parameters once for the full planar grid,
+    // matching FLORIS full_flow_sequential_solver.
+    let velocity_model_args = model_manager
+        .velocity_model
+        .prepare_function(grid, flow_field)?;
 
     // Wake and transverse velocity fields over the full grid.
     let mut wake_field: Array4 = Array::zeros((n_findex, n_points, grid_y_dim, grid_z_dim));
@@ -560,7 +572,10 @@ pub fn full_flow_sequential_solver(
                 .insert_axis(ndarray::Axis(2))
                 .insert_axis(ndarray::Axis(3));
             let delta_y = &turbine_grid.y_sorted().slice(s![.., i..i + 1, .., ..]) - &source_y_4d;
-            let z_i_block = turbine_grid.z_sorted().slice(s![.., i..i + 1, .., ..]).to_owned();
+            let z_i_block = turbine_grid
+                .z_sorted()
+                .slice(s![.., i..i + 1, .., ..])
+                .to_owned();
             let ct_4d = ct_arr.clone().into_shape((n_findex, 1, 1, 1))?;
             let tsr_4d = tsr_arr.clone().into_shape((n_findex, 1, 1, 1))?;
             let ai_4d = ai_arr.clone().into_shape((n_findex, 1, 1, 1))?;
@@ -691,17 +706,18 @@ pub fn full_flow_sequential_solver(
             hub_height_i,
             rotor_diameter_i,
             i,
-            &std::collections::HashMap::new(),
+            &velocity_model_args,
         )?;
 
         // Relative deficit over the field points (drop the source blocks).
-        let mut velocity_deficit_absolute = Array::zeros((n_findex, n_points, grid_y_dim, grid_z_dim));
+        let mut velocity_deficit_absolute =
+            Array::zeros((n_findex, n_points, grid_y_dim, grid_z_dim));
         for fi in 0..n_findex {
             for p in 0..n_points {
                 for iy in 0..grid_y_dim {
                     for iz in 0..grid_z_dim {
-                        velocity_deficit_absolute[[fi, p, iy, iz]] = flow_field
-                            .u_initial_sorted[[fi, p, iy, iz]]
+                        velocity_deficit_absolute[[fi, p, iy, iz]] = flow_field.u_initial_sorted
+                            [[fi, p, iy, iz]]
                             * velocity_deficit[[fi, n_turbines + p, iy, iz]];
                     }
                 }
@@ -733,8 +749,11 @@ pub fn full_flow_sequential_solver(
             for p in 0..n_points {
                 for iy in 0..grid_y_dim {
                     for iz in 0..grid_z_dim {
-                        let area_overlap =
-                            if velocity_deficit_absolute[[fi, p, iy, iz]] > 0.05 { 1.0 } else { 0.0 };
+                        let area_overlap = if velocity_deficit_absolute[[fi, p, iy, iz]] > 0.05 {
+                            1.0
+                        } else {
+                            0.0
+                        };
                         let downstream = planar_x[[fi, p, iy, iz]] > x_i[[fi, 0]]
                             && (y_i[[fi, 0]] - planar_y[[fi, p, iy, iz]]).abs()
                                 < 2.0 * rotor_diameter_i
@@ -760,10 +779,10 @@ pub fn full_flow_sequential_solver(
             for p in 0..n_points {
                 for iy in 0..grid_y_dim {
                     for iz in 0..grid_z_dim {
-                        flow_field.u_sorted[[fi, p, iy, iz]] = (flow_field
-                            .u_initial_sorted[[fi, p, iy, iz]]
+                        flow_field.u_sorted[[fi, p, iy, iz]] = (flow_field.u_initial_sorted
+                            [[fi, p, iy, iz]]
                             - wake_field[[fi, p, iy, iz]])
-                            .max(0.0);
+                        .max(0.0);
                     }
                 }
             }

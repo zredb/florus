@@ -64,6 +64,20 @@ pub struct TurbineContext<'a> {
     pub average_method: crate::core::rotor_velocity::AveragingMethod,
 }
 
+impl<'a> TurbineContext<'a> {
+    /// Number of turbines derived from yaw_angles or tilt_angles shape.
+    /// velcoity array second dim may be grid points (planar grid), not turbine count.
+    pub fn n_turbines(&self) -> usize {
+        if let Some(yaw) = self.yaw_angles {
+            yaw.shape()[1]
+        } else if let Some(tilt) = self.tilt_angles {
+            tilt.shape()[1]
+        } else {
+            self.velocities.shape()[1]
+        }
+    }
+}
+
 /// Base trait for all turbine operation models
 pub trait OperationModel: Send + Sync + std::fmt::Debug {
     fn model_name(&self) -> &'static str;

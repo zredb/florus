@@ -23,7 +23,7 @@ impl OperationModel for PeakShavingTurbine {
         })?;
 
         let n_findex = ctx.air_density.len();
-        let n_turbines = ctx.velocities.shape()[1];
+        let n_turbines = ctx.n_turbines();
 
         // Get base values
         let simple = SimpleTurbine;
@@ -112,7 +112,7 @@ impl OperationModel for PeakShavingTurbine {
         })?;
 
         let n_findex = ctx.air_density.len();
-        let n_turbines = ctx.velocities.shape()[1];
+        let n_turbines = ctx.n_turbines();
 
         let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
         let rotor_avg_velocities = crate::core::rotor_velocity::average_velocity(

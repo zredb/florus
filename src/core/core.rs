@@ -4,7 +4,7 @@ use crate::core::flow_field::FlowField;
 use crate::core::grid::{
     FlowFieldGrid, FlowFieldPlanarGrid, Grid, PointsGrid, TurbineCubatureGrid, TurbineGrid,
 };
-use crate::core::solver::{cc_solver, empirical_gauss_solver, sequential_solver};
+use crate::core::solver::{cc_solver, empirical_gauss_solver, full_flow_sequential_solver, sequential_solver};
 use crate::core::state::State;
 use crate::core::wake::WakeModelManager;
 use crate::floris_config::{FlorisConfig, LoggingConfig, SolverConfig, SolverType};
@@ -419,25 +419,34 @@ impl Core {
     /// This method is specifically designed for visualization purposes.
     /// It should be used with FlowFieldPlanarGrid after setting up the grid.
     pub fn solve_for_viz(&mut self) -> crate::Result<()> {
-        // Initialize flow field with the planar grid
         if self.grid.is_none() {
             anyhow::bail!("Grid must be initialized before calling solve_for_viz()");
         }
 
         let grid = self.grid.as_ref().unwrap();
         
-        // Initialize velocity field using FlowField's method
         self.flow_field.initialize_flow_field(
             grid.grid_shape(),
             grid.z_sorted(),
             &grid.hub_heights(),
         );
 
-        // Mark as initialized
+        let grid_ref = self.grid.as_ref().unwrap();
+        if let Some(planar_grid) = grid_ref.as_any().downcast_ref::<FlowFieldPlanarGrid>() {
+            full_flow_sequential_solver(
+                &self.farm,
+                &mut self.flow_field,
+                planar_grid,
+                &self.wake,
+            )?;
+        } else {
+            anyhow::bail!("solve_for_viz requires a FlowFieldPlanarGrid");
+        }
+
+        self.finalize();
         self.state.initialized = true;
 
-        // Call the main solver which will handle FlowFieldPlanarGrid
-        self.steady_state_atmospheric_condition()
+        Ok(())
     }
 
     /// Finalize the calculation - unsort values to match user-supplied order

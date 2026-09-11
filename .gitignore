@@ -3,3 +3,5 @@
 /floris-4.6.4
 nul
 /examples/outputs/*
+output/*.png
+/*.png

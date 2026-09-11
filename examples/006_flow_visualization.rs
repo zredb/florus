@@ -14,7 +14,7 @@ fn main() -> Result<()> {
     // Initialize FLORIS model
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
-    // Set a 5-turbine layout with wind direction from northwest
+// Set a 3-turbine layout with wind direction from northwest
     let layout_x = Array::from_vec(vec![0.0, 630.0, 1260.0]);
     let layout_y = Array::from_vec(vec![0.0, 0.0, 0.0]);
     fmodel.set_layout(&layout_x, &layout_y)?;

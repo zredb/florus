@@ -29,7 +29,7 @@ impl OperationModel for MixedOperationTurbine {
             .ok_or_else(|| anyhow::anyhow!("Power setpoints required for MixedOperationTurbine"))?;
 
         let n_findex = ctx.air_density.len();
-        let n_turbines = ctx.velocities.shape()[1];
+        let n_turbines = ctx.n_turbines();
 
         // Create masks
         let mut yaw_mask = ndarray::Array::from_elem((n_findex, n_turbines), false);
@@ -127,7 +127,7 @@ impl OperationModel for MixedOperationTurbine {
             .ok_or_else(|| anyhow::anyhow!("Power setpoints required for MixedOperationTurbine"))?;
 
         let n_findex = ctx.air_density.len();
-        let n_turbines = ctx.velocities.shape()[1];
+        let n_turbines = ctx.n_turbines();
 
         // Create masks
         let mut yaw_mask = ndarray::Array::from_elem((n_findex, n_turbines), false);

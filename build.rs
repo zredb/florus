@@ -52,7 +52,7 @@ fn main() {
 
         let mut python_found = None;
         for &python in &python_exes {
-            let output = Command::new(python).args(&["--version"]).output();
+            let output = Command::new(python).args(["--version"]).output();
 
             if let Ok(o) = output {
                 if o.status.success() {

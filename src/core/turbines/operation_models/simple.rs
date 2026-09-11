@@ -19,7 +19,7 @@ impl OperationModel for SimpleTurbine {
 
     fn power(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
         let n_findex = ctx.air_density.len();
-        let n_turbines = ctx.velocities.shape()[1];
+        let n_turbines = ctx.n_turbines();
 
         let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
         let rotor_avg_velocities = crate::core::rotor_velocity::average_velocity(
@@ -49,7 +49,7 @@ impl OperationModel for SimpleTurbine {
         ctx: &TurbineContext,
     ) -> crate::Result<Array2> {
         let n_findex = ctx.air_density.len();
-        let n_turbines = ctx.velocities.shape()[1];
+        let n_turbines = ctx.n_turbines();
 
         let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
         let rotor_avg_velocities = crate::core::rotor_velocity::average_velocity(

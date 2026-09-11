@@ -699,7 +699,7 @@ impl Farm {
     ) -> crate::Result<Array2> {
         let shape = velocities.shape();
         let n_findex = shape[0];
-        let n_turbines = shape[1];
+        let n_turbines = turbines.len().min(shape[1]);
 
         let mut ct_output = Array::zeros((n_findex, n_turbines));
 
@@ -734,7 +734,7 @@ impl Farm {
         // Call the turbine's axial_induction method directly
         let shape = velocities.shape();
         let n_findex = shape[0];
-        let n_turbines = shape[1];
+        let n_turbines = turbines.len().min(shape[1]);
 
         let mut ai_output = Array::zeros((n_findex, n_turbines));
 

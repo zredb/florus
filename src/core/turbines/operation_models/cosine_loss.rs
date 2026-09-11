@@ -25,7 +25,7 @@ impl OperationModel for CosineLossTurbine {
             .ok_or_else(|| anyhow::anyhow!("Yaw angles required for CosineLossTurbine"))?;
 
         let n_findex = ctx.air_density.len();
-        let n_turbines = ctx.velocities.shape()[1];
+        let n_turbines = ctx.n_turbines();
 
         let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
         let rotor_avg_velocities = crate::core::rotor_velocity::average_velocity(
@@ -83,7 +83,7 @@ impl OperationModel for CosineLossTurbine {
             .ok_or_else(|| anyhow::anyhow!("Tilt angles required for CosineLossTurbine"))?;
 
         let n_findex = ctx.air_density.len();
-        let n_turbines = ctx.velocities.shape()[1];
+        let n_turbines = ctx.n_turbines();
 
         let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
         let rotor_avg_velocities = crate::core::rotor_velocity::average_velocity(
@@ -131,7 +131,7 @@ impl OperationModel for CosineLossTurbine {
         // which is correct for thrust but would cause double-counting in axial induction formula
 
         let n_findex = ctx.air_density.len();
-        let n_turbines = ctx.velocities.shape()[1];
+        let n_turbines = ctx.n_turbines();
 
         let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
         let rotor_avg_velocities = crate::core::rotor_velocity::average_velocity(

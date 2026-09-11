@@ -2131,6 +2131,16 @@ mod tests {
     // Filter Helper Tests
     // ============================================================================
 
+    fn filter_by_nonzero_freq(values: &Array1, freq: &Array1) -> Array1 {
+        let filtered: Vec<f64> = values
+            .iter()
+            .zip(freq.iter())
+            .filter(|(_, &f)| f != 0.0)
+            .map(|(&v, _)| v)
+            .collect();
+        Array1::from_vec(filtered)
+    }
+
     #[test]
     fn test_filter_by_nonzero_freq() {
         let values = Array1::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0]);

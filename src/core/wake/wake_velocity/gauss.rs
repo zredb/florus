@@ -109,11 +109,6 @@ impl VelocityModel for GaussVelocity {
             let x_i = x_i_array[[fi, turbine_index]];
             let y_i = y_i_array[[fi, turbine_index]];
 
-            // Turbine upstream of reference point (x < 0) doesn't generate a wake
-            if x_i < 0.0 {
-                continue;
-            }
-
             // Opposite sign convention in this model
             let yaw = -yaw_angle[[fi, turbine_index]];
 
@@ -214,6 +209,7 @@ impl VelocityModel for GaussVelocity {
 
                         // Gaussian function
                         let deficit = c * (-r_squared).exp();
+
 
                         if deficit > 1e-10 {
                             velocity_deficit[[fi, ti_grid, iy, iz]] = deficit;

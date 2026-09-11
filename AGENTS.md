@@ -89,3 +89,5 @@ src/
 - Disabled turbines via `set_operation(disable_turbines=...)` set power to 0 but don't trigger wake re-computation.
 - `sample_flow_at_points()` only samples at findex=0 — loop through wind directions individually for multi-condition sampling.
 - `sample_ti_at_points()` returns constant inflow TI — the turbulence field isn't populated after wake solving.
+
+参考的python 代码在:D:\code\florus\floris下
