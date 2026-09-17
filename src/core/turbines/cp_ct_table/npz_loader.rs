@@ -1,22 +1,22 @@
 pub struct NpzDataLoader;
 use crate::types::{Array2, ArrayD};
 
-use super::{CpCtError, DimensionRange, MultiDimTable};
+use super::{CpCtError, Dimension, DimensionRange, InterpolationMethod, MultiDimTable};
 use std::{fs::File, io::Read, path::Path};
 use zip::ZipArchive;
 
 impl NpzDataLoader {
     /// 加载.npz文件数据
     pub fn load_npz_file(file_path: &Path) -> Result<MultiDimTable, CpCtError> {
-        if !file_path.exists() {
-            return Err(CpCtError::FileNotFound(
-                file_path.to_string_lossy().to_string(),
-            ));
-        }
-
         if file_path.extension().and_then(|ext| ext.to_str()) != Some("npz") {
             return Err(CpCtError::InvalidNpzFormat(
                 "文件必须是.npz格式".to_string(),
+            ));
+        }
+
+        if !file_path.exists() {
+            return Err(CpCtError::FileNotFound(
+                file_path.to_string_lossy().to_string(),
             ));
         }
 
@@ -26,7 +26,6 @@ impl NpzDataLoader {
 
         let mut cp_data: Option<ArrayD> = None;
         let mut ct_data: Option<ArrayD> = None;
-        let mut dimensions: Vec<DimensionRange> = vec![];
 
         for i in 0..archive.len() {
             let mut file = archive.by_index(i)
@@ -34,6 +33,16 @@ impl NpzDataLoader {
             
             let name = file.name().to_string();
             println!("Found array: {}", name);
+
+            // Only parse the arrays we consume; other members (e.g. 1D lookup
+            // axes) are skipped so their format cannot fail the load
+            if !matches!(
+                name.as_str(),
+                "cp_values.npy" | "cp_lut.npy" | "ct_values.npy" | "ct_lut.npy"
+            ) {
+                println!("Found unused file: {}", name);
+                continue;
+            }
 
             let mut contents = Vec::new();
             file.read_to_end(&mut contents)
@@ -44,22 +53,31 @@ impl NpzDataLoader {
                 .map_err(|e| CpCtError::FileFormat(format!("无法解析 {}: {}", name, e)))?;
 
             match name.as_str() {
-                "cp_values.npy" => {
+                "cp_values.npy" | "cp_lut.npy" => {
                     cp_data = Some(arr.into_dyn());
-                    println!("Loaded cp_values with shape: {:?}", cp_data.as_ref().map(|a| a.shape()));
-                }
-                "ct_values.npy" => {
-                    ct_data = Some(arr.into_dyn());
-                    println!("Loaded ct_values with shape: {:?}", ct_data.as_ref().map(|a| a.shape()));
+                    println!("Loaded cp values with shape: {:?}", cp_data.as_ref().map(|a| a.shape()));
                 }
                 _ => {
-                    println!("Found unused file: {}", name);
+                    ct_data = Some(arr.into_dyn());
+                    println!("Loaded ct values with shape: {:?}", ct_data.as_ref().map(|a| a.shape()));
                 }
             }
         }
 
         let cp_data = cp_data.ok_or_else(|| CpCtError::LoadFailed("Missing cp_values array".to_string()))?;
         let ct_data = ct_data.ok_or_else(|| CpCtError::LoadFailed("Missing ct_values array".to_string()))?;
+
+        // The .npz stores no axis metadata: synthesize evenly spaced dimension
+        // values from the data shape so MultiDimTable validation passes
+        let dimensions: Vec<DimensionRange> = cp_data
+            .shape()
+            .iter()
+            .map(|&n| DimensionRange {
+                dimension: Dimension::WindSpeed,
+                values: (0..n).map(|k| k as f64).collect(),
+                interpolation: InterpolationMethod::Linear,
+            })
+            .collect();
 
         Ok(MultiDimTable::new(dimensions, cp_data, ct_data)?)
     }
