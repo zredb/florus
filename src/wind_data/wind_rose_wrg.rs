@@ -561,6 +561,10 @@ impl WindData for WindRoseWRG {
         }
     }
 
+    fn n_conditions(&self) -> usize {
+        self.wind_directions.len() * self.wind_speeds.len()
+    }
+
     fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig {
         HeterogeneousInflowConfig {
             x: Array1::from_vec(vec![]),
@@ -985,6 +989,10 @@ impl WindData for WindRoseByTurbine {
         }
     }
 
+    fn n_conditions(&self) -> usize {
+        self.wind_directions.len() * self.wind_speeds.len()
+    }
+
 
 
     fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig {
@@ -1273,26 +1281,30 @@ fn read_wrg_file(filename: &std::path::Path) -> Result<WRGData> {
     let ymin: Float = header_parts[3].parse()?;
     let grid_size: Float = header_parts[4].parse()?;
 
-    // Number of sectors is in the second line
+    // Number of sectors is embedded in the first data line (chars 69..72),
+    // matching the Python FLORIS reader (data[1][70:72])
     let first_data_line = lines.get(1).ok_or_else(|| {
         anyhow::anyhow!(
             "WRG file has no data lines after header: {}",
             filename.display()
         )
     })?;
-    let n_sectors: usize = first_data_line[69..72].trim().parse()?;
+    let n_sectors_str = first_data_line.get(69..72).ok_or_else(|| {
+        anyhow::anyhow!(
+            "WRG data line too short to contain sector count: {}",
+            filename.display()
+        )
+    })?;
+    let n_sectors: usize = n_sectors_str.trim().parse()?;
 
-    // Calculate expected lines
-    let data_rows_per_sector = ny + 1; // Each sector has ny data rows + 1 header
-
-    // Verify we have enough lines
-    let expected_lines = 2 + n_sectors * data_rows_per_sector;
+    // Data lines: one per grid point, starting right after the header
+    let expected_lines = 1 + nx * ny;
     if lines.len() < expected_lines {
         anyhow::bail!(
-            "WRG file has {} lines but expected at least {} for {} sectors",
+            "WRG file has {} lines but expected at least {} for {} grid points",
             lines.len(),
             expected_lines,
-            n_sectors
+            nx * ny
         );
     }
 
@@ -1312,7 +1324,7 @@ fn read_wrg_file(filename: &std::path::Path) -> Result<WRGData> {
     }
 
     // Parse data for each grid point
-    let mut line_idx = 2;
+    let mut line_idx = 1;
     for _gid in 0..(nx * ny) {
         if line_idx >= lines.len() {
             break;
@@ -1422,15 +1434,10 @@ mod tests {
             "{:4}{:4}{:10.1}{:10.1}{:8.1}",
             nx, ny, xmin, ymin, grid_size
         )?;
-        writeln!(writer, "{}", n_sectors)?;
 
-        // Calculate required number of data lines
-        // expected_lines = 2 + n_sectors * (ny + 1)
-        let expected_data_lines = n_sectors * (ny + 1);
-
-        // Write data lines
-        for line_num in 0..expected_data_lines {
-            let gid = line_num % (nx * ny).max(1);
+        // Data lines: one per grid point (nx * ny), no separate sector-count line,
+        // matching the Python FLORIS WRG format
+        for gid in 0..(nx * ny) {
             let x = (gid % nx) as f64 * grid_size;
             let y = (gid / nx) as f64 * grid_size;
 
@@ -1452,10 +1459,13 @@ mod tests {
             // Position 38-42: H (5 chars)
             line.push_str(&format!("{:5.1}", 80.0));
 
-            // Position 43-71: Padding (29 chars)
-            for _ in 0..29 {
+            // Position 43-68: Padding (26 chars)
+            for _ in 0..26 {
                 line.push(' ');
             }
+
+            // Position 69-71: Number of sectors (3 chars, read by parser at [69..72])
+            line.push_str(&format!("{:3}", n_sectors));
 
             // Position 72+: Sector data (13 chars per sector: freq[4] + A[4] + k[5])
             for sector in 0..n_sectors {
