@@ -120,10 +120,14 @@ impl FlorisModel {
     ///
     /// # Examples
     /// ```no_run
+    /// # use anyhow::Error;
+    /// # fn main() -> Result<(), Error> {
     /// use florus::FlorisModel;
     /// let mut model = FlorisModel::from_file("default_inputs.yaml")?;
     /// model.run()?;
     /// let powers = model.get_turbine_powers();
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn run(&mut self) -> crate::Result<()> {
         // Use Core's steady_state_atmospheric_condition method
@@ -144,6 +148,8 @@ impl FlorisModel {
     ///
     /// # Examples
     /// ```no_run
+    /// # use anyhow::Error;
+    /// # fn main() -> Result<(), Error> {
     /// use florus::FlorisModel;
     /// let mut model = FlorisModel::from_file("default_inputs.yaml")?;
     ///
@@ -156,6 +162,8 @@ impl FlorisModel {
     /// let power_without_wake = model.get_farm_power();
     ///
     /// println!("Wake loss: {} W", power_without_wake - power_with_wake);
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn run_no_wake(&mut self) -> crate::Result<()> {
         // Initialize solution space (this will initialize velocity field and farm quantities)
@@ -368,6 +376,8 @@ impl FlorisModel {
     ///
     /// # Examples
     /// ```no_run
+    /// # use anyhow::Error;
+    /// # fn main() -> Result<(), Error> {
     /// use florus::FlorisModel;
     /// use ndarray::Array1;
     ///
@@ -380,6 +390,8 @@ impl FlorisModel {
     /// // Or with custom frequencies
     /// let freq = Array1::from_vec(vec![0.3, 0.5, 0.2]);
     /// let expected_powers = model.get_expected_turbine_powers(Some(freq))?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn get_expected_turbine_powers(&self, freq: Option<Array1>) -> crate::Result<Array1> {
         // Get turbine powers: shape (n_findex, n_turbines)
@@ -435,6 +447,8 @@ impl FlorisModel {
     ///
     /// # Examples
     /// ```no_run
+    /// # use anyhow::Error;
+    /// # fn main() -> Result<(), Error> {
     /// use florus::FlorisModel;
     /// use ndarray::Array1;
     ///
@@ -447,6 +461,8 @@ impl FlorisModel {
     /// // Or with custom frequencies
     /// let freq = Array1::from_vec(vec![0.3, 0.5, 0.2]);
     /// let expected_power = model.get_expected_farm_power(Some(freq), None)?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn get_expected_farm_power(
         &self,
@@ -527,6 +543,8 @@ impl FlorisModel {
     ///
     /// # Examples
     /// ```no_run
+    /// # use anyhow::Error;
+    /// # fn main() -> Result<(), Error> {
     /// use florus::FlorisModel;
     /// use ndarray::Array1;
     ///
@@ -536,6 +554,8 @@ impl FlorisModel {
     /// // Calculate expected value with electricity prices
     /// let prices = Array1::from_vec(vec![50.0, 60.0, 45.0]); // $/MWh
     /// let expected_value = model.get_expected_farm_value(None, Some(prices), None)?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn get_expected_farm_value(
         &self,
@@ -762,6 +782,8 @@ impl FlorisModel {
     ///
     /// # Examples
     /// ```no_run
+    /// # use anyhow::Error;
+    /// # fn main() -> Result<(), Error> {
     /// use florus::FlorisModel;
     ///
     /// let mut model = FlorisModel::from_file("default_inputs.yaml")?;
@@ -770,7 +792,9 @@ impl FlorisModel {
     /// model.set_operation_model("simple")?;
     ///
     /// // Or set different models per turbine
-    /// model.set_operation_model(vec!["simple", "cosine"])?;
+    /// model.set_operation_model(vec!["simple".to_string(), "cosine".to_string()])?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn set_operation_model(
         &mut self,
@@ -932,6 +956,11 @@ impl FlorisModel {
         // Calculate average velocity from the velocity field
         // For now, use the center point of the rotor grid
         let mut avg_vels = Array2::zeros((n_findex, n_turbines));
+
+        // Flow field not yet initialized (run() not called): velocities are zero
+        if self.core.flow_field.u_sorted.is_empty() {
+            return avg_vels;
+        }
 
         for fi in 0..n_findex {
             for ti in 0..n_turbines {
@@ -1488,6 +1517,8 @@ impl FlorisModel {
     /// # Examples
     ///
     /// ```no_run
+    /// # use anyhow::Error;
+    /// # fn main() -> Result<(), Error> {
     /// use florus::FlorisModel;
     /// use ndarray::{Array2, Array1};
     ///
@@ -1502,7 +1533,7 @@ impl FlorisModel {
     ///     Some(wind_directions),
     ///     None, None, None,
     ///     Some(ti),
-    ///     None, None, None, None, None, None
+    ///     None, None, None, None, None, None, None, None, None
     /// )?;
     ///
     /// // Example 2: Update layout and wind conditions
@@ -1510,11 +1541,11 @@ impl FlorisModel {
     /// let layout_y = Array1::from_vec(vec![0.0, 0.0, 0.0]);
     /// model.set(
     ///     None, None, None, None, None, None, None,
-    ///     Some(layout_x), Some(layout_y), None, None, None
+    ///     Some(layout_x), Some(layout_y), None, None, None, None, None, None
     /// )?;
     ///
     /// // Example 3: Set operation parameters
-    /// let yaw_angles = Array2::from_elem((model.core.flow_field.n_findex, model.core.farm.n_turbines()), 10.0);
+    /// let yaw_angles = Array2::from_elem((model.core().flow_field.n_findex, model.core().farm.n_turbines()), 10.0);
     /// model.set(
     ///     None, None, None, None, None, None, None, None, None,
     ///     Some(yaw_angles), None, None, None, None, None
@@ -1524,11 +1555,13 @@ impl FlorisModel {
     /// let ws = Array1::from_vec(vec![9.0]);
     /// let wd = Array1::from_vec(vec![280.0]);
     /// let ti = Array1::from_vec(vec![0.07]);
-    /// let yaw = Array2::from_elem((1, model.core.farm.n_turbines()), 15.0);
+    /// let yaw = Array2::from_elem((1, model.core().farm.n_turbines()), 15.0);
     /// model.set(
     ///     Some(ws), Some(wd), None, None, None, Some(ti), None,
     ///     None, None, Some(yaw), None, None, None, None, None
     /// )?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn set(
         &mut self,
@@ -1577,21 +1610,43 @@ impl FlorisModel {
             layout_y,
         )?;
 
-        // Restore previous operation settings if they were non-default
+        // Restore previous operation settings if they were non-default,
+        // reshaping saved arrays to the new dimensions
+        let n_findex = self.core.flow_field.n_findex;
+        let n_turbines = self.core.farm.n_turbines();
+
         if yaw_is_non_default {
-            self.core.farm.set_yaw_angles(saved_yaw_angles);
+            if let Some(reshaped) = reshape_saved_array(&saved_yaw_angles, n_findex, n_turbines) {
+                self.core.farm.set_yaw_angles(reshaped);
+            }
         }
         if power_is_non_default {
-            self.core.farm.set_power_setpoints(saved_power_setpoints);
+            if let Some(reshaped) =
+                reshape_saved_array(&saved_power_setpoints, n_findex, n_turbines)
+            {
+                self.core.farm.set_power_setpoints(reshaped);
+            }
         }
         if awc_modes_is_non_default {
-            self.core.farm.set_awc_modes(saved_awc_modes);
+            if let Some(reshaped) =
+                reshape_saved_string_array(&saved_awc_modes, n_findex, n_turbines)
+            {
+                self.core.farm.set_awc_modes(reshaped);
+            }
         }
         if awc_amp_is_non_default {
-            self.core.farm.set_awc_amplitudes(saved_awc_amplitudes);
+            if let Some(reshaped) =
+                reshape_saved_array(&saved_awc_amplitudes, n_findex, n_turbines)
+            {
+                self.core.farm.set_awc_amplitudes(reshaped);
+            }
         }
         if awc_freq_is_non_default {
-            self.core.farm.set_awc_frequencies(saved_awc_frequencies);
+            if let Some(reshaped) =
+                reshape_saved_array(&saved_awc_frequencies, n_findex, n_turbines)
+            {
+                self.core.farm.set_awc_frequencies(reshaped);
+            }
         }
 
         // Apply new operation settings
@@ -2052,28 +2107,28 @@ impl FlorisModel {
     /// let mut model = FlorisModel::from_file("default_inputs.yaml").unwrap();
     ///
     /// // Example 1: Set yaw angles only
-    /// let yaw_angles = Array2::from_elem((model.core.flow_field.n_findex, model.core.farm.n_turbines()), 10.0);
+    /// let yaw_angles = Array2::from_elem((model.core().flow_field.n_findex, model.core().farm.n_turbines()), 10.0);
     /// model.set_operation(Some(yaw_angles), None, None, None, None, None).unwrap();
     ///
     /// // Example 2: Set power setpoints
-    /// let power_setpoints = Array2::from_elem((model.core.flow_field.n_findex, model.core.farm.n_turbines()), 3e6);
+    /// let power_setpoints = Array2::from_elem((model.core().flow_field.n_findex, model.core().farm.n_turbines()), 3e6);
     /// model.set_operation(None, Some(power_setpoints), None, None, None, None).unwrap();
     ///
     /// // Example 3: Disable specific turbines
     /// use ndarray::Array2 as NdArray2;
-    /// let mut disable = NdArray2::from_elem((model.core.flow_field.n_findex, model.core.farm.n_turbines()), false);
+    /// let mut disable = NdArray2::from_elem((model.core().flow_field.n_findex, model.core().farm.n_turbines()), false);
     /// disable[[0, 0]] = true; // Disable first turbine in first condition
     /// model.set_operation(None, None, None, None, None, Some(disable)).unwrap();
     ///
     /// // Example 4: Set AWC parameters
-    /// let awc_modes = NdArray2::from_elem((model.core.flow_field.n_findex, model.core.farm.n_turbines()), "sinusoidal".to_string());
-    /// let awc_amplitudes = Array2::from_elem((model.core.flow_field.n_findex, model.core.farm.n_turbines()), 2.0);
-    /// let awc_frequencies = Array2::from_elem((model.core.flow_field.n_findex, model.core.farm.n_turbines()), 0.5);
+    /// let awc_modes = NdArray2::from_elem((model.core().flow_field.n_findex, model.core().farm.n_turbines()), "sinusoidal".to_string());
+    /// let awc_amplitudes = Array2::from_elem((model.core().flow_field.n_findex, model.core().farm.n_turbines()), 2.0);
+    /// let awc_frequencies = Array2::from_elem((model.core().flow_field.n_findex, model.core().farm.n_turbines()), 0.5);
     /// model.set_operation(None, None, Some(awc_modes), Some(awc_amplitudes), Some(awc_frequencies), None).unwrap();
     ///
     /// // Example 5: Set multiple parameters at once
-    /// let yaw = Array2::from_elem((model.core.flow_field.n_findex, model.core.farm.n_turbines()), 5.0);
-    /// let power = Array2::from_elem((model.core.flow_field.n_findex, model.core.farm.n_turbines()), 4e6);
+    /// let yaw = Array2::from_elem((model.core().flow_field.n_findex, model.core().farm.n_turbines()), 5.0);
+    /// let power = Array2::from_elem((model.core().flow_field.n_findex, model.core().farm.n_turbines()), 4e6);
     /// model.set_operation(Some(yaw), Some(power), None, None, None, None).unwrap();
     /// ```
     ///
@@ -2183,6 +2238,47 @@ impl FlorisModel {
         }
 
         Ok(())
+    }
+}
+
+/// Reshape a saved operation array to the new (n_findex, n_turbines) dimensions,
+/// broadcasting from (1, n_turbines) when the findex count changed.
+/// Returns None when the saved shape is incompatible with the new dimensions.
+fn reshape_saved_array(arr: &Array2, n_findex: usize, n_turbines: usize) -> Option<Array2> {
+    let shape = arr.shape();
+    if shape.len() == 2 && shape[0] == n_findex && shape[1] == n_turbines {
+        Some(arr.clone())
+    } else if shape.len() == 2 && shape[0] == 1 && shape[1] == n_turbines && n_findex > 1 {
+        let mut expanded = Array2::zeros((n_findex, n_turbines));
+        for fi in 0..n_findex {
+            for ti in 0..n_turbines {
+                expanded[[fi, ti]] = arr[[0, ti]];
+            }
+        }
+        Some(expanded)
+    } else {
+        None
+    }
+}
+
+fn reshape_saved_string_array(
+    arr: &NdArray2<String>,
+    n_findex: usize,
+    n_turbines: usize,
+) -> Option<NdArray2<String>> {
+    let shape = arr.shape();
+    if shape.len() == 2 && shape[0] == n_findex && shape[1] == n_turbines {
+        Some(arr.clone())
+    } else if shape.len() == 2 && shape[0] == 1 && shape[1] == n_turbines && n_findex > 1 {
+        let mut expanded = NdArray2::from_elem((n_findex, n_turbines), String::new());
+        for fi in 0..n_findex {
+            for ti in 0..n_turbines {
+                expanded[[fi, ti]] = arr[[0, ti]].clone();
+            }
+        }
+        Some(expanded)
+    } else {
+        None
     }
 }
 
@@ -2758,7 +2854,7 @@ mod tests {
 
     #[test]
     fn test_get_turbine_tis() {
-        let mut model = create_test_model(2, 3);
+        let mut model = create_test_model(3, 2);
         model.run().unwrap();
 
         let tis = model.get_turbine_tis();
@@ -2781,6 +2877,8 @@ mod tests {
     fn test_assign_hub_height_to_ref_height() {
         let mut model = create_test_model(2, 1);
 
+        // Start from a reference height different from the nrel_5MW hub height (90 m)
+        model.core_mut().flow_field.reference_wind_height = 100.0;
         let initial_ref_height = model.reference_wind_height();
 
         // Assign hub height to reference height
