@@ -1,0 +1,24 @@
+{
+  "windrose": {
+    "n_wind_directions": 4,
+    "n_wind_speeds": 5,
+    "wind_directions": [
+      0,
+      90,
+      180,
+      270
+    ],
+    "wind_speeds": [
+      6,
+      8,
+      10,
+      12,
+      14
+    ],
+    "freq_table_shape": [
+      4,
+      5
+    ],
+    "freq_table_sum": 1.0
+  }
+}

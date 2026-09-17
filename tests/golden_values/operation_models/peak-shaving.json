@@ -1,0 +1,19 @@
+{
+  "turbine_powers": [
+    [
+      3402428.7120486717
+    ]
+  ],
+  "farm_power": [
+    3402428.7120486717
+  ],
+  "n_findex": 1,
+  "n_turbines": 1,
+  "velocities_shape": [
+    1,
+    1,
+    2,
+    2
+  ],
+  "operation_model": "peak-shaving"
+}
