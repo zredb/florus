@@ -242,11 +242,15 @@ mod tests {
         let gauss = GaussVelocity::new(0.58, 0.077, 0.38, 0.004);
         let result = gauss.prepare_function(&fake_grid(), &fake_flow_field());
         assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        assert!(result.unwrap().contains_key("wind_veer"));
     }
 
     fn fake_grid() -> impl crate::core::Grid {
         struct FakeGrid;
+        fn static_array() -> &'static Array4 {
+            static ARR: std::sync::OnceLock<Array4> = std::sync::OnceLock::new();
+            ARR.get_or_init(|| Array::zeros((1, 1, 1, 1)))
+        }
         impl crate::core::Grid for FakeGrid {
             fn n_turbines(&self) -> usize {
                 1
@@ -255,22 +259,22 @@ mod tests {
                 1
             }
             fn x_sorted(&self) -> &Array4 {
-                panic!()
+                static_array()
             }
             fn y_sorted(&self) -> &Array4 {
-                panic!()
+                static_array()
             }
             fn z_sorted(&self) -> &Array4 {
-                panic!()
+                static_array()
             }
             fn x_sorted_inertial_frame(&self) -> &Array4 {
-                panic!()
+                static_array()
             }
             fn y_sorted_inertial_frame(&self) -> &Array4 {
-                panic!()
+                static_array()
             }
             fn z_sorted_inertial_frame(&self) -> &Array4 {
-                panic!()
+                static_array()
             }
             fn cubature_weights(&self) -> Option<&Array2> {
                 None
