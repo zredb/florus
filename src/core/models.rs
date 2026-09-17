@@ -56,6 +56,9 @@ pub trait VelocityModel {
         turbine_index: usize,
         model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4>;
+
+    /// Clone into a boxed trait object
+    fn clone_box(&self) -> Box<dyn VelocityModel>;
 }
 
 /// Wake deflection model trait
@@ -78,6 +81,9 @@ pub trait DeflectionModel {
         rotor_diameter: Float,
         model_args: &HashMap<String, Array1>,
     ) -> anyhow::Result<Array2>;
+
+    /// Clone into a boxed trait object
+    fn clone_box(&self) -> Box<dyn DeflectionModel>;
 }
 
 /// Wake turbulence model trait
@@ -107,6 +113,9 @@ pub trait TurbulenceModel {
         rotor_diameter: Float,
         axial_induction: &Array4,
     ) -> anyhow::Result<Array4>;
+
+    /// Clone into a boxed trait object
+    fn clone_box(&self) -> Box<dyn TurbulenceModel>;
 }
 
 /// Wake combination model trait
@@ -120,6 +129,9 @@ pub trait CombinationModel {
 
     /// Main combination function
     fn function(&self, wake_field: &Array4, velocity_field: &Array4) -> anyhow::Result<Array4>;
+
+    /// Clone into a boxed trait object
+    fn clone_box(&self) -> Box<dyn CombinationModel>;
 }
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum InterpMethod {

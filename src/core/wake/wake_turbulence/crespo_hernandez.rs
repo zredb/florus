@@ -45,6 +45,10 @@ impl TurbulenceModel for CrespoHernandez {
         Ok(HashMap::new())
     }
 
+    fn clone_box(&self) -> Box<dyn TurbulenceModel> {
+        Box::new(self.clone())
+    }
+
     fn function(
         &self,
         ambient_turbulence_intensity: &Array4,

@@ -18,6 +18,10 @@ impl CombinationModel for MAX {
         Ok(HashMap::new())
     }
 
+    fn clone_box(&self) -> Box<dyn CombinationModel> {
+        Box::new(self.clone())
+    }
+
     fn function(&self, wake_field: &Array4, velocity_field: &Array4) -> anyhow::Result<Array4> {
         // Take maximum of wake_field and velocity_field element-wise
         let shape = wake_field.shape();

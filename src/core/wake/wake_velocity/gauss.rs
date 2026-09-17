@@ -53,6 +53,10 @@ impl VelocityModel for GaussVelocity {
         Ok(params)
     }
 
+    fn clone_box(&self) -> Box<dyn VelocityModel> {
+        Box::new(self.clone())
+    }
+
     fn function(
         &self,
         x: Array4,

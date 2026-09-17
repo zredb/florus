@@ -50,20 +50,10 @@ impl std::fmt::Debug for WakeModelManager {
 impl Clone for WakeModelManager {
     fn clone(&self) -> Self {
         Self {
-            velocity_model: Box::new(crate::core::wake_velocity::gauss::GaussVelocity::new(
-                0.58, 0.077, 0.38, 0.004,
-            )),
-            deflection_model: Box::new(
-                crate::core::wake_deflection::gauss::GaussVelocityDeflection::new(
-                    0.05, 0.0, 0.58, 0.077, 1.0,
-                ),
-            ),
-            turbulence_model: Box::new(
-                crate::core::wake_turbulence::crespo_hernandez::CrespoHernandez::new(
-                    0.1, 0.9, 0.8, -0.32,
-                ),
-            ),
-            combination_model: Box::new(crate::core::wake_combination::FLS),
+            velocity_model: self.velocity_model.clone_box(),
+            deflection_model: self.deflection_model.clone_box(),
+            turbulence_model: self.turbulence_model.clone_box(),
+            combination_model: self.combination_model.clone_box(),
             enable_secondary_steering: self.enable_secondary_steering,
             enable_yaw_added_recovery: self.enable_yaw_added_recovery,
             enable_active_wake_mixing: self.enable_active_wake_mixing,

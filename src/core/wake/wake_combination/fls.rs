@@ -20,6 +20,10 @@ impl CombinationModel for FLS {
         Ok(HashMap::new())
     }
 
+    fn clone_box(&self) -> Box<dyn CombinationModel> {
+        Box::new(self.clone())
+    }
+
     fn function(&self, wake_field: &Array4, velocity_field: &Array4) -> anyhow::Result<Array4> {
         // Linear superposition: wake + velocity
         // This is the standard approach for combining wake deficits

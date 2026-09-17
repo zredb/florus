@@ -79,6 +79,10 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
         Ok(HashMap::new())
     }
 
+    fn clone_box(&self) -> Box<dyn VelocityModel> {
+        Box::new(self.clone())
+    }
+
     fn function(
         &self,
         x: Array4,
@@ -102,16 +106,16 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
 
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
-        // Use the specified turbine's position as the wake source
-        let x_wake_source = x[[0, turbine_index, 0, 0]];
-        let y_wake_source = y[[0, turbine_index, 0, 0]];
-
-        // Turbine upstream of reference point (x < 0) doesn't generate a wake
-        if x_wake_source < 0.0 {
-            return Ok(velocity_deficit);
-        }
-
         for fi in 0..n_findex {
+            // Per-findex wake source position (rotated coordinates differ per findex)
+            let x_wake_source = x[[fi, turbine_index, 0, 0]];
+            let y_wake_source = y[[fi, turbine_index, 0, 0]];
+
+            // Turbine upstream of reference point (x < 0) doesn't generate a wake
+            if x_wake_source < 0.0 {
+                continue;
+            }
+
             // Get deflection at the wake source turbine
             let deflection_at_source = deflection_field[[fi, turbine_index]];
 
@@ -145,7 +149,7 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
 
                         if wake_width > 0.0 {
                             let exponent = -r.powi(2) / (2.0 * wake_width.powi(2));
-                            let profile = (-exponent).exp();
+                            let profile = exponent.exp();
 
                             let deficit_max = 2.0 * a_i / (1.0 + a_i);
                             velocity_deficit[[fi, ti, iy, iz]] = deficit_max * profile;
@@ -156,7 +160,7 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
                                 let r_mirror = (dy.powi(2) + dz_mirror.powi(2)).sqrt();
                                 let exponent_mirror =
                                     -r_mirror.powi(2) / (2.0 * wake_width.powi(2));
-                                let profile_mirror = (-exponent_mirror).exp();
+                                let profile_mirror = exponent_mirror.exp();
                                 velocity_deficit[[fi, ti, iy, iz]] +=
                                     deficit_max * 0.5 * profile_mirror;
                             }

@@ -37,6 +37,10 @@ impl VelocityModel for NoneVelocity {
         Ok(HashMap::new())
     }
 
+    fn clone_box(&self) -> Box<dyn VelocityModel> {
+        Box::new(self.clone())
+    }
+
     fn function(
         &self,
         _x: Array4,

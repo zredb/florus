@@ -36,6 +36,10 @@ impl DeflectionModel for NoneVelocityDeflection {
         Ok(HashMap::new())
     }
 
+    fn clone_box(&self) -> Box<dyn DeflectionModel> {
+        Box::new(self.clone())
+    }
+
     fn function(
         &self,
         x: Array2,

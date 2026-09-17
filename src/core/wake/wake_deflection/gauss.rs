@@ -67,6 +67,10 @@ impl DeflectionModel for GaussVelocityDeflection {
         Ok(params)
     }
 
+    fn clone_box(&self) -> Box<dyn DeflectionModel> {
+        Box::new(self.clone())
+    }
+
     fn function(
         &self,
         x: Array2,

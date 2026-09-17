@@ -39,6 +39,10 @@ impl VelocityModel for JensenVelocity {
         Ok(HashMap::new())
     }
 
+    fn clone_box(&self) -> Box<dyn VelocityModel> {
+        Box::new(self.clone())
+    }
+
     fn function(
         &self,
         x: Array4,
@@ -62,16 +66,16 @@ impl VelocityModel for JensenVelocity {
 
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
-        // Use the specified turbine's position as the wake source
-        let x_wake_source = x[[0, turbine_index, 0, 0]];
-        let y_wake_source = y[[0, turbine_index, 0, 0]];
-        
-        // Turbine upstream of reference point (x < 0) doesn't generate a wake
-        if x_wake_source < 0.0 {
-            return Ok(velocity_deficit);
-        }
-
         for fi in 0..n_findex {
+            // Per-findex wake source position (rotated coordinates differ per findex)
+            let x_wake_source = x[[fi, turbine_index, 0, 0]];
+            let y_wake_source = y[[fi, turbine_index, 0, 0]];
+
+            // Turbine upstream of reference point (x < 0) doesn't generate a wake
+            if x_wake_source < 0.0 {
+                continue;
+            }
+
             // Get deflection at the wake source turbine
             let deflection_at_source = deflection_field[[fi, turbine_index]];
             

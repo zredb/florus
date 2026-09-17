@@ -87,7 +87,8 @@ impl Default for CumulativeCurlVelocityDeficit {
     }
 }
 
-/// Calculate wake spread using cumulative-curl formulation
+/// Calculate wake expansion (port of Python cumulative_gauss_curl.wake_expansion).
+/// Returns sigma in rotor-diameter units.
 fn calculate_wake_spread(
     x: Float,
     ti: Float,
@@ -95,31 +96,14 @@ fn calculate_wake_spread(
     rotor_diameter: Float,
     params: &CumulativeCurlVelocityDeficit,
 ) -> Float {
-    let x_d = x / rotor_diameter;
+    let _ = rotor_diameter;
 
-    // Near-field to far-field transition point
-    let x_transition = 2.0;
+    let beta = 0.5 * (1.0 + (1.0 - ct).sqrt()) / (1.0 - ct).sqrt();
+    let k = params.a_s * ti + params.b_s;
+    let eps = (params.c_s1 * ct + params.c_s2) * beta.sqrt();
 
-    if x_d < x_transition {
-        // Near-field (expanding wake)
-        let sigma_star = (params.a_s * ti + params.b_s) / (ti + params.c_s1).sqrt();
-        let c_t_term = params.c_s2 * ct.sqrt();
-        sigma_star * (1.0 + c_t_term) * x_d
-    } else {
-        // Far-field (continued expansion with WEC)
-        let sigma_near = calculate_wake_spread(
-            x_transition * rotor_diameter,
-            ti,
-            ct,
-            rotor_diameter,
-            params,
-        );
-
-        // Wake expansion continuation
-        let sigma_far = params.wec_factor * (params.a_f * x_d.powf(params.b_f) + params.c_f);
-
-        sigma_near + sigma_far * (x_d - x_transition)
-    }
+    let x_tilde = x.abs() / rotor_diameter;
+    k * x_tilde + eps
 }
 
 /// Calculate Gaussian wake deficit
@@ -130,7 +114,7 @@ fn gaussian_deficit(r: Float, sigma: Float, ct: Float) -> Float {
 
     // Gaussian profile
     let exponent = -r.powi(2) / (2.0 * sigma.powi(2));
-    let profile = (-exponent).exp();
+    let profile = exponent.exp();
 
     // Maximum deficit based on actuator disk theory
     let deficit_max = 0.5 * (1.0 - (1.0 - ct).sqrt());
@@ -145,6 +129,10 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
         _flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array4>> {
         Ok(HashMap::new())
+    }
+
+    fn clone_box(&self) -> Box<dyn VelocityModel> {
+        Box::new(self.clone())
     }
 
     fn function(
@@ -170,16 +158,16 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
 
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
-        // Use the specified turbine's position as the wake source
-        let x_wake_source = x[[0, turbine_index, 0, 0]];
-        let y_wake_source = y[[0, turbine_index, 0, 0]];
-
-        // Turbine upstream of reference point (x < 0) doesn't generate a wake
-        if x_wake_source < 0.0 {
-            return Ok(velocity_deficit);
-        }
-
         for fi in 0..n_findex {
+            // Per-findex wake source position (rotated coordinates differ per findex)
+            let x_wake_source = x[[fi, turbine_index, 0, 0]];
+            let y_wake_source = y[[fi, turbine_index, 0, 0]];
+
+            // Turbine upstream of reference point (x < 0) doesn't generate a wake
+            if x_wake_source < 0.0 {
+                continue;
+            }
+
             // Get deflection at the wake source turbine
             let deflection_at_source = deflection_field[[fi, turbine_index]];
 
@@ -209,7 +197,7 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
                         // Radial distance from wake center
                         let r = (dy.powi(2) + dz.powi(2)).sqrt();
 
-                        // Wake spread using cumulative-curl formulation
+                        // Wake expansion in D-units, converted to meters
                         let downstream_x = x_point - x_wake_source;
                         let sigma = calculate_wake_spread(
                             downstream_x,
@@ -217,7 +205,7 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
                             ct_i,
                             rotor_diameter,
                             self,
-                        );
+                        ) * rotor_diameter;
 
                         // Apply curl correction for yawed turbines
                         let curl_correction = self.calculate_curl_correction(

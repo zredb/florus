@@ -48,7 +48,7 @@ impl WakeInducedMixing {
         HashMap::new()
     }
 
-    pub fn function(
+    fn function(
         &self,
         axial_induction_i: &Array4,
         downstream_distance_d_i: &Array4,
