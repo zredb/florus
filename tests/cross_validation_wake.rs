@@ -198,9 +198,13 @@ fn assert_powers_close(test: &[Vec<f64>], golden: &[Vec<f64>], name: &str) {
 /// after fixing the manager-clone bug that previously made every test validate
 /// the hardcoded gauss fallback:
 /// - gauss: ~33% (TI evolution / WAT interplay differs)
-/// - turbopark: ~47% (overlap / peak-deficit details differ)
+/// - turbopark: ~47% (Python uses a specialized target-centric turbopark_solver
+///   with a per-turbine minimum epsilon; Rust reinterprets it source-centric)
 /// - cc: ~63% (Rust lacks the cumulative curl accumulation over upstream
 ///   turbines that Python's model performs)
+/// - empirical_gauss: not tested (Python uses a specialized empirical_gauss_solver
+///   where wake_induced_mixing feeds velocity/deflection models, not the WAT path;
+///   Rust's simplified 3-param model cannot match without porting that solver)
 fn assert_powers_close_tol(
     test: &[Vec<f64>],
     golden: &[Vec<f64>],
@@ -309,7 +313,9 @@ fn test_gauss_regression() {
             ka: 0.38,
             kb: 0.004,
         },
-        CombinationModelConfig::FLS,
+        // The golden file's config is sosfs: two generator entries map to the
+        // same test name and the later sosfs entry overwrote the fls one
+        CombinationModelConfig::SOSFS,
         TurbulenceModelConfig::CrespoHernandez {
             initial: 0.1,
             constant: 0.5,
@@ -344,7 +350,8 @@ fn test_gauss_yawed() {
             ka: 0.38,
             kb: 0.004,
         },
-        CombinationModelConfig::FLS,
+        // Golden config is sosfs (same generator overwrite quirk as the regression test)
+        CombinationModelConfig::SOSFS,
         TurbulenceModelConfig::CrespoHernandez {
             initial: 0.1,
             constant: 0.5,
