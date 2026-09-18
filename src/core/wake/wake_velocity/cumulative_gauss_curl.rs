@@ -12,7 +12,7 @@
 
 use crate::core::wake::{BaseModel, VelocityModel};
 use crate::core::{FlowField, Grid};
-use crate::types::{Array2, Array4, Float};
+use crate::types::{Array1, Array2, Array4, ArrayD, Float};
 use ndarray::Array;
 use std::collections::HashMap;
 
@@ -122,7 +122,204 @@ fn gaussian_deficit(r: Float, sigma: Float, ct: Float) -> Float {
     deficit_max * profile
 }
 
+/// Cumulative curl deficit (port of Python cumulative_gauss_curl.function).
+///
+/// Blondel super-Gaussian deficit with cumulative effects: the wake evolution
+/// from previous turbines (m < source_index - 1) accumulates into sum_lbda over
+/// the full grid and corrects the peak deficit. The deficit is accumulated into
+/// turb_u_wake (velocity units) scaled by the source turbine's rotor-averaged
+/// inflow velocity. Returns the updated (turb_u_wake, Ctmp).
+#[allow(clippy::too_many_arguments)]
+pub fn cc_velocity_deficit(
+    params: &CumulativeCurlVelocityDeficit,
+    source_index: usize,
+    grid_x: &Array4,
+    grid_y: &Array4,
+    grid_z: &Array4,
+    u_i: &Array4,
+    u_initial: &Array4,
+    deflection_field: &Array4,
+    yaw_angle: &Array1,
+    turbulence_intensity: &Array2,
+    turb_cts: &Array2,
+    rotor_diameters: &Array1,
+    mut turb_u_wake: Array4,
+    mut ctmp: ArrayD,
+) -> (Array4, ArrayD) {
+    let shape = grid_x.shape();
+    let n_findex = shape[0];
+    let n_turbines = shape[1];
+    let n_y = shape[2];
+    let n_z = shape[3];
+    let ii = source_index;
+
+    let wake_expansion = |delta_x_m: Float, ct_m: Float, ti_m: Float, d_m: Float| -> Float {
+        let sqrt_omc = (1.0 - ct_m).max(1e-10).sqrt();
+        let beta = 0.5 * (1.0 + sqrt_omc) / sqrt_omc;
+        let k = params.a_s * ti_m + params.b_s;
+        let eps = (params.c_s1 * ct_m + params.c_s2) * beta.sqrt();
+        k * (delta_x_m.abs() / d_m) + eps
+    };
+
+    // Per-(findex, turbine) mean coordinates
+    let mut x_mean = Array2::zeros((n_findex, n_turbines));
+    let mut y_mean = Array2::zeros((n_findex, n_turbines));
+    let mut z_mean = Array2::zeros((n_findex, n_turbines));
+    for fi in 0..n_findex {
+        for m in 0..n_turbines {
+            let mut ys = 0.0;
+            let mut zs = 0.0;
+            for iy in 0..n_y {
+                for iz in 0..n_z {
+                    ys += grid_y[[fi, m, iy, iz]];
+                    zs += grid_z[[fi, m, iy, iz]];
+                }
+            }
+            let n_pts = (n_y * n_z) as f64;
+            x_mean[[fi, m]] = grid_x[[fi, m, 0, 0]];
+            y_mean[[fi, m]] = ys / n_pts;
+            z_mean[[fi, m]] = zs / n_pts;
+        }
+    }
+
+    // The source turbine's rotor-averaged inflow velocity (cbrt mean)
+    let mut src_avg_vel = Array1::zeros(n_findex);
+    for fi in 0..n_findex {
+        let mut v_cubed = 0.0;
+        for iy in 0..n_y {
+            for iz in 0..n_z {
+                v_cubed += u_i[[fi, 0, iy, iz]].powi(3);
+            }
+        }
+        src_avg_vel[fi] = (v_cubed / (n_y * n_z) as f64).powf(1.0 / 3.0);
+    }
+
+    for fi in 0..n_findex {
+        let ct_i = turb_cts[[fi, ii]];
+        let ti_i = turbulence_intensity[[fi, ii]];
+        let yaw_i = yaw_angle[fi];
+        let d_i = rotor_diameters[ii];
+        let x_i_loc = x_mean[[fi, ii]];
+        let y_i_loc = y_mean[[fi, ii]];
+        let z_i_loc = z_mean[[fi, ii]];
+
+        // Cumulative loop: previous turbines m < ii - 1, over the full grid
+        let mut sum_lbda = Array4::zeros((n_findex, n_turbines, n_y, n_z));
+        for m in 0..ii.saturating_sub(1) {
+            let ct_m = turb_cts[[fi, m]];
+            let ti_m = turbulence_intensity[[fi, m]];
+            let d_m = rotor_diameters[m];
+            let y_m_loc = y_mean[[fi, m]];
+            let z_m_loc = z_mean[[fi, m]];
+
+            for t in 0..n_turbines {
+                for iy in 0..n_y {
+                    for iz in 0..n_z {
+                        let x_t = grid_x[[fi, t, iy, iz]];
+                        let sigma_n = wake_expansion(x_t - x_i_loc, ct_i, ti_i, d_i);
+                        let sigma_i = wake_expansion(x_t - x_mean[[fi, m]], ct_m, ti_m, d_m);
+
+                        let s_i = sigma_n * sigma_n + sigma_i * sigma_i;
+                        let defl = deflection_field[[fi, t, 0, 0]];
+                        let y_diff = y_i_loc - y_m_loc - defl;
+                        let z_diff = z_i_loc - z_m_loc;
+                        let lbda = params.wec_factor * sigma_i * sigma_i / s_i
+                            * (-(y_diff * y_diff) / (2.0 * s_i)).exp()
+                            * (-(z_diff * z_diff) / (2.0 * s_i)).exp();
+
+                        let ctmp_m = ctmp[[m, fi, t, iy, iz]];
+                        let u_init = u_initial[[fi, t, iy, iz]].max(1e-10);
+                        sum_lbda[[fi, t, iy, iz]] += lbda * (ctmp_m / u_init);
+                    }
+                }
+            }
+        }
+
+        // Blondel super-Gaussian deficit with cumulative correction, full grid
+        for t in 0..n_turbines {
+            for iy in 0..n_y {
+                for iz in 0..n_z {
+                    let x_pt = grid_x[[fi, t, iy, iz]];
+                    let y_pt = grid_y[[fi, t, iy, iz]];
+                    let z_pt = grid_z[[fi, t, iy, iz]];
+
+                    let delta_x = x_pt - x_i_loc;
+                    let x_tilde = delta_x.abs() / d_i;
+                    let defl = deflection_field[[fi, t, 0, 0]];
+                    let r_tilde = ((y_pt - y_i_loc - defl).powi(2)
+                        + (z_pt - z_i_loc).powi(2))
+                    .sqrt()
+                        / d_i;
+
+                    let sigma_n = wake_expansion(delta_x, ct_i, ti_i, d_i);
+
+                    let n_exp = params.a_f * (params.b_f * x_tilde).exp() + params.c_f;
+                    let a1 = 2.0_f64.powf(2.0 / n_exp - 1.0);
+                    let a2 = 2.0_f64.powf(4.0 / n_exp - 2.0);
+
+                    let slb = sum_lbda[[fi, t, iy, iz]];
+                    let gamma_val = gamma_fn(2.0 / n_exp);
+                    let mut tmp = a2
+                        - ((n_exp * ct_i) * yaw_i.to_radians().cos()
+                            / (16.0
+                                * gamma_val
+                                * sigma_n.signum()
+                                * sigma_n.abs().powf(4.0 / n_exp)
+                                * (1.0 - slb).powi(2)));
+                    if tmp < 0.0 {
+                        tmp = 0.0;
+                    }
+
+                    let c_val = (a1 - tmp.sqrt()) * (1.0 - slb);
+                    ctmp[[ii, fi, t, iy, iz]] = c_val;
+
+                    // Yawed rotor-plane mask
+                    let y_r = y_pt - y_i_loc;
+                    let x_r = y_r * yaw_i.to_radians().tan() + x_i_loc;
+
+                    let vel_def = c_val
+                        * (-r_tilde.powf(n_exp) / (2.0 * sigma_n * sigma_n)).exp()
+                        * if x_pt - x_r >= 0.1 { 1.0 } else { 0.0 };
+
+                    turb_u_wake[[fi, t, iy, iz]] += src_avg_vel[fi] * vel_def;
+                }
+            }
+        }
+    }
+
+    (turb_u_wake, ctmp)
+}
+
+/// Gamma function via the Lanczos approximation (g=7, 9 coefficients)
+fn gamma_fn(x: Float) -> Float {
+    const G: Float = 7.0;
+    const COEF: [Float; 9] = [
+        0.99999999999980993,
+        676.5203681218851,
+        -1259.1392167224028,
+        771.32342877765313,
+        -176.61502916214059,
+        12.507343278686905,
+        -0.13857109526572012,
+        9.9843695780195716e-6,
+        1.5056327351493116e-7,
+    ];
+    if x < 0.5 {
+        std::f64::consts::PI as Float
+            / ((std::f64::consts::PI as Float * x).sin() * gamma_fn(1.0 - x))
+    } else {
+        let z = x - 1.0;
+        let t = z + G + 0.5;
+        let mut a = COEF[0];
+        for (i, &c) in COEF.iter().enumerate().skip(1) {
+            a += c / (z + i as Float);
+        }
+        (2.0 * std::f64::consts::PI as Float).sqrt() * t.powf(z + 0.5) * (-t).exp() * a
+    }
+}
+
 impl VelocityModel for CumulativeCurlVelocityDeficit {
+
     fn prepare_function(
         &self,
         _grid: &dyn Grid,

@@ -337,11 +337,9 @@ impl Core {
             // Use TurbineGrid for most solvers
             match vel_model.as_str() {
                 "cc" => {
-                    // For CC solver, we need TurbineCubatureGrid
-                    // This is a limitation - CC requires cubature grid
-                    anyhow::bail!(
-                        "CC solver requires TurbineCubatureGrid, but TurbineGrid was provided"
-                    );
+                    // Per Python, the cc model runs through cc_solver with the
+                    // turbine grid (the cumulative state architecture)
+                    cc_solver(&self.farm, &mut self.flow_field, turbine_grid, &self.wake)?;
                 }
                 "turbopark" => {
                     log::warn!(

@@ -153,6 +153,28 @@ fn powers_from_u_sorted(
     powers
 }
 
+/// Compute turbine powers via the cc_solver (cumulative curl port)
+fn compute_powers_cc(config: &FlorisConfig, yaw_angles: Option<&Array2>) -> Vec<Vec<f64>> {
+    let mut model = FlorisModel::from_config(config.clone()).expect("Failed to create FlorisModel");
+
+    if let Some(yaw) = yaw_angles {
+        model.set_yaw_angles(yaw.clone()).expect("Failed to set yaw angles");
+    }
+
+    model.initialize_grid().expect("init grid failed");
+    model.initialize_flow_field().expect("init flow field failed");
+
+    let farm = model.core().farm.clone();
+    let mut flow_field = model.core().flow_field.clone();
+    let wake = model.core().wake.clone();
+    let grid = model.core().grid.as_ref().unwrap();
+
+    florus::core::solver::cc_solver(&farm, &mut flow_field, grid.as_ref(), &wake)
+        .expect("cc solver failed");
+
+    powers_from_u_sorted(&farm, &flow_field)
+}
+
 /// Compute turbine powers using the manual solver path (matching regression test approach)
 /// This bypasses the broken model.run() → get_turbine_powers() path
 fn compute_powers_manual(
@@ -556,7 +578,7 @@ fn test_cc_regression() {
         true,
     );
 
-    let powers = compute_powers_manual(&config, None);
+    let powers = compute_powers_cc(&config, None);
     let golden = common::load_wake_golden("cc_regression");
     assert_powers_close_tol(&powers, &golden.turbine_powers, "cc_regression", 0.65, 400000.0);
 }
