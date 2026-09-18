@@ -5,7 +5,7 @@
 
 use crate::core::wake::{BaseModel, VelocityModel};
 use crate::core::{FlowField, Grid};
-use crate::types::{Array2, Array4, Float};
+use crate::types::{Array1, Array2, Array4, Float};
 use ndarray::Array;
 use std::collections::HashMap;
 
@@ -159,7 +159,12 @@ fn calculate_overlap_integral(dist: Float, radius_down: Float) -> Float {
 
     for k in 0..n_points {
         let r = k as Float * dr;
-        let decay = (-(r.powi(2) + dist.powi(2) - 2.0 * dist * r).max(0.0) / 2.0).exp();
+        // 2D polar integral: the theta integral of exp(dist*r*cos(theta))
+        // evaluates to 2*pi*I_0(dist*r) (modified Bessel function)
+        let decay = (-((r.powi(2) + dist.powi(2)) / 2.0)).exp()
+            * 2.0
+            * std::f64::consts::PI as Float
+            * bessel_i0(dist * r);
         let integrand = r * decay;
         let weight = if k == 0 || k == n_points - 1 {
             1.0
@@ -174,6 +179,19 @@ fn calculate_overlap_integral(dist: Float, radius_down: Float) -> Float {
     integral *= dr / 3.0;
     let area = std::f64::consts::PI as Float * radius_down.powi(2);
     (integral / area).max(0.0).min(1.0)
+}
+
+#[inline]
+fn bessel_i0(x: Float) -> Float {
+    let mut sum: Float = 1.0;
+    let mut term: Float = 1.0;
+    let mut k = 1;
+    while term.abs() > 1e-12 * sum.abs() && k < 50 {
+        term *= (x * x / 4.0) / (k as f64 * k as f64);
+        sum += term;
+        k += 1;
+    }
+    sum
 }
 
 #[inline]
@@ -217,6 +235,107 @@ fn calculate_peak_deficit(ct: Float, sigma_over_d: Float) -> Float {
     1.0 - val.sqrt()
 }
 
+/// Target-centric deficit (port of Python turbopark_solver's model call).
+///
+/// Computes the deficit experienced by turbine `target_index` from all
+/// upstream turbines (including mirrored/image wakes), each evaluated at the
+/// source's grid points, combined via sqrt-sum-of-squares.
+#[allow(clippy::too_many_arguments)]
+pub fn turbopark_velocity_deficit(
+    ambient_turbulence_intensities: &Array1,
+    thrust_coefficients: &Array2,
+    rotor_diameters: &Array1,
+    grid_x: &Array4,
+    grid_y: &Array4,
+    grid_z: &Array4,
+    deflection_field: &Array4,
+    target_index: usize,
+    a: Float,
+    sigma_max_rel: Float,
+) -> Array4 {
+    let shape = grid_x.shape();
+    let n_findex = shape[0];
+    let n_turbines = shape[1];
+    let n_y = shape[2];
+    let n_z = shape[3];
+
+    let mut sum_sq = Array4::zeros((n_findex, n_turbines, n_y, n_z));
+    let interp = OverlapInterpolator::new();
+
+    const NUM_EPS: Float = 1e-6;
+
+    for fi in 0..n_findex {
+        let ambient_ti = ambient_turbulence_intensities[fi];
+
+        // Target turbine's mean positions (x is constant per turbine)
+        let x_i = grid_x[[fi, target_index, 0, 0]];
+        let mut y_i = 0.0;
+        let mut z_i = 0.0;
+        for iy in 0..n_y {
+            for iz in 0..n_z {
+                y_i += grid_y[[fi, target_index, iy, iz]];
+                z_i += grid_z[[fi, target_index, iy, iz]];
+            }
+        }
+        let n_pts = (n_y * n_z) as f64;
+        y_i /= n_pts;
+        z_i /= n_pts;
+
+        let d_i = rotor_diameters[target_index];
+
+        for m in 0..n_turbines {
+            let d_m = rotor_diameters[m];
+            let ct_m = thrust_coefficients[[fi, m]];
+
+            for iy in 0..n_y {
+                for iz in 0..n_z {
+                    let x_m = grid_x[[fi, m, iy, iz]];
+                    let y_m = grid_y[[fi, m, iy, iz]];
+                    let z_m = grid_z[[fi, m, iy, iz]];
+
+                    // Normalized distance from the target to the source's grid
+                    // point; positive only for sources upstream of the target
+                    let x_dist = (x_i - x_m) / d_m;
+                    if x_dist <= NUM_EPS {
+                        continue;
+                    }
+
+                    let dw = characteristic_wake_width(x_dist, ambient_ti, ct_m, a);
+                    let eps = calculate_epsilon(ct_m);
+                    let sigma = d_m * (eps + dw);
+
+                    let defl = deflection_field[[fi, m, iy, iz]];
+                    let dy = y_i - (y_m + defl);
+                    let dz = z_i - z_m;
+                    let r_dist = (dy * dy + dz * dz).sqrt();
+
+                    let c_m = calculate_peak_deficit(ct_m, sigma / d_m);
+
+                    let is_overlapping = sigma_max_rel * sigma / 2.0 + d_i / 2.0 > r_dist;
+                    if !is_overlapping {
+                        continue;
+                    }
+
+                    let overlap_real = interp.interpolate(r_dist / sigma, d_i / 2.0 / sigma);
+                    let dz_image = z_i + z_m;
+                    let r_dist_image = (dy * dy + dz_image * dz_image).sqrt();
+                    let overlap_image =
+                        interp.interpolate(r_dist_image / sigma, d_i / 2.0 / sigma);
+
+                    let d_real = c_m * overlap_real;
+                    let d_image = c_m * overlap_image;
+
+                    let cur = sum_sq[[fi, target_index, iy, iz]];
+                    sum_sq[[fi, target_index, iy, iz]] =
+                        cur + d_real * d_real + d_image * d_image;
+                }
+            }
+        }
+    }
+
+    sum_sq.mapv(|v| v.sqrt())
+}
+
 impl VelocityModel for TurbOParkVelocityDeficit {
     fn prepare_function(
         &self,
@@ -228,6 +347,10 @@ impl VelocityModel for TurbOParkVelocityDeficit {
 
     fn clone_box(&self) -> Box<dyn VelocityModel> {
         Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 
     fn function(

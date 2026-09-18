@@ -41,6 +41,10 @@ impl VelocityModel for NoneVelocity {
         Box::new(self.clone())
     }
 
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn function(
         &self,
         _x: Array4,

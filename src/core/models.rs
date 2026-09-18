@@ -59,6 +59,9 @@ pub trait VelocityModel {
 
     /// Clone into a boxed trait object
     fn clone_box(&self) -> Box<dyn VelocityModel>;
+
+    /// Downcast support for specialized solver access to the concrete model
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 /// Wake deflection model trait

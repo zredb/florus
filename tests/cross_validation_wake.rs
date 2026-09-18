@@ -80,6 +80,79 @@ fn create_floris_config(
     }
 }
 
+/// Compute turbine powers from u_sorted after a solve (rotor cubic mean +
+/// density/yaw/tilt corrections + Cp table lookup)
+fn powers_from_u_sorted(
+    farm: &florus::core::Farm,
+    flow_field: &florus::core::FlowField,
+) -> Vec<Vec<f64>> {
+    let n_findex = flow_field.u_sorted.shape()[0];
+    let n_turbines = farm.turbines.len();
+    let mut powers: Vec<Vec<f64>> = Vec::new();
+
+    for fi in 0..n_findex {
+        let mut row: Vec<f64> = Vec::new();
+        for ti in 0..n_turbines {
+            let mut v_cubed_sum = 0.0;
+            let grid_points = flow_field.u_sorted.shape()[2] * flow_field.u_sorted.shape()[3];
+            for iy in 0..flow_field.u_sorted.shape()[2] {
+                for iz in 0..flow_field.u_sorted.shape()[3] {
+                    v_cubed_sum += flow_field.u_sorted[[fi, ti, iy, iz]].powi(3);
+                }
+            }
+            let rotor_avg_velocity = (v_cubed_sum / grid_points as f64).powf(1.0 / 3.0);
+
+            let turbine = &farm.turbines[ti];
+            let ref_air_density = turbine
+                .turbine_type
+                .power_thrust_table
+                .ref_air_density
+                .unwrap_or(1.225);
+            let density_factor = (flow_field.air_density / ref_air_density).powf(1.0 / 3.0);
+            let mut rotor_effective_velocity = rotor_avg_velocity * density_factor;
+
+            let cosine_loss_exponent_yaw = turbine
+                .turbine_type
+                .power_thrust_table
+                .cosine_loss_exponent_yaw
+                .unwrap_or(1.88);
+            let yaw = farm.yaw_angles[[fi, ti]];
+            let yaw_correction = cosd(yaw).powf(cosine_loss_exponent_yaw / 3.0);
+            rotor_effective_velocity *= yaw_correction;
+
+            let cosine_loss_exponent_tilt = turbine
+                .turbine_type
+                .power_thrust_table
+                .cosine_loss_exponent_tilt
+                .unwrap_or(1.88);
+            let ref_tilt = turbine
+                .turbine_type
+                .power_thrust_table
+                .ref_tilt
+                .unwrap_or(5.0);
+            let tilt = farm.tilt_angles[[fi, ti]];
+            let tilt_correction =
+                (cosd(tilt) / cosd(ref_tilt)).powf(cosine_loss_exponent_tilt / 3.0);
+            rotor_effective_velocity *= tilt_correction;
+
+            let mut conditions = TableConditions::default();
+            conditions.wind_speed = rotor_effective_velocity;
+            let power_kw = turbine
+                .turbine_type
+                .power_thrust_table
+                .cp_ct_table
+                .get_cp(&conditions)
+                .unwrap_or(0.0);
+            let power_val = power_kw * 1000.0;
+
+            row.push(power_val);
+        }
+        powers.push(row);
+    }
+
+    powers
+}
+
 /// Compute turbine powers using the manual solver path (matching regression test approach)
 /// This bypasses the broken model.run() → get_turbine_powers() path
 fn compute_powers_manual(
@@ -109,60 +182,32 @@ fn compute_powers_manual(
     sequential_solver(&farm, &mut flow_field, turbine_grid, &wake)
         .expect("solver failed");
 
-    // Compute power from u_sorted (matching regression test approach)
-    let n_findex = flow_field.u_sorted.shape()[0];
-    let n_turbines = farm.turbines.len();
-    let mut powers: Vec<Vec<f64>> = Vec::new();
+    powers_from_u_sorted(&farm, &flow_field)
+}
 
-    for fi in 0..n_findex {
-        let mut row: Vec<f64> = Vec::new();
-        for ti in 0..n_turbines {
-            // Compute rotor average velocity (cubic mean)
-            let mut v_cubed_sum = 0.0;
-            let grid_points = flow_field.u_sorted.shape()[2] * flow_field.u_sorted.shape()[3];
-            for iy in 0..flow_field.u_sorted.shape()[2] {
-                for iz in 0..flow_field.u_sorted.shape()[3] {
-                    v_cubed_sum += flow_field.u_sorted[[fi, ti, iy, iz]].powi(3);
-                }
-            }
-            let rotor_avg_velocity = (v_cubed_sum / grid_points as f64).powf(1.0 / 3.0);
+/// Compute turbine powers via the turbopark_solver (target-centric port)
+fn compute_powers_turbopark(
+    config: &FlorisConfig,
+    yaw_angles: Option<&Array2>,
+) -> Vec<Vec<f64>> {
+    let mut model = FlorisModel::from_config(config.clone()).expect("Failed to create FlorisModel");
 
-            // Apply density correction
-            let turbine = &farm.turbines[ti];
-            let ref_air_density = turbine.turbine_type.power_thrust_table.ref_air_density.unwrap_or(1.225);
-            let density_factor = (flow_field.air_density / ref_air_density).powf(1.0 / 3.0);
-            let mut rotor_effective_velocity = rotor_avg_velocity * density_factor;
-
-            // Apply yaw correction
-            let cosine_loss_exponent_yaw = turbine.turbine_type.power_thrust_table.cosine_loss_exponent_yaw.unwrap_or(1.88);
-            let yaw = farm.yaw_angles[[fi, ti]];
-            let yaw_correction = cosd(yaw).powf(cosine_loss_exponent_yaw / 3.0);
-            rotor_effective_velocity *= yaw_correction;
-
-            // Apply tilt correction
-            let cosine_loss_exponent_tilt = turbine.turbine_type.power_thrust_table.cosine_loss_exponent_tilt.unwrap_or(1.88);
-            let ref_tilt = turbine.turbine_type.power_thrust_table.ref_tilt.unwrap_or(5.0);
-            let tilt = farm.tilt_angles[[fi, ti]];
-            let tilt_correction = (cosd(tilt) / cosd(ref_tilt)).powf(cosine_loss_exponent_tilt / 3.0);
-            rotor_effective_velocity *= tilt_correction;
-
-            // Get power from Cp/Ct table
-            let mut conditions = TableConditions::default();
-            conditions.wind_speed = rotor_effective_velocity;
-            let power_kw = turbine
-                .turbine_type
-                .power_thrust_table
-                .cp_ct_table
-                .get_cp(&conditions)
-                .unwrap_or(0.0);
-            let power_val = power_kw * 1000.0; // Convert kW to W
-
-            row.push(power_val);
-        }
-        powers.push(row);
+    if let Some(yaw) = yaw_angles {
+        model.set_yaw_angles(yaw.clone()).expect("Failed to set yaw angles");
     }
 
-    powers
+    model.initialize_grid().expect("init grid failed");
+    model.initialize_flow_field().expect("init flow field failed");
+
+    let farm = model.core().farm.clone();
+    let mut flow_field = model.core().flow_field.clone();
+    let wake = model.core().wake.clone();
+    let grid = model.core().grid.as_ref().unwrap();
+
+    florus::core::solver::turbopark_solver(&farm, &mut flow_field, grid.as_ref(), &wake)
+        .expect("turbopark solver failed");
+
+    powers_from_u_sorted(&farm, &flow_field)
 }
 
 fn cosd(degrees: f64) -> f64 {
@@ -399,7 +444,7 @@ fn test_turbopark_regression() {
         false, // transverse velocities disabled
     );
 
-    let powers = compute_powers_manual(&config, None);
+    let powers = compute_powers_turbopark(&config, None);
     let golden = common::load_wake_golden("turbopark_regression");
     assert_powers_close_tol(&powers, &golden.turbine_powers, "turbopark_regression", 0.50, 150000.0);
 }
@@ -431,7 +476,7 @@ fn test_turbopark_yawed() {
         if ti == 0 { 5.0 } else { 0.0 }
     });
 
-    let powers = compute_powers_manual(&config, Some(&yaw));
+    let powers = compute_powers_turbopark(&config, Some(&yaw));
     let golden = common::load_wake_golden("turbopark_yawed");
     assert_powers_close_tol(&powers, &golden.turbine_powers, "turbopark_yawed", 0.50, 150000.0);
 }

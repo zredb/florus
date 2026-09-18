@@ -4,7 +4,10 @@ use crate::core::flow_field::FlowField;
 use crate::core::grid::{
     FlowFieldGrid, FlowFieldPlanarGrid, Grid, PointsGrid, TurbineCubatureGrid, TurbineGrid,
 };
-use crate::core::solver::{cc_solver, empirical_gauss_solver, full_flow_sequential_solver, sequential_solver};
+use crate::core::solver::{
+    cc_solver, empirical_gauss_solver, full_flow_sequential_solver, sequential_solver,
+    turbopark_solver,
+};
 use crate::core::state::State;
 use crate::core::wake::WakeModelManager;
 use crate::floris_config::{FlorisConfig, LoggingConfig, SolverConfig, SolverType};
@@ -345,8 +348,7 @@ impl Core {
                         "The turbopark model has been superseded by the turboparkgauss model. \
                          We recommend using `velocity_model: turboparkgauss` instead."
                     );
-                    // turbopark_solver also needs specific grid type
-                    anyhow::bail!("turbopark solver not yet implemented for TurbineGrid");
+                    turbopark_solver(&self.farm, &mut self.flow_field, turbine_grid, &self.wake)?;
                 }
                 "empirical_gauss" => {
                     empirical_gauss_solver(

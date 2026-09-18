@@ -425,6 +425,248 @@ pub fn sequential_solver(
     Ok(())
 }
 
+/// TurbOPark solver (port of Python turbopark_solver).
+///
+/// The turbopark model is target-centric: for each wake source turbine i
+/// (upstream to downstream), the model computes the deficit experienced by
+/// turbine i from all upstream turbines (including mirrored wakes), and the
+/// solver accumulates it via the combination model.
+pub fn turbopark_solver(
+    farm: &Farm,
+    flow_field: &mut FlowField,
+    grid: &dyn Grid,
+    model_manager: &WakeModelManager,
+) -> Result<()> {
+    if model_manager.enable_secondary_steering {
+        anyhow::bail!("Secondary steering not available for this model.");
+    }
+    if model_manager.enable_transverse_velocities {
+        anyhow::bail!("Transverse velocities not used in this model.");
+    }
+    if model_manager.enable_yaw_added_recovery {
+        anyhow::bail!("Yaw added recovery not used in this model.");
+    }
+
+    let tp = model_manager
+        .velocity_model
+        .as_any()
+        .downcast_ref::<crate::core::wake_velocity::TurbOParkVelocityDeficit>()
+        .ok_or_else(|| anyhow::anyhow!("turbopark_solver requires TurbOParkVelocityDeficit"))?;
+
+    let n_turbines = grid.n_turbines();
+    let n_findex = grid.n_findex();
+    let shape = grid.x_sorted().shape();
+    let grid_second_dim = shape[1];
+    let grid_y_dim = shape[2];
+    let grid_z_dim = shape[3];
+
+    let mut wake_field: Array4 = Array::zeros((n_findex, grid_second_dim, grid_y_dim, grid_z_dim));
+
+    // Per-turbine TI (n_findex, n_turbines), starting at ambient
+    let mut turbine_turbulence_intensity: Array2 = Array::zeros((n_findex, n_turbines));
+    for fi in 0..n_findex {
+        for ti in 0..n_turbines {
+            turbine_turbulence_intensity[[fi, ti]] = flow_field.turbulence_intensities[fi];
+        }
+    }
+
+    for i in 0..n_turbines {
+        // All turbines' thrust coefficients from the current u_sorted (matching
+        // Python: recomputed each iteration as the wakes evolve)
+        let cts_all = Farm::thrust_coefficient(
+            &flow_field.u_sorted,
+            flow_field.air_density,
+            &farm.turbines,
+            Some(&farm.yaw_angles_sorted),
+            Some(&farm.tilt_angles_sorted),
+            grid.average_method(),
+        )?;
+
+        // Deflection field at turbine i due to each upstream source:
+        // (n_findex, n_turbines, gy, gz), zeros for the unyawed case
+        let mut deflection_field =
+            Array4::zeros((n_findex, grid_second_dim, grid_y_dim, grid_z_dim));
+
+        if farm.yaw_angles_sorted.iter().any(|&v| v != 0.0) {
+            log::warn!(
+                "WARNING: Deflection with the TurbOPark model has not been fully validated."
+            );
+            for ii in 0..i {
+                let x_ii = grid
+                    .x_sorted()
+                    .slice(s![.., ii..ii + 1, .., ..])
+                    .to_owned();
+                let y_ii = grid
+                    .y_sorted()
+                    .slice(s![.., ii..ii + 1, .., ..])
+                    .to_owned();
+                let x_2d = mean_value_4d_slice(&x_ii)?;
+                let y_2d = mean_value_4d_slice(&y_ii)?;
+
+                let yaw_ii = farm.yaw_angles_sorted[[0, ii]];
+                let ti_ii = turbine_turbulence_intensity[[0, ii]];
+                let ct_ii = cts_all[[0, ii]];
+                let d_ii = farm.rotor_diameters_sorted[[0, ii]];
+
+                let defl_ii = model_manager.deflection_model.function(
+                    x_2d,
+                    y_2d,
+                    yaw_ii,
+                    ti_ii,
+                    ct_ii,
+                    d_ii,
+                    &std::collections::HashMap::new(),
+                )?;
+
+                // Deflection at TARGET i from source ii, stored across row ii
+                let target_col = i.min(defl_ii.shape()[1] - 1);
+                for fi in 0..n_findex {
+                    let defl_at_i = defl_ii[[fi, target_col]];
+                    for iy in 0..grid_y_dim {
+                        for iz in 0..grid_z_dim {
+                            deflection_field[[fi, ii, iy, iz]] = defl_at_i;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Target-centric turbopark deficit at turbine i
+        let velocity_deficit =
+            crate::core::wake_velocity::turbopark::turbopark_velocity_deficit(
+                &flow_field.turbulence_intensities,
+                &cts_all,
+                &farm.rotor_diameters.clone(),
+                grid.x_sorted(),
+                grid.y_sorted(),
+                grid.z_sorted(),
+                &deflection_field,
+                i,
+                tp.a,
+                tp.sigma_max_rel,
+            );
+
+        // Convert relative deficit to absolute, accumulate via the combination model
+        let mut velocity_deficit_absolute = flow_field.u_initial_sorted.clone();
+        for fi in 0..n_findex {
+            for ti in 0..n_turbines {
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        velocity_deficit_absolute[[fi, ti, iy, iz]] *=
+                            velocity_deficit[[fi, ti, iy, iz]];
+                    }
+                }
+            }
+        }
+        wake_field = model_manager
+            .combination_model
+            .function(&wake_field, &velocity_deficit_absolute)?;
+
+        // --- Wake-Added Turbulence (WAT) clamp, matching Python turbopark_solver ---
+        let x_mean = mean_value_4d_slice(&grid.x_sorted().clone())?;
+        let y_mean = mean_value_4d_slice(&grid.y_sorted().clone())?;
+
+        let ai_all = Farm::axial_induction(
+            &flow_field.u_sorted,
+            flow_field.air_density,
+            &farm.turbines,
+            Some(&farm.yaw_angles_sorted),
+            Some(&farm.tilt_angles_sorted),
+            grid.average_method(),
+        )?;
+
+        let x_i_4d_slice = grid
+            .x_sorted()
+            .slice(s![.., i..i + 1, .., ..])
+            .to_owned();
+        let x_2d = mean_value_4d_slice(&x_i_4d_slice)?;
+
+        let mut x_i_4d = Array4::zeros((n_findex, 1, 1, 1));
+        let mut ai_4d = Array4::zeros((n_findex, 1, 1, 1));
+        let mut ambient_ti_4d = Array4::zeros((n_findex, 1, 1, 1));
+        for fi in 0..n_findex {
+            x_i_4d[[fi, 0, 0, 0]] = x_2d[[fi, 0]];
+            ai_4d[[fi, 0, 0, 0]] = ai_all[[fi, i]];
+            ambient_ti_4d[[fi, 0, 0, 0]] = flow_field.turbulence_intensities[fi];
+        }
+
+        let rotor_diameter_i = farm.rotor_diameters_sorted[[0, i]];
+        let mut wake_added = model_manager.turbulence_model.function(
+            &ambient_ti_4d,
+            grid.x_sorted(),
+            &x_i_4d,
+            rotor_diameter_i,
+            &ai_4d,
+        )?;
+        wake_added = wake_added.mapv(|v| if v.is_finite() { v } else { 0.0 });
+
+        let grid_res_sq = (grid_y_dim * grid_z_dim) as Float;
+        let iy_c = grid_y_dim / 2;
+        let iz_c = grid_z_dim / 2;
+        let downstream_influence_length = 15.0 * rotor_diameter_i;
+
+        for fi in 0..n_findex {
+            for j in 0..n_turbines {
+                let mut overlap_count = 0.0_f64;
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        if velocity_deficit_absolute[[fi, j, iy, iz]] > 0.05 {
+                            overlap_count += 1.0;
+                        }
+                    }
+                }
+                let area_overlap = overlap_count / grid_res_sq;
+                let wake_added_center = wake_added[[fi, j, iy_c, iz_c]];
+
+                let dx = x_mean[[fi, j]] - x_mean[[fi, i]];
+                let dy = (y_mean[[fi, j]] - y_mean[[fi, i]]).abs();
+                let downstream_ok =
+                    dx > 0.0 && dx <= downstream_influence_length && dy < 2.0 * rotor_diameter_i;
+
+                let ti_added = if downstream_ok {
+                    area_overlap * wake_added_center
+                } else {
+                    0.0
+                };
+
+                let ambient = flow_field.turbulence_intensities[fi];
+                let new_ti = (ti_added * ti_added + ambient * ambient).sqrt();
+                if new_ti > turbine_turbulence_intensity[[fi, j]] {
+                    turbine_turbulence_intensity[[fi, j]] = new_ti;
+                }
+            }
+        }
+
+        // u_sorted = u_initial_sorted - wake_field
+        for fi in 0..n_findex {
+            for ti in 0..n_turbines {
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        flow_field.u_sorted[[fi, ti, iy, iz]] =
+                            flow_field.u_initial_sorted[[fi, ti, iy, iz]]
+                                - wake_field[[fi, ti, iy, iz]];
+                    }
+                }
+            }
+        }
+    }
+
+    flow_field.turbulence_intensity_field_sorted =
+        Array::zeros((n_findex, grid_second_dim, grid_y_dim, grid_z_dim));
+    for fi in 0..n_findex {
+        for ti in 0..n_turbines {
+            for iy in 0..grid_y_dim {
+                for iz in 0..grid_z_dim {
+                    flow_field.turbulence_intensity_field_sorted[[fi, ti, iy, iz]] =
+                        turbine_turbulence_intensity[[fi, ti]];
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Full-flow sequential solver for visualization grids (planar/cross sections).
 ///
 /// Port of `full_flow_sequential_solver(...)` in `core/solver.py`. Solves the
