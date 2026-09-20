@@ -85,50 +85,118 @@ impl DeflectionModel for EmpiricalGaussVelocityDeflection {
         rotor_diameter: Float,
         _model_args: &HashMap<String, Array1>,
     ) -> anyhow::Result<Array2> {
-        let shape = x.shape();
-        let n_findex = shape[0];
-        let n_turbines = shape[1];
+        // Generic-solver path: no tilt, no wake-induced mixing through this
+        // interface (the dedicated empirical_gauss_solver supplies both).
+        let n_findex = x.shape()[0];
+        let yaw_arr = Array1::from_elem(n_findex, yaw_angle);
+        let tilt_arr = Array1::zeros(n_findex);
+        let mixing_arr = Array1::zeros(n_findex);
+        let ct_arr = Array1::from_elem(n_findex, thrust_coefficient);
+        let (deflection_y, _deflection_z) = self.deflection_yz(
+            &x,
+            &yaw_arr,
+            &tilt_arr,
+            &mixing_arr,
+            &ct_arr,
+            rotor_diameter,
+        );
+        Ok(deflection_y)
+    }
+}
 
-        let mut deflection = Array::zeros((n_findex, n_turbines));
+impl EmpiricalGaussVelocityDeflection {
+    /// Emgauss deflection for per-findex downstream distances.
+    ///
+    /// Port of Python EmpiricalGaussVelocityDeflection.function. `x_downstream`
+    /// holds the downstream distance from the wake source (m); the Python
+    /// downstream mask (`x > x_i + 0.1`) zeroes the normalized distance, which
+    /// makes the log term vanish. Returns (deflection_y, deflection_z), each
+    /// shaped (n_findex, n).
+    #[allow(clippy::too_many_arguments)]
+    pub fn deflection_yz(
+        &self,
+        x_downstream: &Array2,
+        yaw_angle: &Array1,
+        tilt_angle: &Array1,
+        mixing_i: &Array1,
+        thrust_coefficient: &Array1,
+        rotor_diameter: Float,
+    ) -> (Array2, Array2) {
+        let shape = x_downstream.shape();
+        let n_findex = shape[0];
+        let n = shape[1];
 
         let deflection_gain_y = self.horizontal_deflection_gain_d * rotor_diameter;
-        // CW yaw for consistency with other models
-        let yaw_r = -yaw_angle.to_radians();
+        // vertical_deflection_gain_D == -1 means "same as horizontal"
+        let deflection_gain_z = if self.vertical_deflection_gain_d == -1.0 {
+            deflection_gain_y
+        } else {
+            self.vertical_deflection_gain_d * rotor_diameter
+        };
+
+        let mut deflection_y = Array::zeros((n_findex, n));
+        let mut deflection_z = Array::zeros((n_findex, n));
 
         for fi in 0..n_findex {
-            for ti in 0..n_turbines {
-                let x_downstream = x[[fi, ti]];
+            // CW yaw for consistency with other models
+            let yaw_r = -yaw_angle[fi].to_radians();
+            let tilt_r = tilt_angle[fi].to_radians();
+            let denom = 1.0 + self.mixing_gain_deflection * mixing_i[fi];
+            let a_y = deflection_gain_y * thrust_coefficient[fi] * yaw_r / denom;
+            let a_z = deflection_gain_z * thrust_coefficient[fi] * tilt_r / denom;
 
-                if x_downstream <= 0.0 {
-                    deflection[[fi, ti]] = 0.0;
-                    continue;
-                }
-
-                let x_normalized = x_downstream / rotor_diameter;
-                // mixing_i unavailable in this interface: mixing = 0
-                let a_y = (deflection_gain_y * thrust_coefficient * yaw_r)
-                    / (1.0 + self.mixing_gain_deflection * 0.0);
+            for j in 0..n {
+                let x_dist = x_downstream[[fi, j]];
+                let x_normalized = if x_dist > 0.1 {
+                    x_dist / rotor_diameter
+                } else {
+                    0.0
+                };
                 let log_term = ((x_normalized - self.deflection_rate)
                     / (x_normalized + self.deflection_rate)
                     + 2.0)
                     .ln();
-                deflection[[fi, ti]] = a_y * log_term;
+                deflection_y[[fi, j]] = a_y * log_term;
+                deflection_z[[fi, j]] = a_z * log_term;
             }
         }
 
-        Ok(deflection)
+        (deflection_y, deflection_z)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::assert_relative_eq;
 
     #[test]
     fn test_empirical_gauss_deflection_creation() {
-        let empirical = EmpiricalGaussVelocityDeflection::new(0.01, 0.05, 0.5);
-        assert_eq!(empirical.kd, 0.01);
-        assert_eq!(empirical.ad, 0.05);
-        assert_eq!(empirical.bd, 0.5);
+        let empirical = EmpiricalGaussVelocityDeflection::default();
+        assert_eq!(empirical.horizontal_deflection_gain_d, 3.0);
+        assert_eq!(empirical.vertical_deflection_gain_d, -1.0);
+        assert_eq!(empirical.deflection_rate, 22.0);
+        assert_eq!(empirical.mixing_gain_deflection, 0.0);
+        assert_eq!(empirical.yaw_added_mixing_gain, 0.0);
+    }
+
+    #[test]
+    fn test_empirical_gauss_deflection_yz_unyawed() {
+        let empirical = EmpiricalGaussVelocityDeflection::default();
+        let x_dist = Array2::from_elem((1, 1), 5.0 * 126.0);
+        let yaw = Array1::from_vec(vec![0.0]);
+        let tilt = Array1::from_vec(vec![5.0]);
+        let mixing = Array1::zeros(1);
+        let ct = Array1::from_vec(vec![0.76]);
+
+        let (defl_y, defl_z) =
+            empirical.deflection_yz(&x_dist, &yaw, &tilt, &mixing, &ct, 126.0);
+
+        assert_relative_eq!(defl_y[[0, 0]], 0.0, epsilon = 1e-12);
+        // tilt_r = 5 deg in rad; log_term at 5D = ln((5-22)/(5+22) + 2)
+        let x_n: Float = (5.0 - 22.0) / (5.0 + 22.0) + 2.0;
+        let log_term_5d = x_n.ln();
+        let expected_z: Float = 3.0 * 126.0 * 0.76 * tilt[0].to_radians() * log_term_5d;
+        assert_relative_eq!(defl_z[[0, 0]], expected_z, epsilon = 1e-9);
     }
 }

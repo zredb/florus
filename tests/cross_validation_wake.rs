@@ -274,9 +274,9 @@ fn assert_powers_close(test: &[Vec<f64>], golden: &[Vec<f64>], name: &str) {
 ///   with a per-turbine minimum epsilon; Rust reinterprets it source-centric)
 /// - cc: ~63% (Rust lacks the cumulative curl accumulation over upstream
 ///   turbines that Python's model performs)
-/// - empirical_gauss: not tested (Python uses a specialized empirical_gauss_solver
-///   where wake_induced_mixing feeds velocity/deflection models, not the WAT path;
-///   Rust's simplified 3-param model cannot match without porting that solver)
+/// - empirical_gauss: 1% with a matching 2x2 turbine grid (the mixing-factor
+///   solver is ported; wake_induced_mixing feeds the velocity/deflection models
+///   as in Python)
 fn assert_powers_close_tol(
     test: &[Vec<f64>],
     golden: &[Vec<f64>],
@@ -609,5 +609,72 @@ fn test_cc_regression() {
         "cc_regression",
         0.65,
         400000.0,
+    );
+}
+
+/// Compute turbine powers via the empirical_gauss_solver (mixing-factor port)
+fn compute_powers_emgauss(config: &FlorisConfig, yaw_angles: Option<&Array2>) -> Vec<Vec<f64>> {
+    let mut model = FlorisModel::from_config(config.clone()).expect("Failed to create FlorisModel");
+
+    if let Some(yaw) = yaw_angles {
+        model
+            .set_yaw_angles(yaw.clone())
+            .expect("Failed to set yaw angles");
+    }
+
+    model.initialize_grid().expect("init grid failed");
+    model
+        .initialize_flow_field()
+        .expect("init flow field failed");
+
+    let farm = model.core().farm.clone();
+    let mut flow_field = model.core().flow_field.clone();
+    let wake = model.core().wake.clone();
+    let grid = model.core().grid.as_ref().unwrap();
+
+    florus::core::solver::empirical_gauss_solver(&farm, &mut flow_field, grid.as_ref(), &wake)
+        .expect("emgauss solver failed");
+
+    powers_from_u_sorted(&farm, &flow_field)
+}
+
+#[test]
+fn test_emgauss_regression() {
+    let mut config = create_floris_config(
+        VelocityModelConfig::EmpiricalGauss {
+            wake_expansion_rates: vec![0.023, 0.008],
+            breakpoints_d: vec![10.0],
+            sigma_0_d: 0.28,
+            smoothing_length_d: 2.0,
+            mixing_gain_velocity: 2.0,
+            awc_wake_exp: 1.2,
+            awc_wake_denominator: 400.0,
+        },
+        DeflectionModelConfig::EmpiricalGauss {
+            horizontal_deflection_gain_d: 3.0,
+            vertical_deflection_gain_d: -1.0,
+            deflection_rate: 22.0,
+            mixing_gain_deflection: 0.0,
+            yaw_added_mixing_gain: 0.0,
+        },
+        CombinationModelConfig::SOSFS,
+        TurbulenceModelConfig::WakeInducedMixing {
+            atmospheric_ti_gain: 0.0,
+        },
+        false,
+        false,
+        false,
+    );
+    // The golden values were generated with a 2x2 turbine grid
+    config.solver.turbine_grid_points = 2;
+
+    let powers = compute_powers_emgauss(&config, None);
+    let golden = common::load_wake_golden("empirical_gauss_regression");
+    assert_powers_close_tol(
+        &powers,
+        &golden.turbine_powers,
+        "emgauss_regression",
+        0.01,
+        20000.0,
     );
 }

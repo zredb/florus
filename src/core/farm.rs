@@ -719,7 +719,7 @@ impl Farm {
                 )?;
 
                 for fi in 0..n_findex {
-                    ct_output[[fi, ti]] = turbine_ct[[fi, 0]];
+                    ct_output[[fi, ti]] = turbine_ct[[fi, ti]];
                 }
             }
         }
@@ -754,7 +754,7 @@ impl Farm {
                 )?;
 
                 for fi in 0..n_findex {
-                    ai_output[[fi, ti]] = turbine_ai[[fi, 0]];
+                    ai_output[[fi, ti]] = turbine_ai[[fi, ti]];
                 }
             }
         }

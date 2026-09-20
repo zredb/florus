@@ -147,16 +147,74 @@ impl VelocityModel for EmpiricalGaussVelocityDeficit {
         x: Array4,
         y: Array4,
         z: Array4,
-        axial_induction: Array2,
+        _axial_induction: Array2,
         deflection_field: Array2,
         yaw_angle: Array2,
-        turbulence_intensity: Array2,
+        _turbulence_intensity: Array2,
         thrust_coefficient: Array2,
         hub_height: Float,
         rotor_diameter: Float,
         turbine_index: usize,
         _model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4> {
+        // Generic-solver path: no tilt, no wake-induced mixing, and no vertical
+        // deflection through this interface (the dedicated empirical_gauss_solver
+        // supplies all three, matching Python's 2-arg mixing term).
+        let n_findex = x.shape()[0];
+        let n_turbines = x.shape()[1];
+        let mut yaw_arr = Array1::zeros(n_findex);
+        let mut ct_arr = Array1::zeros(n_findex);
+        for fi in 0..n_findex {
+            yaw_arr[fi] = yaw_angle[[fi, turbine_index]];
+            ct_arr[fi] = thrust_coefficient[[fi, turbine_index]];
+        }
+        let tilt_arr = Array1::zeros(n_findex);
+        let mixing_i = Array1::zeros(n_findex);
+        let deflection_z = Array2::zeros((n_findex, n_turbines));
+        Ok(self.velocity_deficit_emgauss(
+            &x,
+            &y,
+            &z,
+            &deflection_field,
+            &deflection_z,
+            &yaw_arr,
+            &tilt_arr,
+            &ct_arr,
+            &mixing_i,
+            hub_height,
+            rotor_diameter,
+            turbine_index,
+            0.0,
+        ))
+    }
+}
+
+impl EmpiricalGaussVelocityDeficit {
+    /// Emgauss deficit computation with wake-induced mixing.
+    ///
+    /// Port of Python EmpiricalGaussVelocityDeficit.function as called from
+    /// empirical_gauss_solver. `deflection_field_y/z` hold the wake deflection
+    /// at each receiving turbine from the source (m); `mixing_i` is the
+    /// wake-induced mixing term of the source turbine; per-findex source
+    /// quantities (`yaw_angle`, `tilt_angle`, `thrust_coefficient`) mirror the
+    /// Python (n_findex, 1, 1, 1) broadcasts.
+    #[allow(clippy::too_many_arguments)]
+    pub fn velocity_deficit_emgauss(
+        &self,
+        x: &Array4,
+        y: &Array4,
+        z: &Array4,
+        deflection_field_y: &Array2,
+        deflection_field_z: &Array2,
+        yaw_angle: &Array1,
+        tilt_angle: &Array1,
+        thrust_coefficient: &Array1,
+        mixing_i: &Array1,
+        hub_height: Float,
+        rotor_diameter: Float,
+        turbine_index: usize,
+        wind_veer: Float,
+    ) -> Array4 {
         let shape = x.shape();
         let n_findex = shape[0];
         let n_turbines = shape[1];
@@ -166,90 +224,109 @@ impl VelocityModel for EmpiricalGaussVelocityDeficit {
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
         for fi in 0..n_findex {
-            // Per-findex wake source position (rotated coordinates differ per findex)
-            let x_i = x[[fi, turbine_index, 0, 0]];
-            let y_i = y[[fi, turbine_index, 0, 0]];
+            // Per-findex wake source position: mean of the rotor grid points
+            // (Python: np.mean(grid.x_sorted[:, i:i+1], axis=(2, 3)))
+            let mut x_i = 0.0;
+            let mut y_i = 0.0;
+            for iy in 0..n_y {
+                for iz in 0..n_z {
+                    x_i += x[[fi, turbine_index, iy, iz]];
+                    y_i += y[[fi, turbine_index, iy, iz]];
+                }
+            }
+            let n_pts = (n_y * n_z) as Float;
+            x_i /= n_pts;
+            y_i /= n_pts;
 
             if x_i < 0.0 {
                 continue;
             }
 
-            let deflection_y_i = deflection_field[[fi, turbine_index]];
-            let yaw_i = yaw_angle[[fi, turbine_index]];
-            let ct_i = thrust_coefficient[[fi, turbine_index]];
+            let yaw_i = yaw_angle[fi];
+            let ct_i = thrust_coefficient[fi];
 
+            // cosd is even: cosd(-yaw) == cosd(yaw)
             let sigma_y0 = self.sigma_0_d * rotor_diameter * cosd(yaw_i);
-            let sigma_z0 = self.sigma_0_d * rotor_diameter;
+            let sigma_z0 = self.sigma_0_d * rotor_diameter * cosd(tilt_angle[fi]);
             let breakpoints: Vec<Float> = self
                 .breakpoints_d
                 .iter()
                 .map(|&b| b * rotor_diameter)
                 .collect();
             let smoothing_length = self.smoothing_length_d * rotor_diameter;
+            let mixing_final = self.mixing_gain_velocity * mixing_i[fi];
 
             for ti in 0..n_turbines {
+                let deflection_y_j = deflection_field_y[[fi, ti]];
+                let deflection_z_j = deflection_field_z[[fi, ti]];
+
                 for iy in 0..n_y {
                     for iz in 0..n_z {
                         let x_point = x[[fi, ti, iy, iz]];
 
-                        let downstream_mask = x_point > x_i + 0.1;
-                        if !downstream_mask {
+                        // Downstream mask (Python: x > x_i + 0.1)
+                        if x_point <= x_i + 0.1 {
                             continue;
                         }
 
                         let y_point = y[[fi, ti, iy, iz]];
                         let z_point = z[[fi, ti, iy, iz]];
 
-                        // Wake width without mixing (mixing_i unavailable here)
                         let sigma_y = empirical_gauss_wake_width(
                             x_point - x_i,
                             &self.wake_expansion_rates,
                             &breakpoints,
                             sigma_y0,
                             smoothing_length,
-                            0.0,
-                        )
-                        .max(sigma_y0);
+                            mixing_final,
+                        );
                         let sigma_z = empirical_gauss_wake_width(
                             x_point - x_i,
                             &self.wake_expansion_rates,
                             &breakpoints,
                             sigma_z0,
                             smoothing_length,
-                            0.0,
-                        )
-                        .max(sigma_z0);
+                            mixing_final,
+                        );
 
-                        let dy = y_point - y_i - deflection_y_i;
-                        let dz = z_point - hub_height;
+                        let dy = y_point - y_i - deflection_y_j;
+                        let dz = z_point - hub_height - deflection_z_j;
 
                         let (r, c_raw) = r_c_alt(
-                            0.0, sigma_y, sigma_z, dy, dz, ct_i, yaw_i, 0.0, sigma_y0, sigma_z0,
-                        );
-                        let c_val = c_raw / (8.0 * self.sigma_0_d * self.sigma_0_d);
-
-                        let deficit_real = c_val * (-r).exp();
-
-                        // Mirror wake (ground reflection)
-                        let r_mirr = ((y_point - y_i - deflection_y_i).powi(2)
-                            + (z_point + hub_height).powi(2))
-                        .sqrt();
-                        let (r_m, c_mirr_raw) = r_c_alt(
-                            0.0,
+                            wind_veer,
                             sigma_y,
                             sigma_z,
-                            y_point - y_i - deflection_y_i,
-                            z_point + hub_height,
+                            dy,
+                            dz,
                             ct_i,
                             yaw_i,
-                            0.0,
+                            tilt_angle[fi],
                             sigma_y0,
                             sigma_z0,
                         );
-                        let _ = r_mirr;
+                        // Normalize to match the end of the actuator disk model tube
+                        let c_val = c_raw / (8.0 * self.sigma_0_d * self.sigma_0_d);
+                        let deficit_real = c_val * (-r).exp();
+
+                        // Mirror wake: turbine at -hub height, so the mirrored
+                        // rCalt uses (z + HH - delta_z)
+                        let dz_m = z_point + hub_height - deflection_z_j;
+                        let (r_m, c_mirr_raw) = r_c_alt(
+                            wind_veer,
+                            sigma_y,
+                            sigma_z,
+                            dy,
+                            dz_m,
+                            ct_i,
+                            yaw_i,
+                            tilt_angle[fi],
+                            sigma_y0,
+                            sigma_z0,
+                        );
                         let c_mirr = c_mirr_raw / (8.0 * self.sigma_0_d * self.sigma_0_d);
                         let deficit_mirror = c_mirr * (-r_m).exp();
 
+                        // Sum-of-squares superposition for the real and mirror wakes
                         let deficit =
                             (deficit_real * deficit_real + deficit_mirror * deficit_mirror).sqrt();
 
@@ -259,7 +336,7 @@ impl VelocityModel for EmpiricalGaussVelocityDeficit {
             }
         }
 
-        Ok(velocity_deficit)
+        velocity_deficit
     }
 }
 
@@ -267,21 +344,45 @@ impl VelocityModel for EmpiricalGaussVelocityDeficit {
 mod tests {
     use super::*;
     use crate::types::Array1;
+    use approx::assert_relative_eq;
 
     #[test]
     fn test_empirical_gauss_creation() {
-        let gauss = EmpiricalGaussVelocityDeficit::new(0.1, 0.05, 0.5);
-        assert_eq!(gauss.ka, 0.1);
-        assert_eq!(gauss.kb, 0.05);
-        assert_eq!(gauss.initial_wake_width, 0.5);
+        let gauss = EmpiricalGaussVelocityDeficit::default();
+        assert_eq!(gauss.wake_expansion_rates, vec![0.023, 0.008]);
+        assert_eq!(gauss.breakpoints_d, vec![10.0]);
+        assert_eq!(gauss.sigma_0_d, 0.28);
+        assert_eq!(gauss.smoothing_length_d, 2.0);
+        assert_eq!(gauss.mixing_gain_velocity, 2.0);
+        assert_eq!(gauss.awc_wake_exp, 1.2);
+        assert_eq!(gauss.awc_wake_denominator, 400.0);
     }
 
     #[test]
     fn test_empirical_gauss_default() {
         let gauss = EmpiricalGaussVelocityDeficit::default();
-        assert_eq!(gauss.ka, 0.1);
-        assert_eq!(gauss.kb, 0.05);
-        assert_eq!(gauss.initial_wake_width, 0.5);
+        assert_eq!(gauss.wake_expansion_rates.len(), 2);
+        assert_eq!(gauss.breakpoints_d.len(), gauss.wake_expansion_rates.len() - 1);
+    }
+
+    #[test]
+    fn test_sigmoid_integral() {
+        // Above the smoothing zone: linear
+        assert_relative_eq!(sigmoid_integral(3.0, 0.0, 2.0), 3.0, epsilon = 1e-12);
+        // Below the smoothing zone: zero
+        assert_relative_eq!(sigmoid_integral(-3.0, 0.0, 2.0), 0.0, epsilon = 1e-12);
+        // In the smoothing zone at the center: width * (0.5^6 - 3*0.5^5 + 2.5*0.5^4)
+        let z: Float = 0.5;
+        let expected: Float = 2.0 * (z.powi(6) - 3.0 * z.powi(5) + 2.5 * z.powi(4));
+        assert_relative_eq!(sigmoid_integral(0.0, 0.0, 2.0), expected, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_empirical_gauss_wake_width_no_mixing() {
+        // sigma = rate0 * x + sigma_0 for x below the breakpoint smoothing zone
+        let sigma = empirical_gauss_wake_width(5.0, &[0.023, 0.008], &[10.0 * 126.0], 0.28 * 126.0, 2.0 * 126.0, 0.0);
+        let expected = 0.023 * 5.0 + 0.28 * 126.0;
+        assert_relative_eq!(sigma, expected, epsilon = 1e-9);
     }
 
     #[test]

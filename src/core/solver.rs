@@ -9,9 +9,10 @@ use crate::core::wake::yaw_added_recovery::{
 };
 use crate::core::wake::WakeModelManager;
 use crate::core::{Farm, FlowField, Grid};
-use crate::types::{Array1, Array2, Array4, ArrayD, Float};
+use crate::types::{Array1, Array2, Array3, Array4, ArrayD, Float};
 use anyhow::Result;
 use ndarray::{s, Array};
+use crate::utilities::cosd;
 
 /// Solver type enum for selecting the appropriate solver algorithm
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1316,17 +1317,271 @@ pub fn cc_solver(
     Ok(())
 }
 
-/// Empirical Gauss solver
+/// Empirical Gauss solver (port of Python empirical_gauss_solver).
 ///
-/// Solver optimized for the Empirical Gaussian velocity deficit model.
-/// This model uses data-driven wake expansion parameters.
+/// For each wake source turbine (upstream to downstream), computes the deficit
+/// it adds to every downstream turbine and accumulates it via the combination
+/// model. The wake-induced mixing factor is built up iteratively: each source
+/// contributes `area_overlap * a_i / downstream_D^2` to downstream turbines'
+/// mixing terms, and the RSS over upstream contributions feeds the velocity
+/// model's wake width via `mixing_gain_velocity`. Returns nothing; the mixing
+/// field is an internal quantity of this solver (Python returns it for the
+/// full-flow solver, which is not ported).
 pub fn empirical_gauss_solver(
     farm: &Farm,
     flow_field: &mut FlowField,
     grid: &dyn Grid,
     model_manager: &WakeModelManager,
 ) -> Result<()> {
-    sequential_solver(farm, flow_field, grid, model_manager)
+    if model_manager.enable_secondary_steering {
+        anyhow::bail!("Secondary steering not available for this model.");
+    }
+    if model_manager.enable_transverse_velocities {
+        anyhow::bail!("Transverse velocities not used in this model.");
+    }
+
+    // The mixing architecture is defined for turbine grids (Python's full-flow
+    // solver runs the turbine-grid solver on a copy first).
+    if grid.as_any().downcast_ref::<TurbineGrid>().is_none() {
+        return sequential_solver(farm, flow_field, grid, model_manager);
+    }
+
+    let eg = model_manager
+        .velocity_model
+        .as_any()
+        .downcast_ref::<crate::core::wake_velocity::EmpiricalGaussVelocityDeficit>()
+        .ok_or_else(|| {
+            anyhow::anyhow!("empirical_gauss_solver requires EmpiricalGaussVelocityDeficit")
+        })?;
+    let defl_eg = model_manager
+        .deflection_model
+        .as_any()
+        .downcast_ref::<crate::core::wake_deflection::EmpiricalGaussVelocityDeflection>()
+        .ok_or_else(|| {
+            anyhow::anyhow!("empirical_gauss_solver requires EmpiricalGaussVelocityDeflection")
+        })?;
+
+    let n_turbines = grid.n_turbines();
+    let n_findex = grid.n_findex();
+    let shape = grid.x_sorted().shape();
+    let grid_y_dim = shape[2];
+    let grid_z_dim = shape[3];
+
+    let mut wake_field: Array4 = Array::zeros((n_findex, n_turbines, grid_y_dim, grid_z_dim));
+
+    // Mean grid positions per turbine (n_findex, n_turbines)
+    let x_mean_all = mean_value_4d_slice(&grid.x_sorted().clone())?;
+
+    // Downstream distance in rotor diameters:
+    // downstream_distance_D[fi, j, k] = max((x_j - x_k) / D_j, 0.1)
+    let mut downstream_distance_d: Array3 = Array::zeros((n_findex, n_turbines, n_turbines));
+    for fi in 0..n_findex {
+        for j in 0..n_turbines {
+            let d_j = farm.rotor_diameters_sorted[[fi, j]];
+            for k in 0..n_turbines {
+                downstream_distance_d[[fi, j, k]] =
+                    ((x_mean_all[[fi, j]] - x_mean_all[[fi, k]]) / d_j).max(0.1);
+            }
+        }
+    }
+
+    // Initialize the mixing factor with the atmospheric TI gain on the diagonal
+    if model_manager.atmospheric_ti_gain != 0.0 {
+        log::warn!(
+            "Running wake_induced_mixing with mixing contributions from the atmospheric \
+             turbulence intensity has not been vetted. Set atmospheric_ti_gain=0."
+        );
+    }
+    let mut mixing_factor: Array3 = Array::zeros((n_findex, n_turbines, n_turbines));
+    for fi in 0..n_findex {
+        for t in 0..n_turbines {
+            mixing_factor[[fi, t, t]] =
+                model_manager.atmospheric_ti_gain * flow_field.turbulence_intensities[fi];
+        }
+    }
+
+    let wind_veer = flow_field.wind_veer;
+    let grid_res_sq = (grid_y_dim * grid_z_dim) as Float;
+
+    for i in 0..n_turbines {
+        // Ct / AI from the current u_sorted (recomputed as wakes evolve,
+        // matching Python thrust_coefficient/axial_induction with ix_filter=[i])
+        let ct_all = Farm::thrust_coefficient(
+            &flow_field.u_sorted,
+            flow_field.air_density,
+            &farm.turbines,
+            Some(&farm.yaw_angles_sorted),
+            Some(&farm.tilt_angles_sorted),
+            grid.average_method(),
+        )?;
+        let a_all = Farm::axial_induction(
+            &flow_field.u_sorted,
+            flow_field.air_density,
+            &farm.turbines,
+            Some(&farm.yaw_angles_sorted),
+            Some(&farm.tilt_angles_sorted),
+            grid.average_method(),
+        )?;
+
+        // Per-findex source-turbine quantities. Python computes tilt via
+        // calculate_tilt_for_eff_velocities, which for non-floating turbines
+        // (no tilt interpolation) returns tilt_angles_sorted unchanged.
+        let mut yaw_arr = Array1::zeros(n_findex);
+        let mut tilt_arr = Array1::zeros(n_findex);
+        let mut ct_arr = Array1::zeros(n_findex);
+        let mut a_arr = Array1::zeros(n_findex);
+        for fi in 0..n_findex {
+            yaw_arr[fi] = farm.yaw_angles_sorted[[fi, i]];
+            tilt_arr[fi] = farm.tilt_angles_sorted[[fi, i]];
+            ct_arr[fi] = ct_all[[fi, i]];
+            a_arr[fi] = a_all[[fi, i]];
+        }
+
+        // Total wake-induced mixing for turbine i: RSS over all contributions
+        let mut mixing_i = Array1::zeros(n_findex);
+        for fi in 0..n_findex {
+            let mut sum_sq = 0.0;
+            for k in 0..n_turbines {
+                sum_sq += mixing_factor[[fi, i, k]] * mixing_factor[[fi, i, k]];
+            }
+            mixing_i[fi] = sum_sq.sqrt();
+        }
+
+        // Deflection field due to turbine i at each receiving turbine
+        let d_i = farm.rotor_diameters_sorted[[0, i]];
+        let mut deflection_y = Array2::zeros((n_findex, n_turbines));
+        let mut deflection_z = Array2::zeros((n_findex, n_turbines));
+        for j in 0..n_turbines {
+            let mut x_dist = Array2::zeros((n_findex, 1));
+            for fi in 0..n_findex {
+                x_dist[[fi, 0]] = x_mean_all[[fi, j]] - x_mean_all[[fi, i]];
+            }
+            let (dy_j, dz_j) = defl_eg.deflection_yz(
+                &x_dist, &yaw_arr, &tilt_arr, &mixing_i, &ct_arr, d_i,
+            );
+            for fi in 0..n_findex {
+                deflection_y[[fi, j]] = dy_j[[fi, 0]];
+                deflection_z[[fi, j]] = dz_j[[fi, 0]];
+            }
+        }
+
+        // Velocity deficit at all grid points due to turbine i (with mixing)
+        let velocity_deficit = eg.velocity_deficit_emgauss(
+            grid.x_sorted(),
+            grid.y_sorted(),
+            grid.z_sorted(),
+            &deflection_y,
+            &deflection_z,
+            &yaw_arr,
+            &tilt_arr,
+            &ct_arr,
+            &mixing_i,
+            farm.hub_heights_sorted[[0, i]],
+            d_i,
+            i,
+            wind_veer,
+        );
+
+        // Convert relative deficit to absolute velocity deficit
+        let mut velocity_deficit_absolute = flow_field.u_initial_sorted.clone();
+        for fi in 0..n_findex {
+            for ti in 0..n_turbines {
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        velocity_deficit_absolute[[fi, ti, iy, iz]] *=
+                            velocity_deficit[[fi, ti, iy, iz]];
+                    }
+                }
+            }
+        }
+
+        // wake_field = combination_model.function(wake_field, deficit * u_initial)
+        wake_field = model_manager
+            .combination_model
+            .function(&wake_field, &velocity_deficit_absolute)?;
+
+        // Wake overlap: fraction of each receiving turbine's grid points with
+        // an absolute deficit > 0.05 m/s
+        let mut area_overlap: Array2 = Array::zeros((n_findex, n_turbines));
+        for fi in 0..n_findex {
+            for j in 0..n_turbines {
+                let mut overlap_count = 0.0;
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        if velocity_deficit_absolute[[fi, j, iy, iz]] > 0.05 {
+                            overlap_count += 1.0;
+                        }
+                    }
+                }
+                area_overlap[[fi, j]] = overlap_count / grid_res_sq;
+            }
+        }
+
+        // WakeInducedMixing: turbine i contributes a_i / downstream_D^2 to
+        // every turbine's mixing term
+        for fi in 0..n_findex {
+            for j in 0..n_turbines {
+                let dist_sq = downstream_distance_d[[fi, j, i]] * downstream_distance_d[[fi, j, i]];
+                mixing_factor[[fi, j, i]] += area_overlap[[fi, j]] * a_arr[fi] / dist_sq;
+            }
+        }
+
+        // Influence of yawing on the wake (yaw_added_wake_mixing)
+        if model_manager.enable_yaw_added_recovery {
+            for fi in 0..n_findex {
+                for j in 0..n_turbines {
+                    let dist_sq =
+                        downstream_distance_d[[fi, j, i]] * downstream_distance_d[[fi, j, i]];
+                    let yaw_term = a_arr[fi]
+                        * defl_eg.yaw_added_mixing_gain
+                        * (1.0 - cosd(yaw_arr[fi]))
+                        / dist_sq;
+                    mixing_factor[[fi, j, i]] += area_overlap[[fi, j]] * yaw_term;
+                }
+            }
+        }
+
+        // Influence of awc on the turbine's own wake (awc_added_wake_mixing)
+        if model_manager.enable_active_wake_mixing {
+            for fi in 0..n_findex {
+                if farm.awc_modes_sorted[[fi, i]] == "helix" {
+                    let amp = farm.awc_amplitudes_sorted[[fi, i]];
+                    mixing_factor[[fi, i, i]] +=
+                        amp.powf(eg.awc_wake_exp) / eg.awc_wake_denominator;
+                }
+            }
+        }
+
+        // Update u_sorted after each turbine's wake is added
+        // (Python: flow_field.u_sorted = flow_field.u_initial_sorted - wake_field)
+        for fi in 0..n_findex {
+            for ti in 0..n_turbines {
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        let wake_deficit = wake_field[[fi, ti, iy, iz]];
+                        let u_initial = flow_field.u_initial_sorted[[fi, ti, iy, iz]];
+                        flow_field.u_sorted[[fi, ti, iy, iz]] = (u_initial - wake_deficit).max(0.0);
+                    }
+                }
+            }
+        }
+    }
+
+    // Store the TI field (constant per rotor block)
+    flow_field.turbulence_intensity_field_sorted =
+        Array::zeros((n_findex, n_turbines, grid_y_dim, grid_z_dim));
+    for fi in 0..n_findex {
+        for ti in 0..n_turbines {
+            for iy in 0..grid_y_dim {
+                for iz in 0..grid_z_dim {
+                    flow_field.turbulence_intensity_field_sorted[[fi, ti, iy, iz]] =
+                        flow_field.turbulence_intensities[fi];
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Jensen solver
