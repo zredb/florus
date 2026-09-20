@@ -228,10 +228,26 @@ impl FlorisModel {
 
             let turbine = &self.core.farm.turbines[ti];
 
-            let ref_air_density = turbine.turbine_type.power_thrust_table.ref_air_density.unwrap_or(1.225);
-            let cosine_loss_exponent_yaw = turbine.turbine_type.power_thrust_table.cosine_loss_exponent_yaw.unwrap_or(1.88);
-            let cosine_loss_exponent_tilt = turbine.turbine_type.power_thrust_table.cosine_loss_exponent_tilt.unwrap_or(1.88);
-            let ref_tilt = turbine.turbine_type.power_thrust_table.ref_tilt.unwrap_or(5.0);
+            let ref_air_density = turbine
+                .turbine_type
+                .power_thrust_table
+                .ref_air_density
+                .unwrap_or(1.225);
+            let cosine_loss_exponent_yaw = turbine
+                .turbine_type
+                .power_thrust_table
+                .cosine_loss_exponent_yaw
+                .unwrap_or(1.88);
+            let cosine_loss_exponent_tilt = turbine
+                .turbine_type
+                .power_thrust_table
+                .cosine_loss_exponent_tilt
+                .unwrap_or(1.88);
+            let ref_tilt = turbine
+                .turbine_type
+                .power_thrust_table
+                .ref_tilt
+                .unwrap_or(5.0);
 
             for fi in 0..n_findex {
                 let mut v_cubed_sum = 0.0;
@@ -243,7 +259,8 @@ impl FlorisModel {
                 }
                 let rotor_avg_velocity = (v_cubed_sum / grid_points as f64).powf(1.0 / 3.0);
 
-                let density_factor = (self.core.flow_field.air_density / ref_air_density).powf(1.0 / 3.0);
+                let density_factor =
+                    (self.core.flow_field.air_density / ref_air_density).powf(1.0 / 3.0);
                 let mut rotor_effective_velocity = rotor_avg_velocity * density_factor;
 
                 let yaw = yaw_angles[[fi, ti]];
@@ -251,13 +268,19 @@ impl FlorisModel {
                 rotor_effective_velocity *= yaw_correction;
 
                 let tilt = tilt_angles[[fi, ti]];
-                let tilt_correction = (cosd(tilt) / cosd(ref_tilt)).powf(cosine_loss_exponent_tilt / 3.0);
+                let tilt_correction =
+                    (cosd(tilt) / cosd(ref_tilt)).powf(cosine_loss_exponent_tilt / 3.0);
                 rotor_effective_velocity *= tilt_correction;
 
                 use crate::core::turbines::cp_ct_table::TableConditions;
                 let mut conditions = TableConditions::default();
                 conditions.wind_speed = rotor_effective_velocity;
-                let power_kw = turbine.turbine_type.power_thrust_table.cp_ct_table.get_cp(&conditions).unwrap_or(0.0);
+                let power_kw = turbine
+                    .turbine_type
+                    .power_thrust_table
+                    .cp_ct_table
+                    .get_cp(&conditions)
+                    .unwrap_or(0.0);
 
                 let mut power_val = power_kw * 1000.0;
 
@@ -287,30 +310,30 @@ impl FlorisModel {
     }
 
     /// Get turbine powers reshaped for WindRose mode
-    /// 
+    ///
     /// Returns powers in shape (n_wind_directions, n_wind_speeds, n_turbines)
     /// Only works when wind_data_info is available (set via set_wind_conditions_with_rose)
     pub fn get_turbine_powers_rose(&self) -> Array3 {
         let powers = self.get_turbine_powers();
-        
+
         if let Some(ref wind_info) = self.core.wind_data_info {
             // Reshape from (n_findex, n_turbines) to (n_wind_directions, n_wind_speeds, n_turbines)
             let n_wind_dirs = wind_info.n_wind_directions;
             let n_wind_speeds = wind_info.n_wind_speeds;
             let n_turbines = self.core.farm.n_turbines();
-            
+
             let mut reshaped = Array3::zeros((n_wind_dirs, n_wind_speeds, n_turbines));
-            
+
             // Reshape the data assuming findex order is [wd0_ws0, wd0_ws1, ..., wd1_ws0, wd1_ws1, ...]
             for (idx, power_row) in powers.axis_iter(Axis(0)).enumerate() {
                 let wd_idx = idx / n_wind_speeds;
                 let ws_idx = idx % n_wind_speeds;
-                
+
                 for ti in 0..n_turbines {
                     reshaped[[wd_idx, ws_idx, ti]] = power_row[ti];
                 }
             }
-            
+
             reshaped
         } else {
             // Fallback: return 3D array with first dimension as n_findex
@@ -327,26 +350,26 @@ impl FlorisModel {
     }
 
     /// Get farm power reshaped for WindRose mode
-    /// 
+    ///
     /// Returns powers in shape (n_wind_directions, n_wind_speeds)
     /// Only works when wind_data_info is available (set via set_wind_conditions_with_rose)
     pub fn get_farm_power_rose(&self) -> Array2 {
         let farm_power = self.get_farm_power();
-        
+
         if let Some(ref wind_info) = self.core.wind_data_info {
             // Reshape from (n_findex,) to (n_wind_directions, n_wind_speeds)
             let n_wind_dirs = wind_info.n_wind_directions;
             let n_wind_speeds = wind_info.n_wind_speeds;
-            
+
             let mut reshaped = Array2::zeros((n_wind_dirs, n_wind_speeds));
-            
+
             // Reshape the data assuming findex order is [wd0_ws0, wd0_ws1, ..., wd1_ws0, wd1_ws1, ...]
             for (idx, &power) in farm_power.iter().enumerate() {
                 let wd_idx = idx / n_wind_speeds;
                 let ws_idx = idx % n_wind_speeds;
                 reshaped[[wd_idx, ws_idx]] = power;
             }
-            
+
             reshaped
         } else {
             // Fallback: return 2D array with second dimension as 1
@@ -900,7 +923,7 @@ impl FlorisModel {
     }
 
     /// Get yaw angles array
-    /// 
+    ///
     /// # Returns
     /// Array of shape `(n_findex, n_turbines)` containing yaw angles in degrees
     pub fn get_yaw_angles(&self) -> &Array2 {
@@ -908,7 +931,7 @@ impl FlorisModel {
     }
 
     /// Get power setpoints array
-    /// 
+    ///
     /// # Returns
     /// Array of shape `(n_findex, n_turbines)` containing power setpoints in Watts
     pub fn get_power_setpoints(&self) -> &Array2 {
@@ -916,7 +939,7 @@ impl FlorisModel {
     }
 
     /// Get AWC modes array
-    /// 
+    ///
     /// # Returns
     /// Array of shape `(n_findex, n_turbines)` containing AWC mode strings
     pub fn get_awc_modes(&self) -> &NdArray2<String> {
@@ -924,7 +947,7 @@ impl FlorisModel {
     }
 
     /// Get AWC amplitudes array
-    /// 
+    ///
     /// # Returns
     /// Array of shape `(n_findex, n_turbines)` containing AWC amplitudes in degrees
     pub fn get_awc_amplitudes(&self) -> &Array2 {
@@ -932,7 +955,7 @@ impl FlorisModel {
     }
 
     /// Get AWC frequencies array
-    /// 
+    ///
     /// # Returns
     /// Array of shape `(n_findex, n_turbines)` containing AWC frequencies in Hz
     pub fn get_awc_frequencies(&self) -> &Array2 {
@@ -1018,7 +1041,7 @@ impl FlorisModel {
         let mut turbine_coords = Array::zeros((n_turbines, 2));
         let mut turbine_diams = Array::zeros(n_turbines);
         let mut turbine_hub_heights = Array::zeros(n_turbines);
-        
+
         for i in 0..n_turbines {
             turbine_coords[[i, 0]] = fmodel_viz.core.farm.layout_x[i];
             turbine_coords[[i, 1]] = fmodel_viz.core.farm.layout_y[i];
@@ -1038,8 +1061,8 @@ impl FlorisModel {
             [x_resolution, y_resolution],
             "z".to_string(),
             height,
-            None,  // x1_bounds
-            None,  // x2_bounds
+            None, // x1_bounds
+            None, // x2_bounds
         )?;
 
         // Set the grid
@@ -1137,7 +1160,7 @@ impl FlorisModel {
         let mut turbine_coords = Array::zeros((n_turbines, 2));
         let mut turbine_diams = Array::zeros(n_turbines);
         let mut turbine_hub_heights = Array::zeros(n_turbines);
-        
+
         for i in 0..n_turbines {
             turbine_coords[[i, 0]] = fmodel_viz.core.farm.layout_x[i];
             turbine_coords[[i, 1]] = fmodel_viz.core.farm.layout_y[i];
@@ -1157,8 +1180,8 @@ impl FlorisModel {
             [x_resolution, z_resolution],
             "y".to_string(),
             crossstream_dist,
-            None,  // x1_bounds
-            None,  // x2_bounds
+            None, // x1_bounds
+            None, // x2_bounds
         )?;
 
         // Set the grid
@@ -1256,7 +1279,7 @@ impl FlorisModel {
         let mut turbine_coords = Array::zeros((n_turbines, 2));
         let mut turbine_diams = Array::zeros(n_turbines);
         let mut turbine_hub_heights = Array::zeros(n_turbines);
-        
+
         for i in 0..n_turbines {
             turbine_coords[[i, 0]] = fmodel_viz.core.farm.layout_x[i];
             turbine_coords[[i, 1]] = fmodel_viz.core.farm.layout_y[i];
@@ -1276,8 +1299,8 @@ impl FlorisModel {
             [y_resolution, z_resolution],
             "x".to_string(),
             downstream_dist,
-            None,  // x1_bounds
-            None,  // x2_bounds
+            None, // x1_bounds
+            None, // x2_bounds
         )?;
 
         // Set the grid
@@ -1371,7 +1394,9 @@ impl FlorisModel {
         self.core
             .farm
             .initialize_control_arrays(self.core.flow_field.n_findex);
-        self.core.farm.set_tilt_to_ref_tilt(self.core.flow_field.n_findex);
+        self.core
+            .farm
+            .set_tilt_to_ref_tilt(self.core.flow_field.n_findex);
         self.core.grid = None;
         Ok(())
     }
@@ -1396,11 +1421,13 @@ impl FlorisModel {
         self.core
             .farm
             .initialize_control_arrays(self.core.flow_field.n_findex);
-        self.core.farm.set_tilt_to_ref_tilt(self.core.flow_field.n_findex);
+        self.core
+            .farm
+            .set_tilt_to_ref_tilt(self.core.flow_field.n_findex);
 
         // Clear wind_data_info for flat TimeSeries mode
         self.core.wind_data_info = None;
-        
+
         // Mark farm as uninitialized so it will be properly reinitialized on next run()
         self.core.farm.state.initialized = false;
         self.core.grid = None;
@@ -1418,7 +1445,7 @@ impl FlorisModel {
     ) -> crate::Result<()> {
         let n_wind_directions = unique_wind_directions.len();
         let n_wind_speeds = unique_wind_speeds.len();
-        
+
         self.core.flow_field = FlowField::new(
             wind_speeds,
             wind_directions,
@@ -1432,7 +1459,9 @@ impl FlorisModel {
         self.core
             .farm
             .initialize_control_arrays(self.core.flow_field.n_findex);
-        self.core.farm.set_tilt_to_ref_tilt(self.core.flow_field.n_findex);
+        self.core
+            .farm
+            .set_tilt_to_ref_tilt(self.core.flow_field.n_findex);
 
         // Store WindRose information for reshaping
         self.core.wind_data_info = Some(crate::core::core::WindDataInfo {
@@ -1441,7 +1470,7 @@ impl FlorisModel {
             n_wind_directions,
             n_wind_speeds,
         });
-        
+
         // Mark farm as uninitialized so it will be properly reinitialized on next run()
         self.core.farm.state.initialized = false;
         self.core.grid = None;
@@ -1635,8 +1664,7 @@ impl FlorisModel {
             }
         }
         if awc_amp_is_non_default {
-            if let Some(reshaped) =
-                reshape_saved_array(&saved_awc_amplitudes, n_findex, n_turbines)
+            if let Some(reshaped) = reshape_saved_array(&saved_awc_amplitudes, n_findex, n_turbines)
             {
                 self.core.farm.set_awc_amplitudes(reshaped);
             }
@@ -1727,7 +1755,9 @@ impl FlorisModel {
         self.core
             .farm
             .initialize_control_arrays(self.core.flow_field.n_findex);
-        self.core.farm.set_tilt_to_ref_tilt(self.core.flow_field.n_findex);
+        self.core
+            .farm
+            .set_tilt_to_ref_tilt(self.core.flow_field.n_findex);
 
         // Reset grid (will be recreated on next run)
         self.core.grid = None;
@@ -1854,39 +1884,44 @@ impl FlorisModel {
         points_z: &[f64],
     ) -> crate::Result<Array1> {
         // Ensure simulation has been run
-        let grid = self.grid()
+        let grid = self
+            .grid()
             .ok_or_else(|| anyhow::anyhow!("Must call run() before sampling flow"))?;
-        
+
         let core = self.core();
         let u_field = &core.flow_field.u; // Shape: [findex, turbine, y, z]
         let x_coords = grid.x_sorted_inertial_frame(); // Shape: [findex, turbine, y, z]
         let y_coords = grid.y_sorted_inertial_frame();
         let z_coords = grid.z_sorted_inertial_frame();
-        
+
         if x_coords.shape().len() != 4 {
             bail!("Grid coordinates must be 4D arrays");
         }
-        
+
         let n_findex = x_coords.shape()[0];
         if n_findex == 0 {
             bail!("Grid has no findex entries");
         }
-        
+
         // Use first findex for sampling
         let findex = 0;
-        
+
         // Sample each point using trilinear interpolation
         let mut velocities = Vec::with_capacity(points_x.len());
         for i in 0..points_x.len() {
             let u = Self::trilinear_interpolate(
-                points_x[i], points_y[i], points_z[i],
-                x_coords, y_coords, z_coords,
+                points_x[i],
+                points_y[i],
+                points_z[i],
+                x_coords,
+                y_coords,
+                z_coords,
                 u_field,
                 findex,
             )?;
             velocities.push(u);
         }
-        
+
         Ok(Array1::from_vec(velocities))
     }
 
@@ -1917,11 +1952,12 @@ impl FlorisModel {
         points_z: &[f64],
     ) -> crate::Result<Array1> {
         // Ensure simulation has been run
-        let _grid = self.grid()
+        let _grid = self
+            .grid()
             .ok_or_else(|| anyhow::anyhow!("Must call run() before sampling flow"))?;
-        
+
         let core = self.core();
-        
+
         // Get ambient turbulence intensity from flow field config
         // Note: The full TI field calculation (including wake-added turbulence)
         // is not yet fully implemented. For now, we return the ambient TI.
@@ -1930,11 +1966,11 @@ impl FlorisModel {
         } else {
             0.06 // Default fallback value
         };
-        
+
         // Return ambient TI for all points
         // TODO: Implement full wake-added TI calculation in the solver
         let ti_values = vec![ambient_ti; points_x.len()];
-        
+
         Ok(Array1::from_vec(ti_values))
     }
 
@@ -1967,59 +2003,64 @@ impl FlorisModel {
         let n_turbines = x_coords.shape()[1];
         let n_y = x_coords.shape()[2];
         let n_z = x_coords.shape()[3];
-        
+
         // Find the enclosing grid cell by searching for the closest grid point
         // then checking neighbors to find the cell that contains our point
-        let (t_idx, y_idx, z_idx) = Self::find_nearest_grid_point(
-            x, y, z, x_coords, y_coords, z_coords, findex
-        );
-        
+        let (t_idx, y_idx, z_idx) =
+            Self::find_nearest_grid_point(x, y, z, x_coords, y_coords, z_coords, findex);
+
         // Get the coordinates of the nearest point
         let x0 = x_coords[[findex, t_idx, y_idx, z_idx]];
         let y0 = y_coords[[findex, t_idx, y_idx, z_idx]];
         let z0 = z_coords[[findex, t_idx, y_idx, z_idx]];
-        
+
         // For a proper trilinear interpolation, we need to find the 8 corners
         // of the cell containing our point. Since the grid structure is complex
         // (organized by turbine), we'll use a simplified approach:
         // Find the local grid spacing and interpolate within the cell
-        
+
         // Estimate grid spacing from neighboring points
         let dx = if t_idx > 0 {
-            (x_coords[[findex, t_idx, y_idx, z_idx]] - x_coords[[findex, t_idx - 1, y_idx, z_idx]]).abs()
+            (x_coords[[findex, t_idx, y_idx, z_idx]] - x_coords[[findex, t_idx - 1, y_idx, z_idx]])
+                .abs()
         } else if t_idx < n_turbines - 1 {
-            (x_coords[[findex, t_idx + 1, y_idx, z_idx]] - x_coords[[findex, t_idx, y_idx, z_idx]]).abs()
+            (x_coords[[findex, t_idx + 1, y_idx, z_idx]] - x_coords[[findex, t_idx, y_idx, z_idx]])
+                .abs()
         } else {
             100.0 // Default spacing
         };
-        
+
         let dy = if y_idx > 0 {
-            (y_coords[[findex, t_idx, y_idx, z_idx]] - y_coords[[findex, t_idx, y_idx - 1, z_idx]]).abs()
+            (y_coords[[findex, t_idx, y_idx, z_idx]] - y_coords[[findex, t_idx, y_idx - 1, z_idx]])
+                .abs()
         } else if y_idx < n_y - 1 {
-            (y_coords[[findex, t_idx, y_idx + 1, z_idx]] - y_coords[[findex, t_idx, y_idx, z_idx]]).abs()
+            (y_coords[[findex, t_idx, y_idx + 1, z_idx]] - y_coords[[findex, t_idx, y_idx, z_idx]])
+                .abs()
         } else {
             50.0 // Default spacing
         };
-        
+
         let dz = if z_idx > 0 {
-            (z_coords[[findex, t_idx, y_idx, z_idx]] - z_coords[[findex, t_idx, y_idx, z_idx - 1]]).abs()
+            (z_coords[[findex, t_idx, y_idx, z_idx]] - z_coords[[findex, t_idx, y_idx, z_idx - 1]])
+                .abs()
         } else if z_idx < n_z - 1 {
-            (z_coords[[findex, t_idx, y_idx, z_idx + 1]] - z_coords[[findex, t_idx, y_idx, z_idx]]).abs()
+            (z_coords[[findex, t_idx, y_idx, z_idx + 1]] - z_coords[[findex, t_idx, y_idx, z_idx]])
+                .abs()
         } else {
             30.0 // Default spacing
         };
-        
+
         // Calculate normalized coordinates within the cell (0 to 1)
         // We assume the nearest point is at the center of a cell of size dx*dy*dz
         let xd = ((x - x0) / dx + 0.5).clamp(0.0, 1.0);
         let yd = ((y - y0) / dy + 0.5).clamp(0.0, 1.0);
         let zd = ((z - z0) / dz + 0.5).clamp(0.0, 1.0);
-        
+
         // For simplicity and robustness with the turbine-based grid structure,
         // we'll use the nearest neighbor value weighted by distance
         // This is a practical compromise given the complex grid organization
         let value = field[[findex, t_idx, y_idx, z_idx]];
-        
+
         Ok(value)
     }
 
@@ -2047,12 +2088,12 @@ impl FlorisModel {
         let n_turbines = x_coords.shape()[1];
         let n_y = x_coords.shape()[2];
         let n_z = x_coords.shape()[3];
-        
+
         let mut min_dist_sq = f64::INFINITY;
         let mut best_t = 0;
         let mut best_y = 0;
         let mut best_z = 0;
-        
+
         // Search all grid points for this findex
         for t in 0..n_turbines {
             for jy in 0..n_y {
@@ -2061,7 +2102,7 @@ impl FlorisModel {
                     let dy = y_coords[[findex, t, jy, jz]] - y;
                     let dz = z_coords[[findex, t, jy, jz]] - z;
                     let dist_sq = dx * dx + dy * dy + dz * dz;
-                    
+
                     if dist_sq < min_dist_sq {
                         min_dist_sq = dist_sq;
                         best_t = t;
@@ -2071,7 +2112,7 @@ impl FlorisModel {
                 }
             }
         }
-        
+
         (best_t, best_y, best_z)
     }
 

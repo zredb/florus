@@ -432,7 +432,9 @@ impl LayoutOptimizer for LayoutOptimizationGoldenSection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::floris_config::{FarmConfig, FlorisConfig, FlowFieldConfig, SolverConfig, WakeConfig};
+    use crate::floris_config::{
+        FarmConfig, FlorisConfig, FlowFieldConfig, SolverConfig, WakeConfig,
+    };
     use crate::floris_model::FlorisModel;
 
     fn create_test_config() -> FlorisConfig {

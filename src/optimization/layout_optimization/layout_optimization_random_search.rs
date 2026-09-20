@@ -339,7 +339,9 @@ impl LayoutOptimizer for LayoutOptimizationRandomSearch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::floris_config::{FarmConfig, FlorisConfig, FlowFieldConfig, SolverConfig, WakeConfig};
+    use crate::floris_config::{
+        FarmConfig, FlorisConfig, FlowFieldConfig, SolverConfig, WakeConfig,
+    };
     use crate::floris_model::FlorisModel;
     use crate::types::Array1;
 

@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== Layout Optimization with Wind Rose ===\n");
 
     println!("Layout Optimization with Full Wind Distribution:\\n");
-    
+
     println!("Key Difference from Single Condition:");
     println!("  - Optimizes across all wind conditions");
     println!("  - Weights by wind direction frequency");

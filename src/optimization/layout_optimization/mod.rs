@@ -11,43 +11,27 @@
 
 // Module declarations
 pub mod layout_optimization_base;
+pub mod layout_optimization_boundary_grid;
+pub mod layout_optimization_pyoptsparse;
 pub mod layout_optimization_random_search;
 pub mod layout_optimization_scipy;
-pub mod layout_optimization_pyoptsparse;
-pub mod layout_optimization_boundary_grid;
 
 // Re-exports from submodules
 pub use layout_optimization_base::{
-    Boundary,
-    LayoutOptimizationConfig,
-    LayoutOptimizationResult,
-    LayoutOptimizer,
-    OptimizationConfigFile,
+    calculate_pairwise_distances, generate_grid_points, is_point_in_boundary, load_optimization,
+    load_optimization_result, save_optimization, save_optimization_result, Boundary,
+    LayoutOptimizationConfig, LayoutOptimizationResult, LayoutOptimizer, OptimizationConfigFile,
     OptimizationType,
-    is_point_in_boundary,
-    generate_grid_points,
-    calculate_pairwise_distances,
-    load_optimization,
-    save_optimization,
-    load_optimization_result,
-    save_optimization_result,
 };
 
-pub use layout_optimization_random_search::{
-    LayoutOptimizationRandomSearch,
-};
+pub use layout_optimization_random_search::LayoutOptimizationRandomSearch;
 
-pub use layout_optimization_scipy::{
-    LayoutOptimizationScipy,
-};
+pub use layout_optimization_scipy::LayoutOptimizationScipy;
 
 pub use layout_optimization_pyoptsparse::{
-    LayoutOptimizationPyOptSparse,
-    LayoutOptimizationGoldenSection,
+    LayoutOptimizationGoldenSection, LayoutOptimizationPyOptSparse,
 };
 
 pub use layout_optimization_boundary_grid::{
-    LayoutOptimizationBoundaryGrid,
-    LayoutOptimizationMixedInteger,
-    GridOptimizationConfig,
+    GridOptimizationConfig, LayoutOptimizationBoundaryGrid, LayoutOptimizationMixedInteger,
 };

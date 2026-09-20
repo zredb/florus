@@ -10,10 +10,7 @@ fn main() -> Result<()> {
     println!("=== Get Flow with Custom Planes ===\n");
 
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-    fmodel.set_layout(
-        &ndarray::arr1(&[0.0, 630.0]),
-        &ndarray::arr1(&[0.0, 0.0]),
-    )?;
+    fmodel.set_layout(&ndarray::arr1(&[0.0, 630.0]), &ndarray::arr1(&[0.0, 0.0]))?;
 
     fmodel.set_wind_conditions(
         ndarray::arr1(&[8.0]),
@@ -45,7 +42,9 @@ fn main() -> Result<()> {
     println!("  - Load analysis\n");
 
     fmodel.run()?;
-    println!("Note: Full custom plane extraction requires sample_velocity_deficit_profiles method.");
+    println!(
+        "Note: Full custom plane extraction requires sample_velocity_deficit_profiles method."
+    );
 
     println!("\n=== Example Complete ===");
     Ok(())

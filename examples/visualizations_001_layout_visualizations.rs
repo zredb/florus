@@ -6,8 +6,8 @@
 //! Note: Since Plotters doesn't support multi-subplot layouts like matplotlib,
 //! each visualization is saved as a separate file instead of subplots.
 
-use florus::{FlorisModel, Result};
 use florus::visualization::*;
+use florus::{FlorisModel, Result};
 
 fn main() -> Result<()> {
     println!("=== Layout Visualizations Example ===\n");
@@ -44,24 +44,31 @@ fn main() -> Result<()> {
         Some(max_ws),
         Some("Flow visualization and turbine points"),
     ) {
-        Ok(_) => println!("   ✓ Saved to output/examples_visualizations/plot_1_flow_and_points.png"),
+        Ok(_) => {
+            println!("   ✓ Saved to output/examples_visualizations/plot_1_flow_and_points.png")
+        }
         Err(e) => eprintln!("   ✗ Error: {}", e),
     }
 
     // Plot 2: Show turbine names with a red bounding box
     println!("\n2. Creating turbine labels with bounding box...");
     let turbine_names = vec![
-        "T10".to_string(), "T11".to_string(), "T12".to_string(),
-        "T13".to_string(), "T22".to_string(),
+        "T10".to_string(),
+        "T11".to_string(),
+        "T12".to_string(),
+        "T13".to_string(),
+        "T22".to_string(),
     ];
     match plot_turbine_labels(
         &fmodel,
         "output/examples_visualizations/plot_2_labels_with_bbox.png",
         Some(&turbine_names),
         None,
-        true,  // show_bbox
+        true, // show_bbox
     ) {
-        Ok(_) => println!("   ✓ Saved to output/examples_visualizations/plot_2_labels_with_bbox.png"),
+        Ok(_) => {
+            println!("   ✓ Saved to output/examples_visualizations/plot_2_labels_with_bbox.png")
+        }
         Err(e) => eprintln!("   ✗ Error: {}", e),
     }
 
@@ -69,7 +76,7 @@ fn main() -> Result<()> {
     println!("\n3. Creating flow visualization with yawed turbine...");
     fmodel.set_yaw_angles(ndarray::arr2(&[[0.0, 30.0, 0.0, 0.0, 0.0]]))?;
     fmodel.run()?;
-    
+
     // First create the flow visualization
     match visualize_horizontal_plane(
         &fmodel,
@@ -81,7 +88,7 @@ fn main() -> Result<()> {
         Ok(_) => println!("   ✓ Saved to output/examples_visualizations/plot_3_flow_with_yaw.png"),
         Err(e) => eprintln!("   ✗ Error: {}", e),
     }
-    
+
     // Then overlay rotor orientations
     match plot_turbine_rotors(
         &fmodel,
@@ -99,10 +106,12 @@ fn main() -> Result<()> {
     match plot_waking_directions(
         &fmodel,
         "output/examples_visualizations/plot_4_wake_directions.png",
-        None,  // No distance limit
-        None,  // No connection limit
+        None, // No distance limit
+        None, // No connection limit
     ) {
-        Ok(_) => println!("   ✓ Saved to output/examples_visualizations/plot_4_wake_directions.png"),
+        Ok(_) => {
+            println!("   ✓ Saved to output/examples_visualizations/plot_4_wake_directions.png")
+        }
         Err(e) => eprintln!("   ✗ Error: {}", e),
     }
 
@@ -111,8 +120,8 @@ fn main() -> Result<()> {
     match plot_waking_directions(
         &fmodel,
         "output/examples_visualizations/plot_5_subset_limited.png",
-        Some(7.0),  // Limit to 7D distance
-        None,       // No connection limit
+        Some(7.0), // Limit to 7D distance
+        None,      // No connection limit
     ) {
         Ok(_) => println!("   ✓ Saved to output/examples_visualizations/plot_5_subset_limited.png"),
         Err(e) => eprintln!("   ✗ Error: {}", e),
@@ -120,19 +129,14 @@ fn main() -> Result<()> {
 
     // Plot 6: Plot with a shaded region
     println!("\n6. Creating layout with shaded region...");
-    let region_points = vec![
-        (0.0, 0.0),
-        (300.0, 0.0),
-        (300.0, 1000.0),
-        (0.0, 700.0),
-    ];
+    let region_points = vec![(0.0, 0.0), (300.0, 0.0), (300.0, 1000.0), (0.0, 700.0)];
     match shade_region(
         &region_points,
         "output/examples_visualizations/plot_6_shaded_region.png",
-        false,      // Don't show vertex points
-        "black",    // Region color
-        0.3,        // Alpha (transparency)
-        "black",    // Point color (not used since show_points=false)
+        false,   // Don't show vertex points
+        "black", // Region color
+        0.3,     // Alpha (transparency)
+        "black", // Point color (not used since show_points=false)
     ) {
         Ok(_) => println!("   ✓ Saved to output/examples_visualizations/plot_6_shaded_region.png"),
         Err(e) => eprintln!("   ✗ Error: {}", e),

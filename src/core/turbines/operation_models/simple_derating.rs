@@ -5,7 +5,10 @@
 
 use super::SimpleTurbine;
 use crate::{
-    core::{TurbineContext, TurbineParameters, turbines::{POWER_SETPOINT_DEFAULT, operation_models::OperationModel}},
+    core::{
+        turbines::{operation_models::OperationModel, POWER_SETPOINT_DEFAULT},
+        TurbineContext, TurbineParameters,
+    },
     types::Array2,
 };
 

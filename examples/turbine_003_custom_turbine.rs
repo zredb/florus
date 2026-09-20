@@ -11,40 +11,35 @@ fn main() -> Result<()> {
     println!("=== Custom Turbine Configuration ===\n");
 
     // Demonstrate different turbine types from the library
-    let turbine_types = vec![
-        "nrel_5MW",
-        "iea_10MW", 
-        "iea_15MW",
-        "iea_22MW",
-    ];
+    let turbine_types = vec!["nrel_5MW", "iea_10MW", "iea_15MW", "iea_22MW"];
 
     println!("Available Reference Turbines:\n");
-    println!("{:<15} | {:<15} | {:<15}", "Turbine", "Rotor Diam (m)", "Hub Height (m)");
+    println!(
+        "{:<15} | {:<15} | {:<15}",
+        "Turbine", "Rotor Diam (m)", "Hub Height (m)"
+    );
     println!("{}|{}|{}", "-".repeat(16), "-".repeat(16), "-".repeat(16));
 
     for turb_name in &turbine_types {
         // Create a single turbine model for each type
         let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-        fmodel.set_layout(
-            &ndarray::arr1(&[0.0]),
-            &ndarray::arr1(&[0.0]),
-        )?;
+        fmodel.set_layout(&ndarray::arr1(&[0.0]), &ndarray::arr1(&[0.0]))?;
 
         // Get rotor diameter and hub height from farm
         let rotor_diam = fmodel.core().farm.rotor_diameters[0];
         let hub_height = fmodel.core().farm.hub_heights[0];
 
-        println!("{:<15} | {:<15.2} | {:<15.2}", turb_name, rotor_diam, hub_height);
+        println!(
+            "{:<15} | {:<15.2} | {:<15.2}",
+            turb_name, rotor_diam, hub_height
+        );
     }
 
     println!("\n--- Testing NREL 5MW Power Curve ---\n");
 
     // Test power curve at different wind speeds
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-    fmodel.set_layout(
-        &ndarray::arr1(&[0.0]),
-        &ndarray::arr1(&[0.0]),
-    )?;
+    fmodel.set_layout(&ndarray::arr1(&[0.0]), &ndarray::arr1(&[0.0]))?;
 
     let wind_speeds = vec![3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0, 20.0, 25.0];
     let n_ws = wind_speeds.len();
@@ -63,7 +58,7 @@ fn main() -> Result<()> {
     for (i, ws) in wind_speeds.iter().enumerate() {
         let power_w = powers[[i, 0]];
         let power_kw = power_w / 1000.0;
-        
+
         // Calculate approximate Cp
         let air_density = 1.225;
         let rotor_radius = 63.0; // NREL 5MW

@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== WRG Visualization ===\n");
 
     println!("Visualizing Wind Resource Grid Data:\\n");
-    
+
     println!("Visualization Types:");
     println!("  1. Wind speed maps:");
     println!("     - Color-coded wind speed contours");

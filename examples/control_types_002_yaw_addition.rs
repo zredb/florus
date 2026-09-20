@@ -40,24 +40,36 @@ fn main() -> Result<()> {
     let effective_wind_speeds = fmodel.turbine_average_velocities();
 
     println!("Turbine Powers (kW):");
-    println!("{:<12} | {:<12} | {:<12} | {:<12}", "Condition", "T0", "T1", "T2");
+    println!(
+        "{:<12} | {:<12} | {:<12} | {:<12}",
+        "Condition", "T0", "T1", "T2"
+    );
     println!("{}", "-".repeat(52));
     for fi in 0..2 {
         let label = if fi == 0 { "All on" } else { "T0&T1 off" };
         println!(
             "{:<12} | {:<12.2} | {:<12.2} | {:<12.2}",
-            label, turbine_powers[[fi, 0]], turbine_powers[[fi, 1]], turbine_powers[[fi, 2]]
+            label,
+            turbine_powers[[fi, 0]],
+            turbine_powers[[fi, 1]],
+            turbine_powers[[fi, 2]]
         );
     }
 
     println!("\nEffective Wind Speeds (m/s):");
-    println!("{:<12} | {:<12} | {:<12} | {:<12}", "Condition", "T0", "T1", "T2");
+    println!(
+        "{:<12} | {:<12} | {:<12} | {:<12}",
+        "Condition", "T0", "T1", "T2"
+    );
     println!("{}", "-".repeat(52));
     for fi in 0..2 {
         let label = if fi == 0 { "All on" } else { "T0&T1 off" };
         println!(
             "{:<12} | {:<12.2} | {:<12.2} | {:<12.2}",
-            label, effective_wind_speeds[[fi, 0]], effective_wind_speeds[[fi, 1]], effective_wind_speeds[[fi, 2]]
+            label,
+            effective_wind_speeds[[fi, 0]],
+            effective_wind_speeds[[fi, 1]],
+            effective_wind_speeds[[fi, 2]]
         );
     }
 

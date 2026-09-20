@@ -14,11 +14,8 @@ fn main() -> Result<()> {
     match FlorisModel::from_file("examples/inputs/turbopark.yaml") {
         Ok(mut fmodel) => {
             println!("TurboPark model loaded successfully!\n");
-            
-            fmodel.set_layout(
-                &ndarray::arr1(&[0.0, 630.0]),
-                &ndarray::arr1(&[0.0, 0.0]),
-            )?;
+
+            fmodel.set_layout(&ndarray::arr1(&[0.0, 630.0]), &ndarray::arr1(&[0.0, 0.0]))?;
 
             fmodel.set_wind_conditions(
                 ndarray::arr1(&[8.0]),
@@ -28,11 +25,14 @@ fn main() -> Result<()> {
 
             fmodel.run()?;
             let powers = fmodel.get_turbine_powers();
-            
+
             println!("Results:");
             println!("  T0: {:.2} kW", powers[[0, 0]] / 1000.0);
             println!("  T1: {:.2} kW", powers[[0, 1]] / 1000.0);
-            println!("  Total: {:.2} kW\n", (powers[[0, 0]] + powers[[0, 1]]) / 1000.0);
+            println!(
+                "  Total: {:.2} kW\n",
+                (powers[[0, 0]] + powers[[0, 1]]) / 1000.0
+            );
         }
         Err(e) => {
             println!("Note: TurboPark configuration not available.\n");

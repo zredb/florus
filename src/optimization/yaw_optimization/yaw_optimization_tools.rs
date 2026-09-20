@@ -1,8 +1,8 @@
-use crate::types::Float;
 use crate::floris_model::FlorisModel;
+use crate::optimization::YawAngleBounds;
+use crate::types::Float;
 use crate::Array2;
 use crate::Array4;
-use crate::optimization::YawAngleBounds;
 
 /// Calculate cosine loss factor for yaw misalignment
 pub fn yaw_cosine_loss(yaw_angle: Float, exponent: Float) -> Float {
@@ -16,11 +16,11 @@ pub fn yaw_cosine_loss_derivative(yaw_angle: Float, exponent: Float) -> Float {
     let yaw_rad = yaw_angle.to_radians();
     let cos_yaw = yaw_rad.cos();
     let sin_yaw = yaw_rad.sin();
-    
+
     if cos_yaw.abs() < 1e-10 {
         return 0.0;
     }
-    
+
     -exponent * cos_yaw.powf(exponent - 1.0) * sin_yaw
 }
 
@@ -41,7 +41,10 @@ pub fn estimate_wake_deflection_angle(
     let axial_induction = if thrust_coefficient < 0.96 {
         0.5 * (1.0 - (1.0 - thrust_coefficient).sqrt())
     } else {
-        0.143 + (0.0203 - 0.6427 * (0.889 - thrust_coefficient)).sqrt().max(0.0)
+        0.143
+            + (0.0203 - 0.6427 * (0.889 - thrust_coefficient))
+                .sqrt()
+                .max(0.0)
     };
 
     let c = ad / kd;
@@ -81,7 +84,8 @@ pub fn derive_downstream_turbines(
     }
 
     let grid_option = fmodel.grid();
-    let grid = grid_option.as_ref()
+    let grid = grid_option
+        .as_ref()
         .ok_or_else(|| anyhow::anyhow!("Grid not initialized"))?;
 
     let n_turbines = fmodel.farm().n_turbines();
@@ -219,7 +223,9 @@ where
 
         for ti in 0..n_turbines {
             let current_yaw = yaw_angles[[0, ti]];
-            let perturbations = [-15.0, -10.0, -5.0, -2.0, -1.0, 0.0, 1.0, 2.0, 5.0, 10.0, 15.0];
+            let perturbations = [
+                -15.0, -10.0, -5.0, -2.0, -1.0, 0.0, 1.0, 2.0, 5.0, 10.0, 15.0,
+            ];
             let mut best_yaw = current_yaw;
             let mut best_power = prev_power;
 

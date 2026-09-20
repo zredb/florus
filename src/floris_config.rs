@@ -405,10 +405,13 @@ pub enum VelocityModelConfig {
         alpha_mod: Float,
     },
     EmpiricalGauss {
-        ad: Float,
-        bd: Float,
-        alpha: Float,
-        beta: Float,
+        wake_expansion_rates: Vec<Float>,
+        breakpoints_d: Vec<Float>,
+        sigma_0_d: Float,
+        smoothing_length_d: Float,
+        mixing_gain_velocity: Float,
+        awc_wake_exp: Float,
+        awc_wake_denominator: Float,
     },
 }
 
@@ -455,9 +458,11 @@ pub enum DeflectionModelConfig {
         kd: Float,
     },
     EmpiricalGauss {
-        ad: Float,
-        bd: Float,
-        kd: Float,
+        horizontal_deflection_gain_d: Float,
+        vertical_deflection_gain_d: Float,
+        deflection_rate: Float,
+        mixing_gain_deflection: Float,
+        yaw_added_mixing_gain: Float,
     },
 }
 
@@ -494,8 +499,7 @@ pub enum TurbulenceModelConfig {
         downstream: Float,
     },
     WakeInducedMixing {
-        constant: Float,
-        ai: Float,
+        atmospheric_ti_gain: Float,
     },
     None,
 }
@@ -618,15 +622,29 @@ fn parse_velocity_model(
             })
         }
         "empirical_gauss" => {
-            let ad = get_f64(params, "ad").unwrap_or(0.0);
-            let bd = get_f64(params, "bd").unwrap_or(0.0);
-            let alpha = get_f64(params, "alpha").unwrap_or(0.38);
-            let beta = get_f64(params, "beta").unwrap_or(0.004);
+            let wake_expansion_rates: Vec<Float> = params
+                .get("wake_expansion_rates")
+                .and_then(|v| v.as_sequence())
+                .map(|seq| seq.iter().filter_map(|v| v.as_f64()).collect())
+                .unwrap_or_else(|| vec![0.023, 0.008]);
+            let breakpoints_d: Vec<Float> = params
+                .get("breakpoints_D")
+                .and_then(|v| v.as_sequence())
+                .map(|seq| seq.iter().filter_map(|v| v.as_f64()).collect())
+                .unwrap_or_else(|| vec![10.0]);
+            let sigma_0_d = get_f64(params, "sigma_0_D").unwrap_or(0.28);
+            let smoothing_length_d = get_f64(params, "smoothing_length_D").unwrap_or(2.0);
+            let mixing_gain_velocity = get_f64(params, "mixing_gain_velocity").unwrap_or(2.0);
+            let awc_wake_exp = get_f64(params, "awc_wake_exp").unwrap_or(1.2);
+            let awc_wake_denominator = get_f64(params, "awc_wake_denominator").unwrap_or(400.0);
             Ok(VelocityModelConfig::EmpiricalGauss {
-                ad,
-                bd,
-                alpha,
-                beta,
+                wake_expansion_rates,
+                breakpoints_d,
+                sigma_0_d,
+                smoothing_length_d,
+                mixing_gain_velocity,
+                awc_wake_exp,
+                awc_wake_denominator,
             })
         }
         _ => Err(format!("Unknown velocity model: {}", model_name)),
@@ -672,10 +690,20 @@ fn parse_deflection_model(
             Ok(DeflectionModelConfig::Jimenez { ad, bd, kd })
         }
         "empirical_gauss" => {
-            let ad = get_f64(params, "ad").unwrap_or(0.0);
-            let bd = get_f64(params, "bd").unwrap_or(0.0);
-            let kd = get_f64(params, "kd").unwrap_or(0.05);
-            Ok(DeflectionModelConfig::EmpiricalGauss { ad, bd, kd })
+            let horizontal_deflection_gain_d =
+                get_f64(params, "horizontal_deflection_gain_D").unwrap_or(3.0);
+            let vertical_deflection_gain_d =
+                get_f64(params, "vertical_deflection_gain_D").unwrap_or(-1.0);
+            let deflection_rate = get_f64(params, "deflection_rate").unwrap_or(22.0);
+            let mixing_gain_deflection = get_f64(params, "mixing_gain_deflection").unwrap_or(0.0);
+            let yaw_added_mixing_gain = get_f64(params, "yaw_added_mixing_gain").unwrap_or(0.0);
+            Ok(DeflectionModelConfig::EmpiricalGauss {
+                horizontal_deflection_gain_d,
+                vertical_deflection_gain_d,
+                deflection_rate,
+                mixing_gain_deflection,
+                yaw_added_mixing_gain,
+            })
         }
         _ => Err(format!("Unknown deflection model: {}", model_name)),
     }
@@ -713,9 +741,10 @@ fn parse_turbulence_model(
             })
         }
         "wake_induced_mixing" => {
-            let constant = get_f64(params, "constant").unwrap_or(0.0);
-            let ai = get_f64(params, "ai").unwrap_or(0.0);
-            Ok(TurbulenceModelConfig::WakeInducedMixing { constant, ai })
+            let atmospheric_ti_gain = get_f64(params, "atmospheric_ti_gain").unwrap_or(0.0);
+            Ok(TurbulenceModelConfig::WakeInducedMixing {
+                atmospheric_ti_gain,
+            })
         }
         "none" => Ok(TurbulenceModelConfig::None),
         _ => Err(format!("Unknown turbulence model: {}", model_name)),

@@ -13,8 +13,8 @@
 //!
 //! Corresponds to `002_visualizations.py` in Python FLORIS.
 
-use florus::{FlorisModel, Result};
 use florus::visualization::*;
+use florus::{FlorisModel, Result};
 
 fn main() -> Result<()> {
     println!("=== FLORUS Visualization Example ===\n");
@@ -25,10 +25,7 @@ fn main() -> Result<()> {
     // Set the farm layout to have 8 turbines irregularly placed
     let layout_x = vec![0.0, 500.0, 0.0, 128.0, 1000.0, 900.0, 1500.0, 1250.0];
     let layout_y = vec![0.0, 300.0, 750.0, 1400.0, 0.0, 567.0, 888.0, 1450.0];
-    fmodel.set_layout(
-        &ndarray::arr1(&layout_x),
-        &ndarray::arr1(&layout_y),
-    )?;
+    fmodel.set_layout(&ndarray::arr1(&layout_x), &ndarray::arr1(&layout_y))?;
 
     println!("Layout visualization contains functions for visualizing the layout:");
     println!("  - plot_turbine_points");
@@ -46,9 +43,9 @@ fn main() -> Result<()> {
     match plot_turbine_points(
         &fmodel,
         "output/layout_subplot_1_points.png",
-        None,        // All turbines
-        "black",     // Color
-        10,          // Marker size
+        None,    // All turbines
+        "black", // Color
+        10,      // Marker size
     ) {
         Ok(_) => println!("   ✓ Saved to output/layout_subplot_1_points.png"),
         Err(e) => eprintln!("   ✗ Error: {}", e),
@@ -59,9 +56,9 @@ fn main() -> Result<()> {
     match plot_turbine_labels(
         &fmodel,
         "output/layout_subplot_2_labeled.png",
-        None,        // Use default indices
-        None,        // Use default offset
-        false,       // No bounding box
+        None,  // Use default indices
+        None,  // Use default offset
+        false, // No bounding box
     ) {
         Ok(_) => println!("   ✓ Saved to output/layout_subplot_2_labeled.png"),
         Err(e) => eprintln!("   ✗ Error: {}", e),
@@ -72,8 +69,8 @@ fn main() -> Result<()> {
     match plot_waking_directions(
         &fmodel,
         "output/layout_subplot_3_waking.png",
-        None,        // No distance limit
-        Some(2),     // Limit to 2 nearest neighbors
+        None,    // No distance limit
+        Some(2), // Limit to 2 nearest neighbors
     ) {
         Ok(_) => println!("   ✓ Saved to output/layout_subplot_3_waking.png"),
         Err(e) => eprintln!("   ✗ Error: {}", e),
@@ -82,15 +79,21 @@ fn main() -> Result<()> {
     // Subplot 4: Use Provided Turbine Names
     println!("\n4. Creating plot with custom turbine names...");
     let turbine_names = vec![
-        "T1".to_string(), "T2".to_string(), "T3".to_string(), "T4".to_string(),
-        "T9".to_string(), "T10".to_string(), "T75".to_string(), "T78".to_string(),
+        "T1".to_string(),
+        "T2".to_string(),
+        "T3".to_string(),
+        "T4".to_string(),
+        "T9".to_string(),
+        "T10".to_string(),
+        "T75".to_string(),
+        "T78".to_string(),
     ];
     match plot_turbine_labels(
         &fmodel,
         "output/layout_subplot_4_custom_names.png",
-        Some(&turbine_names),  // Use custom names
-        None,                  // Use default offset
-        false,                 // No bounding box
+        Some(&turbine_names), // Use custom names
+        None,                 // Use default offset
+        false,                // No bounding box
     ) {
         Ok(_) => println!("   ✓ Saved to output/layout_subplot_4_custom_names.png"),
         Err(e) => eprintln!("   ✗ Error: {}", e),
@@ -103,9 +106,9 @@ fn main() -> Result<()> {
 
     // For flow visualizations, set to a single condition (n_findex = 1)
     fmodel.set_wind_conditions(
-        ndarray::arr1(&[8.0]),     // Wind speed
-        ndarray::arr1(&[290.0]),   // Wind direction
-        ndarray::arr1(&[0.06]),    // Turbulence intensity
+        ndarray::arr1(&[8.0]),   // Wind speed
+        ndarray::arr1(&[290.0]), // Wind direction
+        ndarray::arr1(&[0.06]),  // Turbulence intensity
     )?;
 
     println!("Running simulation for flow visualization...");
@@ -116,8 +119,8 @@ fn main() -> Result<()> {
     match visualize_horizontal_plane(
         &fmodel,
         "output/horizontal_flow_with_rotors.png",
-        Some(3.0),   // Min wind speed for color scale
-        Some(12.0),  // Max wind speed for color scale
+        Some(3.0),  // Min wind speed for color scale
+        Some(12.0), // Max wind speed for color scale
         Some("Horizontal Flow with Turbine Rotors and Labels"),
     ) {
         Ok(_) => println!("   ✓ Saved to output/horizontal_flow_with_rotors.png"),
@@ -126,13 +129,15 @@ fn main() -> Result<()> {
 
     // Plot turbine rotors with yaw angles
     println!("\n6. Setting yaw angles and plotting rotors on flow field...");
-    fmodel.set_yaw_angles(ndarray::arr2(&[[0.0, 10.0, 5.0, 15.0, 0.0, 20.0, 10.0, 5.0]]))?;
-    
+    fmodel.set_yaw_angles(ndarray::arr2(&[[
+        0.0, 10.0, 5.0, 15.0, 0.0, 20.0, 10.0, 5.0,
+    ]]))?;
+
     match plot_turbine_rotors(
         &fmodel,
         "output/flow_field_with_rotors.png",
         "black",
-        Some(290.0),  // Use current wind direction
+        Some(290.0), // Use current wind direction
     ) {
         Ok(_) => println!("   ✓ Saved to output/flow_field_with_rotors.png"),
         Err(e) => eprintln!("   ✗ Error: {}", e),

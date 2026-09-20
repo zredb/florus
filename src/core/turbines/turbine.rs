@@ -42,8 +42,12 @@ impl Turbine {
         };
 
         // Create lookup tables from cp_ct_table
-        let wind_speeds = self.turbine_type.power_thrust_table.cp_ct_table.wind_speeds();
-        
+        let wind_speeds = self
+            .turbine_type
+            .power_thrust_table
+            .cp_ct_table
+            .wind_speeds();
+
         // Extract CP and CT values from the table
         let (cp_values, ct_values) = match &self.turbine_type.power_thrust_table.cp_ct_table {
             crate::core::turbines::cp_ct_table::CpCtTable::OneDimensional(table) => {
@@ -52,7 +56,9 @@ impl Turbine {
             _ => {
                 // For multi-dimensional tables, we need to handle differently
                 // For now, return empty arrays (this should be improved)
-                return Err(anyhow::anyhow!("Multi-dimensional Cp/Ct tables not yet supported in Turbine::power"));
+                return Err(anyhow::anyhow!(
+                    "Multi-dimensional Cp/Ct tables not yet supported in Turbine::power"
+                ));
             }
         };
 
@@ -73,7 +79,11 @@ impl Turbine {
         let params = TurbineParameters {
             power_table,
             thrust_table,
-            ref_air_density: self.turbine_type.power_thrust_table.ref_air_density.unwrap_or(1.225),
+            ref_air_density: self
+                .turbine_type
+                .power_thrust_table
+                .ref_air_density
+                .unwrap_or(1.225),
             cosine_loss_exponent_yaw: self
                 .turbine_type
                 .power_thrust_table
@@ -133,8 +143,12 @@ impl Turbine {
         };
 
         // Create lookup tables from cp_ct_table
-        let wind_speeds = self.turbine_type.power_thrust_table.cp_ct_table.wind_speeds();
-        
+        let wind_speeds = self
+            .turbine_type
+            .power_thrust_table
+            .cp_ct_table
+            .wind_speeds();
+
         // Extract CP and CT values from the table
         let (cp_values, ct_values) = match &self.turbine_type.power_thrust_table.cp_ct_table {
             crate::core::turbines::cp_ct_table::CpCtTable::OneDimensional(table) => {
@@ -163,7 +177,11 @@ impl Turbine {
         let params = TurbineParameters {
             power_table,
             thrust_table,
-            ref_air_density: self.turbine_type.power_thrust_table.ref_air_density.unwrap_or(1.225),
+            ref_air_density: self
+                .turbine_type
+                .power_thrust_table
+                .ref_air_density
+                .unwrap_or(1.225),
             cosine_loss_exponent_yaw: self
                 .turbine_type
                 .power_thrust_table
@@ -206,7 +224,9 @@ impl Turbine {
         };
 
         // Call the operation model's thrust_coefficient method
-        self.turbine_type.operation_model.thrust_coefficient(&params, &ctx)
+        self.turbine_type
+            .operation_model
+            .thrust_coefficient(&params, &ctx)
     }
 
     /// Calculate axial induction factor for given velocities
@@ -223,8 +243,12 @@ impl Turbine {
         };
 
         // Create lookup tables from cp_ct_table
-        let wind_speeds = self.turbine_type.power_thrust_table.cp_ct_table.wind_speeds();
-        
+        let wind_speeds = self
+            .turbine_type
+            .power_thrust_table
+            .cp_ct_table
+            .wind_speeds();
+
         // Extract CP and CT values from the table
         let (cp_values, ct_values) = match &self.turbine_type.power_thrust_table.cp_ct_table {
             crate::core::turbines::cp_ct_table::CpCtTable::OneDimensional(table) => {
@@ -232,7 +256,9 @@ impl Turbine {
             }
             _ => {
                 // For multi-dimensional tables, we need to handle differently
-                return Err(anyhow::anyhow!("Multi-dimensional Cp/Ct tables not yet supported in Turbine::axial_induction"));
+                return Err(anyhow::anyhow!(
+                    "Multi-dimensional Cp/Ct tables not yet supported in Turbine::axial_induction"
+                ));
             }
         };
 
@@ -253,7 +279,11 @@ impl Turbine {
         let params = TurbineParameters {
             power_table,
             thrust_table,
-            ref_air_density: self.turbine_type.power_thrust_table.ref_air_density.unwrap_or(1.225),
+            ref_air_density: self
+                .turbine_type
+                .power_thrust_table
+                .ref_air_density
+                .unwrap_or(1.225),
             cosine_loss_exponent_yaw: self
                 .turbine_type
                 .power_thrust_table
@@ -296,6 +326,8 @@ impl Turbine {
         };
 
         // Call the operation model's axial_induction method
-        self.turbine_type.operation_model.axial_induction(&params, &ctx)
+        self.turbine_type
+            .operation_model
+            .axial_induction(&params, &ctx)
     }
 }

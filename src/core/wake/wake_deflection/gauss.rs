@@ -1,11 +1,11 @@
+use crate::core::wake::{BaseModel, DeflectionModel};
+use crate::core::{FlowField, Grid};
 /// Gauss wake deflection model
 ///
 /// Based on Bastankhah and Porte-Agel (2016) - wake deflection for Gauss velocity model
-use crate::types::{Float, Array1, Array2};
-use crate::core::wake::{BaseModel, DeflectionModel};
-use crate::core::{Grid, FlowField};
-use std::collections::HashMap;
+use crate::types::{Array1, Array2, Float};
 use ndarray::Array;
+use std::collections::HashMap;
 
 /// Gauss wake deflection model parameters
 #[derive(Debug, Clone)]
@@ -59,16 +59,23 @@ impl DeflectionModel for GaussVelocityDeflection {
         flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array1>> {
         let mut params = HashMap::new();
-        
+
         // Add wind_veer to parameters
         let wind_veer_value = flow_field.wind_veer;
-        params.insert("wind_veer".to_string(), Array1::from_elem(grid.x_sorted().shape()[0], wind_veer_value));
-        
+        params.insert(
+            "wind_veer".to_string(),
+            Array1::from_elem(grid.x_sorted().shape()[0], wind_veer_value),
+        );
+
         Ok(params)
     }
 
     fn clone_box(&self) -> Box<dyn DeflectionModel> {
         Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 
     fn function(
@@ -91,7 +98,7 @@ impl DeflectionModel for GaussVelocityDeflection {
         } else {
             0.0 // Default value
         };
-        
+
         let shape = x.shape();
         let n_findex = shape[0];
         let n_turbines = shape[1];
@@ -115,18 +122,18 @@ impl DeflectionModel for GaussVelocityDeflection {
                 let u_initial = 1.0; // normalized
                 let ct = thrust_coefficient;
                 let tilt = 0.0; // assuming no tilt
-                
+
                 let ct_yaw_tilt = ct * crate::utilities::cosd(tilt) * crate::utilities::cosd(yaw);
                 let sqrt_ct_yaw_tilt = (1.0 - ct_yaw_tilt).sqrt();
-                let uR = u_initial * ct_yaw_tilt 
-                    / (2.0 * (1.0 - sqrt_ct_yaw_tilt));
+                let uR = u_initial * ct_yaw_tilt / (2.0 * (1.0 - sqrt_ct_yaw_tilt));
                 let u0 = u_initial * sqrt_ct_yaw_tilt;
 
                 // Length of near wake
                 let x0 = rotor_diameter * (crate::utilities::cosd(yaw) * (1.0 + sqrt_ct_yaw_tilt))
-                    / (2.0_f64.sqrt() * (
-                        4.0 * self.alpha * turbulence_intensity + 2.0 * self.beta * (1.0 - sqrt_ct_yaw_tilt)
-                    )) + x_i;
+                    / (2.0_f64.sqrt()
+                        * (4.0 * self.alpha * turbulence_intensity
+                            + 2.0 * self.beta * (1.0 - sqrt_ct_yaw_tilt)))
+                    + x_i;
 
                 // Wake expansion parameters
                 let ky = self.ka * turbulence_intensity + self.kb;
@@ -138,7 +145,8 @@ impl DeflectionModel for GaussVelocityDeflection {
 
                 // Initial Gaussian wake expansion
                 let sigma_z0 = rotor_diameter * 0.5 * (uR / (u_initial + u0)).sqrt();
-                let sigma_y0 = sigma_z0 * crate::utilities::cosd(yaw) * crate::utilities::cosd(wind_veer);
+                let sigma_y0 =
+                    sigma_z0 * crate::utilities::cosd(yaw) * crate::utilities::cosd(wind_veer);
 
                 // Yaw parameters (skew angle and distance from centerline)
                 let theta_c0 = self.dm * (0.3 * yaw.to_radians() / crate::utilities::cosd(yaw));
@@ -151,7 +159,7 @@ impl DeflectionModel for GaussVelocityDeflection {
                 if x_i >= xR && x_i <= x0 && (x0 - xR) > 1e-10 {
                     let near_wake_factor = (x_i - xR) / (x0 - xR);
                     delta_near_wake = near_wake_factor * delta0 + (self.ad + self.bd * (x_i - x_i));
-                    
+
                     // Apply mask: only apply near wake deflection in the near wake region
                     if x_i < xR || x_i > x0 {
                         delta_near_wake = 0.0;
@@ -173,15 +181,15 @@ impl DeflectionModel for GaussVelocityDeflection {
                     let middle_term_arg = ((sigma_y * sigma_z) / (sigma_y0 * sigma_z0)).sqrt();
                     let ln_delta_num = (1.6 + M0_sqrt) * (1.6 * middle_term_arg - M0_sqrt);
                     let ln_delta_den = (1.6 - M0_sqrt) * (1.6 * middle_term_arg + M0_sqrt);
-                    
+
                     let mut middle_term = 0.0;
                     if ln_delta_den.abs() > 1e-10 && ln_delta_num > 0.0 && ln_delta_den > 0.0 {
                         let log_val = (ln_delta_num / ln_delta_den).ln();
-                        middle_term = theta_c0 * E0 / 5.0 
+                        middle_term = theta_c0 * E0 / 5.0
                             * ((sigma_y0 * sigma_z0) / (ky * kz * M0)).sqrt()
                             * log_val;
                     }
-                    
+
                     delta_far_wake = delta0 + middle_term + (self.ad + self.bd * (x_i - x_i));
                 }
 
@@ -223,11 +231,8 @@ mod tests {
         let gauss = GaussVelocityDeflection::new(0.01, 0.05, 0.58, 0.077, 1.0);
         let x = Array::from_shape_vec((1, 1), vec![100.0]).unwrap();
         let y = Array::from_shape_vec((1, 1), vec![0.0]).unwrap();
-        
-        let result = gauss.function(
-            x, y, 25.0, 0.06, 0.33, 126.0,
-            &HashMap::new()
-        );
+
+        let result = gauss.function(x, y, 25.0, 0.06, 0.33, 126.0, &HashMap::new());
         assert!(result.is_ok());
         assert!(result.unwrap()[[0, 0]] > 0.0);
     }

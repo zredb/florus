@@ -13,7 +13,12 @@ fn main() -> Result<()> {
     let n_yaw = 51;
     let yaw_max = 30.0;
     let wind_speeds = [8.0, 11.5, 15.0];
-    let op_models = ["simple", "cosine-loss", "controller-dependent", "unified-momentum"];
+    let op_models = [
+        "simple",
+        "cosine-loss",
+        "controller-dependent",
+        "unified-momentum",
+    ];
 
     let yaw_angles: Vec<f64> = (0..n_yaw)
         .map(|i| -yaw_max + 2.0 * yaw_max * i as f64 / (n_yaw - 1) as f64)
@@ -21,15 +26,15 @@ fn main() -> Result<()> {
 
     for &ws in &wind_speeds {
         println!("Wind speed: {} m/s", ws);
-        println!("{:<20} | {:<15} | {:<15}", "Operation Model", "Max Power (kW)", "Power at 30deg");
+        println!(
+            "{:<20} | {:<15} | {:<15}",
+            "Operation Model", "Max Power (kW)", "Power at 30deg"
+        );
         println!("{}", "-".repeat(55));
 
         for op_model in &op_models {
             let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-            fmodel.set_layout(
-                &ndarray::arr1(&[0.0]),
-                &ndarray::arr1(&[0.0]),
-            )?;
+            fmodel.set_layout(&ndarray::arr1(&[0.0]), &ndarray::arr1(&[0.0]))?;
             fmodel.set_operation_model(*op_model)?;
 
             let wind_directions = Array1::from_vec(vec![270.0; n_yaw]);
@@ -50,7 +55,10 @@ fn main() -> Result<()> {
             let max_power = powers.column(0).fold(0.0_f64, |a, &b| a.max(b));
             let power_at_30 = powers[[n_yaw - 1, 0]];
 
-            println!("{:<20} | {:<15.2} | {:<15.2}", op_model, max_power, power_at_30);
+            println!(
+                "{:<20} | {:<15.2} | {:<15.2}",
+                op_model, max_power, power_at_30
+            );
         }
         println!();
     }

@@ -776,7 +776,6 @@ impl WindData for WindRose {
         }
     }
 
-
     fn frequencies(&self) -> Array2 {
         self.freq_table.clone()
     }
@@ -882,18 +881,6 @@ impl WindData for WindRose {
         )
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 #[cfg(test)]
 mod tests {

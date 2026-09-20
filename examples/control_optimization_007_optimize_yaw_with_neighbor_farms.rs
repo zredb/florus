@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== Optimize Yaw with Neighbor Farms ===\n");
 
     println!("Multi-Farm Optimization Concept:\\n");
-    
+
     println!("Scenario:");
     println!("  - Multiple wind farms in proximity");
     println!("  - Wakes from upstream farms affect downstream farms");

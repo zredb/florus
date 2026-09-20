@@ -1,34 +1,60 @@
+use crate::core::wake::{BaseModel, DeflectionModel};
+use crate::core::{FlowField, Grid};
 /// Empirical Gauss wake deflection model
 ///
 /// Extended Gauss model with empirical corrections for different conditions
-use crate::types::{Float, Array1, Array2};
-use crate::core::wake::{BaseModel, DeflectionModel};
-use crate::core::{Grid, FlowField};
-use std::collections::HashMap;
+use crate::types::{Array1, Array2, Float};
 use ndarray::Array;
+use std::collections::HashMap;
 
 /// Empirical Gauss wake deflection model parameters
+///
+/// Simplified formulation independent from the velocity deficit model
+/// (port of Python EmpiricalGaussVelocityDeflection).
 #[derive(Debug, Clone)]
 pub struct EmpiricalGaussVelocityDeflection {
     pub base: BaseModel,
-    pub kd: Float,
-    pub ad: Float,
-    pub bd: Float,
+    pub horizontal_deflection_gain_d: Float,
+    pub vertical_deflection_gain_d: Float,
+    pub deflection_rate: Float,
+    pub mixing_gain_deflection: Float,
+    pub yaw_added_mixing_gain: Float,
 }
 
 impl EmpiricalGaussVelocityDeflection {
-    pub fn new(kd: Float, ad: Float, bd: Float) -> Self {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        horizontal_deflection_gain_d: Float,
+        vertical_deflection_gain_d: Float,
+        deflection_rate: Float,
+        mixing_gain_deflection: Float,
+        yaw_added_mixing_gain: Float,
+    ) -> Self {
         let mut params = HashMap::new();
-        params.insert("kd".to_string(), kd);
-        params.insert("ad".to_string(), ad);
-        params.insert("bd".to_string(), bd);
-        
+        params.insert(
+            "horizontal_deflection_gain_d".to_string(),
+            horizontal_deflection_gain_d,
+        );
+        params.insert("deflection_rate".to_string(), deflection_rate);
+
         Self {
             base: BaseModel::new(params, "wind_vector"),
-            kd,
-            ad,
-            bd,
+            horizontal_deflection_gain_d,
+            vertical_deflection_gain_d,
+            deflection_rate,
+            mixing_gain_deflection,
+            yaw_added_mixing_gain,
         }
+    }
+
+    pub fn default() -> Self {
+        Self::new(3.0, -1.0, 22.0, 0.0, 0.0)
+    }
+}
+
+impl Default for EmpiricalGaussVelocityDeflection {
+    fn default() -> Self {
+        Self::default()
     }
 }
 
@@ -45,56 +71,52 @@ impl DeflectionModel for EmpiricalGaussVelocityDeflection {
         Box::new(self.clone())
     }
 
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn function(
         &self,
         x: Array2,
         _y: Array2,
         yaw_angle: Float,
-        turbulence_intensity: Float,
+        _turbulence_intensity: Float,
         thrust_coefficient: Float,
         rotor_diameter: Float,
         _model_args: &HashMap<String, Array1>,
     ) -> anyhow::Result<Array2> {
-        let yaw_rad = yaw_angle.to_radians();
-        
         let shape = x.shape();
         let n_findex = shape[0];
         let n_turbines = shape[1];
 
         let mut deflection = Array::zeros((n_findex, n_turbines));
 
+        let deflection_gain_y = self.horizontal_deflection_gain_d * rotor_diameter;
+        // CW yaw for consistency with other models
+        let yaw_r = -yaw_angle.to_radians();
+
         for fi in 0..n_findex {
             for ti in 0..n_turbines {
                 let x_downstream = x[[fi, ti]];
-                
+
                 if x_downstream <= 0.0 {
                     deflection[[fi, ti]] = 0.0;
                     continue;
                 }
 
-                let axial_induction = self.calculate_axial_induction(thrust_coefficient);
-                
-                let c1 = self.ad / (self.kd * 2.0);
-                let exp_term = (-self.kd * x_downstream / rotor_diameter).exp();
-                let base_deflection = c1 * axial_induction * (1.0 - exp_term) * yaw_rad;
-                
-                let ti_correction = 1.0 + self.bd * (turbulence_intensity - 0.1).max(0.0);
-                
-                deflection[[fi, ti]] = base_deflection * ti_correction;
+                let x_normalized = x_downstream / rotor_diameter;
+                // mixing_i unavailable in this interface: mixing = 0
+                let a_y = (deflection_gain_y * thrust_coefficient * yaw_r)
+                    / (1.0 + self.mixing_gain_deflection * 0.0);
+                let log_term = ((x_normalized - self.deflection_rate)
+                    / (x_normalized + self.deflection_rate)
+                    + 2.0)
+                    .ln();
+                deflection[[fi, ti]] = a_y * log_term;
             }
         }
 
         Ok(deflection)
-    }
-}
-
-impl EmpiricalGaussVelocityDeflection {
-    fn calculate_axial_induction(&self, ct: Float) -> Float {
-        if ct < 0.96 {
-            0.5 * (1.0 - (1.0 - ct).sqrt())
-        } else {
-            0.143 + (0.0203 - 0.6427 * (0.889 - ct).sqrt()).max(0.0)
-        }
     }
 }
 

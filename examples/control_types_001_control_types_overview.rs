@@ -15,10 +15,7 @@ fn main() -> Result<()> {
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
     // Set a 2-turbine layout first (must be before set_operation_model)
-    fmodel.set_layout(
-        &ndarray::arr1(&[0.0, 1000.0]),
-        &ndarray::arr1(&[0.0, 0.0]),
-    )?;
+    fmodel.set_layout(&ndarray::arr1(&[0.0, 1000.0]), &ndarray::arr1(&[0.0, 0.0]))?;
 
     // Change to the simple-derating operation model (AFTER set_layout)
     fmodel.set_operation_model("simple-derating")?;
@@ -34,8 +31,14 @@ fn main() -> Result<()> {
     let turbine_powers_orig = fmodel.get_turbine_powers();
 
     println!("Baseline (no derating):");
-    println!("  Upstream (T0):   {:.2} kW", turbine_powers_orig[[0, 0]] / 1000.0);
-    println!("  Downstream (T1): {:.2} kW", turbine_powers_orig[[0, 1]] / 1000.0);
+    println!(
+        "  Upstream (T0):   {:.2} kW",
+        turbine_powers_orig[[0, 0]] / 1000.0
+    );
+    println!(
+        "  Downstream (T1): {:.2} kW",
+        turbine_powers_orig[[0, 1]] / 1000.0
+    );
 
     // Create power setpoints sweeping from 1 kW to 6000 kW for both turbines
     let setpoints: Vec<f64> = (0..n)
@@ -49,16 +52,15 @@ fn main() -> Result<()> {
         power_setpoints[[i, 1]] = setpoints[i];
     }
 
-    fmodel.set_operation(
-        None,
-        Some(power_setpoints.clone()),
-        None, None, None, None,
-    )?;
+    fmodel.set_operation(None, Some(power_setpoints.clone()), None, None, None, None)?;
     fmodel.run()?;
     let turbine_powers_derated = fmodel.get_turbine_powers();
 
     println!("\nWith derating (power setpoints applied to both turbines):");
-    println!("{:<18} | {:<15} | {:<15} | {:<15}", "Setpoint (kW)", "T0 Power (kW)", "T1 Power (kW)", "Farm (kW)");
+    println!(
+        "{:<18} | {:<15} | {:<15} | {:<15}",
+        "Setpoint (kW)", "T0 Power (kW)", "T1 Power (kW)", "Farm (kW)"
+    );
     println!("{}", "-".repeat(68));
     for i in [0, n / 4, n / 2, 3 * n / 4, n - 1] {
         println!(
@@ -78,16 +80,15 @@ fn main() -> Result<()> {
         power_setpoints_avail[[i, 1]] = 1e12; // unlimited
     }
 
-    fmodel.set_operation(
-        None,
-        Some(power_setpoints_avail),
-        None, None, None, None,
-    )?;
+    fmodel.set_operation(None, Some(power_setpoints_avail), None, None, None, None)?;
     fmodel.run()?;
     let turbine_powers_avail = fmodel.get_turbine_powers();
 
     println!("\nAvailable power at downstream turbine (unlimited setpoint):");
-    println!("{:<18} | {:<15} | {:<15}", "Setpoint (kW)", "T0 Power (kW)", "T1 Available (kW)");
+    println!(
+        "{:<18} | {:<15} | {:<15}",
+        "Setpoint (kW)", "T0 Power (kW)", "T1 Available (kW)"
+    );
     println!("{}", "-".repeat(52));
     for i in [0, n / 4, n / 2, 3 * n / 4, n - 1] {
         println!(

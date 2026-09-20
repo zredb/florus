@@ -87,6 +87,9 @@ pub trait DeflectionModel {
 
     /// Clone into a boxed trait object
     fn clone_box(&self) -> Box<dyn DeflectionModel>;
+
+    /// Downcast support for specialized solver access to the concrete model
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 /// Wake turbulence model trait

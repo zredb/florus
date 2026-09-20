@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== Compare Yaw Optimizers ===\n");
 
     println!("Optimization Algorithm Comparison:\\n");
-    
+
     println!("1. Serial Refine (SR):");
     println!("   - Sequential turbine optimization");
     println!("   - Fast convergence");

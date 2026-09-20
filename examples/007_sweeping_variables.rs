@@ -9,7 +9,6 @@
 ///     2) Wind directions
 ///     3) Turbulence intensities
 ///     4) Yaw angles
-
 use florus::{Array1, Array2, FlorisModel};
 
 fn main() -> florus::Result<()> {
@@ -66,7 +65,7 @@ fn main() -> florus::Result<()> {
         &Array1::from_vec(vec![0.0, 5.0 * d]),
         &Array1::from_vec(vec![0.0, 0.0]),
     )?;
-    
+
     let wind_directions: Vec<f64> = (250..290).map(|x| x as f64).collect();
     let n_wd = wind_directions.len();
     let wind_speeds = vec![8.0; n_wd];
@@ -104,7 +103,7 @@ fn main() -> florus::Result<()> {
         &Array1::from_vec(vec![0.0, 5.0 * d]),
         &Array1::from_vec(vec![0.0, 0.0]),
     )?;
-    
+
     let turbulence_intensities: Vec<f64> = (3..20).map(|x| x as f64 / 100.0).collect(); // 0.03 to 0.19
     let n_ti = turbulence_intensities.len();
     let wind_speeds = vec![8.0; n_ti];
@@ -142,7 +141,7 @@ fn main() -> florus::Result<()> {
         &Array1::from_vec(vec![0.0, 5.0 * d]),
         &Array1::from_vec(vec![0.0, 0.0]),
     )?;
-    
+
     let n_yaw = 21;
     let wind_directions = vec![270.0; n_yaw];
     let wind_speeds = vec![8.0; n_yaw];

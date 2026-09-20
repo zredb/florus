@@ -1,7 +1,7 @@
-use crate::types::Float;
+use super::{TrapezoidBounds, YawOptimization, YawOptimizationConfig, YawOptimizationResult};
 use crate::floris_model::FlorisModel;
+use crate::types::Float;
 use crate::Array2;
-use super::{YawOptimization, YawOptimizationResult, YawOptimizationConfig, TrapezoidBounds};
 
 /// Geometric yaw optimizer
 ///
@@ -65,14 +65,15 @@ impl YawOptimization for YawOptimizationGeometric {
             );
 
             for ti in 0..n_turbines {
-                yaw_angles[[fi, ti]] = yaw_for_direction[ti].clamp(
-                    self.config.minimum_yaw_angle,
-                    self.config.maximum_yaw_angle,
-                );
+                yaw_angles[[fi, ti]] = yaw_for_direction[ti]
+                    .clamp(self.config.minimum_yaw_angle, self.config.maximum_yaw_angle);
             }
         }
 
-        let baseline_yaw_angles = self.config.yaw_angles_baseline.clone()
+        let baseline_yaw_angles = self
+            .config
+            .yaw_angles_baseline
+            .clone()
             .unwrap_or_else(|| Array2::zeros((n_findex, n_turbines)));
         fmodel.set_yaw_angles(baseline_yaw_angles.clone())?;
         fmodel.run()?;

@@ -13,9 +13,9 @@
 //!
 //! Corresponds to `003_wind_data_objects.py` in Python FLORIS.
 
-use florus::{FlorisModel, Result};
-use florus::wind_data::{TimeSeries, WindRose, WindTIRose};
 use florus::core::InterpMethod;
+use florus::wind_data::{TimeSeries, WindRose, WindTIRose};
+use florus::{FlorisModel, Result};
 use ndarray::{Array1, Array2};
 
 fn main() -> Result<()> {
@@ -41,7 +41,7 @@ fn main() -> Result<()> {
     let n = 100;
     use rand::Rng;
     let mut rng = rand::thread_rng();
-    
+
     let wind_speeds: Vec<f64> = (0..n).map(|_| 8.0 + 2.0 * rng.gen::<f64>()).collect();
     let wind_directions: Vec<f64> = (0..n).map(|_| 270.0 + 30.0 * rng.gen::<f64>()).collect();
     let turbulence_intensities: Vec<f64> = (0..n).map(|_| 0.06 + 0.02 * rng.gen::<f64>()).collect();
@@ -55,7 +55,10 @@ fn main() -> Result<()> {
         Array1::from(values.clone()),
     )
     .unwrap();
-    println!("   ✓ TimeSeries created with {} time steps", time_series.wind_directions.len());
+    println!(
+        "   ✓ TimeSeries created with {} time steps",
+        time_series.wind_directions.len()
+    );
 
     // The WindRose class is used to hold wind rose data, such as wind speed, wind direction,
     // and frequency. TI and value are represented as bin averages per wind direction and
@@ -63,16 +66,16 @@ fn main() -> Result<()> {
     println!("\n2. Creating WindRose object...");
     let wd_bins: Vec<f64> = (0..360).step_by(3).map(|x| x as f64).collect();
     let ws_bins: Vec<f64> = (4..20).step_by(2).map(|x| x as f64).collect();
-    
+
     let n_dir = wd_bins.len();
     let n_ws = ws_bins.len();
-    
+
     // Make TI table 6% TI for all wind directions and speeds
     let ti_table = Array2::from_elem((n_dir, n_ws), 0.06);
-    
+
     // Make value table 25 for all wind directions and speeds
     let value_table = Array2::from_elem((n_dir, n_ws), 25.0);
-    
+
     // Uniform frequency
     let mut freq_table = Array2::from_elem((n_dir, n_ws), 1.0);
     let total: f64 = freq_table.sum();
@@ -84,24 +87,27 @@ fn main() -> Result<()> {
         ti_table,
         Some(freq_table),
         Some(value_table),
-        false,  // compute_zero_freq_occurrence
-        None,   // heterogeneous_map
-        None,   // multidim_conditions
+        false, // compute_zero_freq_occurrence
+        None,  // heterogeneous_map
+        None,  // multidim_conditions
     )?;
-    println!("   ✓ WindRose created with {} directions × {} speeds", n_dir, n_ws);
+    println!(
+        "   ✓ WindRose created with {} directions × {} speeds",
+        n_dir, n_ws
+    );
 
     // The WindTIRose class is similar to the WindRose table except that TI is also binned
     // making the frequency table a 3D array.
     println!("\n3. Creating WindTIRose object...");
     let ti_bins: Vec<f64> = (5..15).map(|x| x as f64 / 100.0).collect();
     let n_ti = ti_bins.len();
-    
+
     // Uniform TI table (3D)
     let ti_table_3d = ndarray::Array3::from_elem((n_dir, n_ws, n_ti), 1.0);
-    
+
     // Uniform frequency
     let freq_table_2d = Array2::from_elem((n_dir, n_ws), 1.0 / (n_dir * n_ws) as f64);
-    
+
     // Uniform value
     let value_table_2d = Array2::from_elem((n_dir, n_ws), 25.0);
 
@@ -113,7 +119,10 @@ fn main() -> Result<()> {
         Some(freq_table_2d),
         Some(value_table_2d),
     )?;
-    println!("   ✓ WindTIRose created with {} directions × {} speeds × {} TI bins", n_dir, n_ws, n_ti);
+    println!(
+        "   ✓ WindTIRose created with {} directions × {} speeds × {} TI bins",
+        n_dir, n_ws, n_ti
+    );
 
     //==========================================================
     // Broadcasting
@@ -138,8 +147,14 @@ fn main() -> Result<()> {
         Array1::from(tis_uniform),
     )?;
     println!("   ✓ TimeSeries created with varied wind directions, uniform speed and TI");
-    println!("      Wind speeds: all {:.1} m/s", time_series_broadcast.wind_speeds[0]);
-    println!("      TIs: all {:.2}", time_series_broadcast.turbulence_intensities[0]);
+    println!(
+        "      Wind speeds: all {:.1} m/s",
+        time_series_broadcast.wind_speeds[0]
+    );
+    println!(
+        "      TIs: all {:.2}",
+        time_series_broadcast.turbulence_intensities[0]
+    );
 
     // For WindRose, wind directions and wind speeds must be given as arrays, but the
     // ti_table can be supplied as a scalar which will apply uniformly to all wind
@@ -151,18 +166,21 @@ fn main() -> Result<()> {
     let n_dir_simple = wd_bins_simple.len();
     let n_ws_simple = ws_bins_simple.len();
     let ti_table_uniform = Array2::from_elem((n_dir_simple, n_ws_simple), 0.06);
-    
+
     let wind_rose_simple = WindRose::new(
         Array1::from(wd_bins_simple),
         Array1::from(ws_bins_simple),
         ti_table_uniform,
-        None,  // No freq table (will use uniform)
-        None,  // No value table
+        None, // No freq table (will use uniform)
+        None, // No value table
         false,
         None,
         None,
     )?;
-    println!("   ✓ WindRose created with uniform TI = {:.2}", wind_rose_simple.ti_table[(0, 0)]);
+    println!(
+        "   ✓ WindRose created with uniform TI = {:.2}",
+        wind_rose_simple.ti_table[(0, 0)]
+    );
 
     //==========================================================
     // Wind Rose from Time Series
@@ -173,7 +191,10 @@ fn main() -> Result<()> {
     println!("6. Converting TimeSeries to WindRose...");
     let wind_rose_from_ts = time_series.to_wind_rose(3.0, 2.0);
     println!("   ✓ WindRose created from TimeSeries");
-    println!("      Directions: {} bins", wind_rose_from_ts.wind_directions.len());
+    println!(
+        "      Directions: {} bins",
+        wind_rose_from_ts.wind_directions.len()
+    );
     println!("      Speeds: {} bins", wind_rose_from_ts.wind_speeds.len());
 
     //==========================================================
@@ -186,16 +207,32 @@ fn main() -> Result<()> {
     println!("7. Downsampling WindRose...");
     let wind_rose_agg = wind_rose.downsample(Some(10.0), Some(2.0), None);
     println!("   ✓ WindRose downsampled");
-    println!("      Original: {}×{} bins", wind_rose.wind_directions.len(), wind_rose.wind_speeds.len());
-    println!("      Aggregated: {}×{} bins", wind_rose_agg.wind_directions.len(), wind_rose_agg.wind_speeds.len());
+    println!(
+        "      Original: {}×{} bins",
+        wind_rose.wind_directions.len(),
+        wind_rose.wind_speeds.len()
+    );
+    println!(
+        "      Aggregated: {}×{} bins",
+        wind_rose_agg.wind_directions.len(),
+        wind_rose_agg.wind_speeds.len()
+    );
 
     // For upsampling, the upsample function can be used to interpolate
     // the wind rose data to a finer grid.
     println!("\n8. Upsampling WindRose...");
     let wind_rose_resample = wind_rose.upsample(0.5, 0.25, &InterpMethod::Linear);
     println!("   ✓ WindRose upsampled");
-    println!("      Original: {}×{} bins", wind_rose.wind_directions.len(), wind_rose.wind_speeds.len());
-    println!("      Resampled: {}×{} bins", wind_rose_resample.wind_directions.len(), wind_rose_resample.wind_speeds.len());
+    println!(
+        "      Original: {}×{} bins",
+        wind_rose.wind_directions.len(),
+        wind_rose.wind_speeds.len()
+    );
+    println!(
+        "      Resampled: {}×{} bins",
+        wind_rose_resample.wind_directions.len(),
+        wind_rose_resample.wind_speeds.len()
+    );
 
     //==========================================================
     // Setting turbulence intensity
@@ -210,11 +247,21 @@ fn main() -> Result<()> {
     let mut wind_rose_iec = wind_rose.clone();
     wind_rose_iec.assign_ti_using_iec_method(None);
     println!("   ✓ TI assigned using IEC 61400-1 standard");
-    println!("      Sample TI at 270°, 8 m/s: {:.3}", 
-             wind_rose_iec.ti_table[(
-                 wind_rose_iec.wind_directions.iter().position(|&x| (x - 270.0).abs() < 0.1).unwrap_or(0),
-                 wind_rose_iec.wind_speeds.iter().position(|&x| (x - 8.0).abs() < 0.1).unwrap_or(0)
-             )]);
+    println!(
+        "      Sample TI at 270°, 8 m/s: {:.3}",
+        wind_rose_iec.ti_table[(
+            wind_rose_iec
+                .wind_directions
+                .iter()
+                .position(|&x| (x - 270.0).abs() < 0.1)
+                .unwrap_or(0),
+            wind_rose_iec
+                .wind_speeds
+                .iter()
+                .position(|&x| (x - 8.0).abs() < 0.1)
+                .unwrap_or(0)
+        )]
+    );
 
     //==========================================================
     // Setting value
@@ -243,12 +290,18 @@ fn main() -> Result<()> {
     // Set the wind conditions using the TimeSeries object
     println!("11. Setting FlorisModel with TimeSeries...");
     fmodel.set_wind_data(&time_series)?;
-    println!("   ✓ Model set with TimeSeries ({} conditions)", fmodel.n_findex());
+    println!(
+        "   ✓ Model set with TimeSeries ({} conditions)",
+        fmodel.n_findex()
+    );
 
     // Set the wind conditions using the WindRose object
     println!("\n12. Setting FlorisModel with WindRose...");
     fmodel.set_wind_data(&wind_rose)?;
-    println!("   ✓ Model set with WindRose ({} conditions)", fmodel.n_findex());
+    println!(
+        "   ✓ Model set with WindRose ({} conditions)",
+        fmodel.n_findex()
+    );
 
     // Note that in the case of the wind_rose, under the default settings, wind direction and wind speed
     // bins for which frequency is zero are not simulated. This can be changed by setting the
@@ -294,7 +347,10 @@ fn main() -> Result<()> {
     // Set the wind conditions using the WindTIRose object
     println!("\n14. Setting FlorisModel with WindTIRose...");
     fmodel.set_wind_data(&wind_ti_rose)?;
-    println!("   ✓ Model set with WindTIRose ({} conditions)", fmodel.n_findex());
+    println!(
+        "   ✓ Model set with WindTIRose ({} conditions)",
+        fmodel.n_findex()
+    );
 
     println!("\n=== Wind Data Objects Example Complete ===");
     println!("\nSummary:");

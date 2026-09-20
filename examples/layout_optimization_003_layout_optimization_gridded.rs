@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== Layout Optimization - Gridded ===\n");
 
     println!("Gridded Layout Optimization:\\n");
-    
+
     println!("Concept:");
     println!("  - Define a grid of possible turbine locations");
     println!("  - Select optimal subset of grid points");

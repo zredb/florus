@@ -4,17 +4,14 @@
 //!
 //! Corresponds to: examples_visualizations/003_visualize_cross_plane.py
 
-use florus::{FlorisModel, Result};
 use florus::visualization::*;
+use florus::{FlorisModel, Result};
 
 fn main() -> Result<()> {
     println!("=== Cross Plane Visualization ===\n");
 
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-    fmodel.set_layout(
-        &ndarray::arr1(&[0.0]),
-        &ndarray::arr1(&[0.0]),
-    )?;
+    fmodel.set_layout(&ndarray::arr1(&[0.0]), &ndarray::arr1(&[0.0]))?;
     fmodel.set_wind_conditions(
         ndarray::arr1(&[8.0]),
         ndarray::arr1(&[270.0]),

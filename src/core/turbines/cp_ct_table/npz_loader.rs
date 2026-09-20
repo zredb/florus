@@ -28,9 +28,10 @@ impl NpzDataLoader {
         let mut ct_data: Option<ArrayD> = None;
 
         for i in 0..archive.len() {
-            let mut file = archive.by_index(i)
+            let mut file = archive
+                .by_index(i)
                 .map_err(|e| CpCtError::FileFormat(format!("无法读取NPZ文件内容: {}", e)))?;
-            
+
             let name = file.name().to_string();
             println!("Found array: {}", name);
 
@@ -55,17 +56,25 @@ impl NpzDataLoader {
             match name.as_str() {
                 "cp_values.npy" | "cp_lut.npy" => {
                     cp_data = Some(arr.into_dyn());
-                    println!("Loaded cp values with shape: {:?}", cp_data.as_ref().map(|a| a.shape()));
+                    println!(
+                        "Loaded cp values with shape: {:?}",
+                        cp_data.as_ref().map(|a| a.shape())
+                    );
                 }
                 _ => {
                     ct_data = Some(arr.into_dyn());
-                    println!("Loaded ct values with shape: {:?}", ct_data.as_ref().map(|a| a.shape()));
+                    println!(
+                        "Loaded ct values with shape: {:?}",
+                        ct_data.as_ref().map(|a| a.shape())
+                    );
                 }
             }
         }
 
-        let cp_data = cp_data.ok_or_else(|| CpCtError::LoadFailed("Missing cp_values array".to_string()))?;
-        let ct_data = ct_data.ok_or_else(|| CpCtError::LoadFailed("Missing ct_values array".to_string()))?;
+        let cp_data =
+            cp_data.ok_or_else(|| CpCtError::LoadFailed("Missing cp_values array".to_string()))?;
+        let ct_data =
+            ct_data.ok_or_else(|| CpCtError::LoadFailed("Missing ct_values array".to_string()))?;
 
         // The .npz stores no axis metadata: synthesize evenly spaced dimension
         // values from the data shape so MultiDimTable validation passes
@@ -108,15 +117,18 @@ fn parse_npy(data: &[u8]) -> Result<ndarray::Array2<f64>, CpCtError> {
     // Extract shape from header - look for '(', ')' and commas
     let shape_start = header.find('(').unwrap_or(header.len());
     let shape_end = header.find(')').unwrap_or(header.len());
-    let shape_str = &header[shape_start+1..shape_end];
-    
+    let shape_str = &header[shape_start + 1..shape_end];
+
     let shape: Vec<usize> = shape_str
         .split(',')
         .filter_map(|s| s.trim().parse().ok())
         .collect();
 
     if shape.len() != 2 {
-        return Err(CpCtError::FileFormat(format!("Expected 2D array, got {}D", shape.len())));
+        return Err(CpCtError::FileFormat(format!(
+            "Expected 2D array, got {}D",
+            shape.len()
+        )));
     }
 
     // Data starts at position pos + 1 (skip newline), aligned to 64 bytes
@@ -132,7 +144,8 @@ fn parse_npy(data: &[u8]) -> Result<ndarray::Array2<f64>, CpCtError> {
     // NPY stores in C order (row-major), but we want to keep as-is
     for i in 0..shape[0] {
         for j in 0..shape[1] {
-            let bytes: [u8; 8] = data_slice[(i * shape[1] + j) * 8..(i * shape[1] + j + 1) * 8].try_into()
+            let bytes: [u8; 8] = data_slice[(i * shape[1] + j) * 8..(i * shape[1] + j + 1) * 8]
+                .try_into()
                 .map_err(|_| CpCtError::FileFormat("Failed to read float".to_string()))?;
             arr[[i, j]] = f64::from_le_bytes(bytes);
         }

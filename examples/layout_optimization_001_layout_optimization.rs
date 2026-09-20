@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== Layout Optimization ===\n");
 
     println!("Wind Farm Layout Optimization:\\n");
-    
+
     println!("Objective:");
     println!("  - Maximize Annual Energy Production (AEP)");
     println!("  - Minimize wake losses");

@@ -3,9 +3,9 @@
 //! Wake-added turbulence intensity following Crespo et al., ported from
 //! FLORIS v4.6.4 `core/wake_turbulence/crespo_hernandez.py`.
 
-use crate::types::{Array1, Array4, Float};
 use crate::core::wake::{BaseModel, TurbulenceModel};
 use crate::core::{FlowField, Grid};
+use crate::types::{Array1, Array4, Float};
 use std::collections::HashMap;
 
 /// Crespo-Hernandez wake turbulence model parameters
@@ -103,7 +103,8 @@ mod tests {
         let ai = Array4::from_elem((1, 1, 1, 1), 0.25);
         let result = crespo.function(&ambient, &x, &x_i, 126.0, &ai).unwrap();
         // delta_x = 500 > 0 -> downstream, ti = 0.9 * 0.25^0.8 * 0.06^0.1 * (500/126)^(-0.32)
-        let expected = 0.9 * 0.25_f64.powf(0.8) * 0.06_f64.powf(0.1) * (500.0 / 126.0_f64).powf(-0.32);
+        let expected =
+            0.9 * 0.25_f64.powf(0.8) * 0.06_f64.powf(0.1) * (500.0 / 126.0_f64).powf(-0.32);
         assert_relative_eq!(result[[0, 0, 0, 0]], expected, epsilon = 1e-12);
     }
 

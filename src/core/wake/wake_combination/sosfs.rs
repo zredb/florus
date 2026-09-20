@@ -83,7 +83,11 @@ mod tests {
 
         let result = sosfs.function(&wake_field, &velocity_field).unwrap();
 
-        assert_relative_eq!(result[[0, 0, 0, 0]], (3.0_f64.powi(2) + 4.0_f64.powi(2)).sqrt(), epsilon = 1e-6);
+        assert_relative_eq!(
+            result[[0, 0, 0, 0]],
+            (3.0_f64.powi(2) + 4.0_f64.powi(2)).sqrt(),
+            epsilon = 1e-6
+        );
         assert_relative_eq!(result[[0, 0, 1, 1]], 5.0);
     }
 

@@ -74,7 +74,8 @@ pub fn estimate_optimal_setpoint(
     let power_fraction = if wind_speed >= rated_wind_speed {
         1.0
     } else {
-        let speed_fraction = (wind_speed - cut_in_wind_speed) / (rated_wind_speed - cut_in_wind_speed);
+        let speed_fraction =
+            (wind_speed - cut_in_wind_speed) / (rated_wind_speed - cut_in_wind_speed);
         speed_fraction.powi(3)
     };
 
@@ -135,9 +136,7 @@ mod tests {
 
     #[test]
     fn test_optimize_derating_for_farm_power() {
-        let derating = optimize_derating_for_farm_power(
-            5_000_000.0, 5_000_000.0, 0.2, 1.0,
-        );
+        let derating = optimize_derating_for_farm_power(5_000_000.0, 5_000_000.0, 0.2, 1.0);
         assert!(derating >= 0.5);
         assert!(derating <= 1.0);
     }

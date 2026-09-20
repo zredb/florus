@@ -8,7 +8,6 @@
 /// 2. `get_farm_power()`: Returns the total power output of the farm for each findex (n_findex)
 ///
 /// This example demonstrates these methods using different wind conditions.
-
 use florus::{Array1, FlorisModel};
 use ndarray::Axis;
 
@@ -43,7 +42,11 @@ fn main() -> florus::Result<()> {
 
     println!("\n========== TimeSeries-like Conditions ==========");
     println!("Number of conditions: {}", n_conditions);
-    println!("Wind directions: {}° to {}°", wind_directions[0], wind_directions[n_conditions - 1]);
+    println!(
+        "Wind directions: {}° to {}°",
+        wind_directions[0],
+        wind_directions[n_conditions - 1]
+    );
 
     // Run the model
     fmodel.run()?;
@@ -78,10 +81,12 @@ fn main() -> florus::Result<()> {
     // Calculate and print wake losses for a sample condition
     let sample_idx = 20; // Middle of the sweep
     if sample_idx < n_conditions {
-        let wake_loss_pct = 100.0 * (farm_power_no_wake[sample_idx] - farm_power[sample_idx]) 
+        let wake_loss_pct = 100.0 * (farm_power_no_wake[sample_idx] - farm_power[sample_idx])
             / farm_power_no_wake[sample_idx];
-        println!("\nWake loss at WD={}°: {:.2}%", 
-                 wind_directions[sample_idx], wake_loss_pct);
+        println!(
+            "\nWake loss at WD={}°: {:.2}%",
+            wind_directions[sample_idx], wake_loss_pct
+        );
     }
 
     //////////////////////////////////////////////////
@@ -89,25 +94,25 @@ fn main() -> florus::Result<()> {
     //////////////////////////////////////////////////
 
     println!("\n========== WindRose-like Conditions ==========");
-    
+
     // Create a new model to demonstrate WindRose conditions
     let mut fmodel_rose = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-    
+
     // Set to a 3-turbine layout
     let d = 126.0;
     fmodel_rose.set_layout(
         &Array1::from_vec(vec![0.0, 5.0 * d, 10.0 * d]),
         &Array1::from_vec(vec![0.0, 0.0, 0.0]),
     )?;
-    
+
     // Declare conditions for 2 wind directions and 3 wind speeds
     let wd_values = vec![270.0, 280.0];
     let ws_values = vec![8.0, 9.0, 10.0];
-    
+
     let mut rose_wind_directions = Vec::new();
     let mut rose_wind_speeds = Vec::new();
     let mut rose_tis = Vec::new();
-    
+
     for &wd in &wd_values {
         for &ws in &ws_values {
             rose_wind_directions.push(wd);
@@ -144,8 +149,11 @@ fn main() -> florus::Result<()> {
     for wd_idx in 0..wd_values.len() {
         for ws_idx in 0..ws_values.len() {
             print!("  WD={:.0}°: ", wd_values[wd_idx]);
-            println!("WS={:.0}m/s → Farm Power={:.0}kW", 
-                     ws_values[ws_idx], farm_power[[wd_idx, ws_idx]] / 1000.0);
+            println!(
+                "WS={:.0}m/s → Farm Power={:.0}kW",
+                ws_values[ws_idx],
+                farm_power[[wd_idx, ws_idx]] / 1000.0
+            );
         }
     }
 

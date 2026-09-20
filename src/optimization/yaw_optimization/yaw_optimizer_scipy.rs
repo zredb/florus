@@ -1,7 +1,7 @@
-use crate::types::Float;
+use super::{YawOptimization, YawOptimizationConfig, YawOptimizationResult};
 use crate::floris_model::FlorisModel;
+use crate::types::Float;
 use crate::Array2;
-use super::{YawOptimization, YawOptimizationResult, YawOptimizationConfig};
 
 /// Configuration for SciPy optimizer
 #[derive(Debug, Clone)]
@@ -62,7 +62,10 @@ impl YawOptimization for YawOptimizationScipy {
         let n_findex = fmodel.flow_field().n_findex;
         let n_turbines = fmodel.farm().n_turbines();
 
-        let baseline_yaw_angles = self.config.yaw_angles_baseline.clone()
+        let baseline_yaw_angles = self
+            .config
+            .yaw_angles_baseline
+            .clone()
             .unwrap_or_else(|| Array2::zeros((n_findex, n_turbines)));
 
         fmodel.set_yaw_angles(baseline_yaw_angles.clone())?;
@@ -74,7 +77,10 @@ impl YawOptimization for YawOptimizationScipy {
         let tolerance = self.scipy_config.ftol;
         let max_iter = self.scipy_config.maxiter;
 
-        let turbine_weights = self.config.turbine_weights.clone()
+        let turbine_weights = self
+            .config
+            .turbine_weights
+            .clone()
             .unwrap_or_else(|| vec![1.0; n_turbines]);
 
         let downstream_indices = if self.config.exclude_downstream_turbines {

@@ -2,11 +2,11 @@
 //!
 //! No wake deficit - free stream conditions maintained
 
-use crate::types::{Float, Array2, Array4};
 use crate::core::wake::{BaseModel, VelocityModel};
-use crate::core::{Grid, FlowField};
-use std::collections::HashMap;
+use crate::core::{FlowField, Grid};
+use crate::types::{Array2, Array4, Float};
 use ndarray::Array;
+use std::collections::HashMap;
 
 /// No wake deficit - velocity is unchanged
 #[derive(Debug, Clone)]

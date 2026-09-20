@@ -33,7 +33,7 @@ pub struct Core {
     // Runtime fields
     pub grid: Option<Box<dyn Grid>>,
     pub state: State,
-    
+
     // Wind data metadata for reshaping (WindRose information)
     pub wind_data_info: Option<WindDataInfo>,
 }
@@ -183,7 +183,7 @@ impl Core {
         let coords = self.farm.coordinates();
         let rotor_diameters = self.farm.rotor_diameters.clone();
         let wind_directions = self.flow_field.wind_directions.clone();
-        
+
         // Get hub heights from farm turbines
         use ndarray::Array;
         let n_turbines = self.farm.n_turbines();
@@ -424,7 +424,7 @@ impl Core {
         }
 
         let grid = self.grid.as_ref().unwrap();
-        
+
         self.flow_field.initialize_flow_field(
             grid.grid_shape(),
             grid.z_sorted(),
@@ -433,12 +433,7 @@ impl Core {
 
         let grid_ref = self.grid.as_ref().unwrap();
         if let Some(planar_grid) = grid_ref.as_any().downcast_ref::<FlowFieldPlanarGrid>() {
-            full_flow_sequential_solver(
-                &self.farm,
-                &mut self.flow_field,
-                planar_grid,
-                &self.wake,
-            )?;
+            full_flow_sequential_solver(&self.farm, &mut self.flow_field, planar_grid, &self.wake)?;
         } else {
             anyhow::bail!("solve_for_viz requires a FlowFieldPlanarGrid");
         }

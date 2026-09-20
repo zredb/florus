@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== Heterogeneous with Wind Rose ===\n");
 
     println!("Heterogeneous Inflow with Wind Rose:\\n");
-    
+
     println!("Concept:");
     println!("  - Combine spatial wind variation with directional distribution");
     println!("  - Most realistic wind farm modeling approach");

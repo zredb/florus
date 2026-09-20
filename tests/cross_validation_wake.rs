@@ -14,8 +14,8 @@ use florus::types::{Array2, Float};
 use ndarray::Array;
 
 const WIND_DIRECTIONS: [f64; 16] = [
-    270.0, 270.0, 270.0, 270.0, 360.0, 360.0, 360.0, 360.0, 285.0, 285.0, 285.0, 285.0,
-    315.0, 315.0, 315.0, 315.0,
+    270.0, 270.0, 270.0, 270.0, 360.0, 360.0, 360.0, 360.0, 285.0, 285.0, 285.0, 285.0, 315.0,
+    315.0, 315.0, 315.0,
 ];
 
 const WIND_SPEEDS: [f64; 16] = [
@@ -158,11 +158,15 @@ fn compute_powers_cc(config: &FlorisConfig, yaw_angles: Option<&Array2>) -> Vec<
     let mut model = FlorisModel::from_config(config.clone()).expect("Failed to create FlorisModel");
 
     if let Some(yaw) = yaw_angles {
-        model.set_yaw_angles(yaw.clone()).expect("Failed to set yaw angles");
+        model
+            .set_yaw_angles(yaw.clone())
+            .expect("Failed to set yaw angles");
     }
 
     model.initialize_grid().expect("init grid failed");
-    model.initialize_flow_field().expect("init flow field failed");
+    model
+        .initialize_flow_field()
+        .expect("init flow field failed");
 
     let farm = model.core().farm.clone();
     let mut flow_field = model.core().flow_field.clone();
@@ -177,20 +181,21 @@ fn compute_powers_cc(config: &FlorisConfig, yaw_angles: Option<&Array2>) -> Vec<
 
 /// Compute turbine powers using the manual solver path (matching regression test approach)
 /// This bypasses the broken model.run() → get_turbine_powers() path
-fn compute_powers_manual(
-    config: &FlorisConfig,
-    yaw_angles: Option<&Array2>,
-) -> Vec<Vec<f64>> {
+fn compute_powers_manual(config: &FlorisConfig, yaw_angles: Option<&Array2>) -> Vec<Vec<f64>> {
     let mut model = FlorisModel::from_config(config.clone()).expect("Failed to create FlorisModel");
 
     // Set yaw angles if provided
     if let Some(yaw) = yaw_angles {
-        model.set_yaw_angles(yaw.clone()).expect("Failed to set yaw angles");
+        model
+            .set_yaw_angles(yaw.clone())
+            .expect("Failed to set yaw angles");
     }
 
     // Initialize grid and flow field manually
     model.initialize_grid().expect("init grid failed");
-    model.initialize_flow_field().expect("init flow field failed");
+    model
+        .initialize_flow_field()
+        .expect("init flow field failed");
 
     // Get references for manual solver
     let grid = model.core().grid.as_ref().unwrap();
@@ -201,25 +206,25 @@ fn compute_powers_manual(
     let wake = model.core().wake.clone();
 
     // Run solver
-    sequential_solver(&farm, &mut flow_field, turbine_grid, &wake)
-        .expect("solver failed");
+    sequential_solver(&farm, &mut flow_field, turbine_grid, &wake).expect("solver failed");
 
     powers_from_u_sorted(&farm, &flow_field)
 }
 
 /// Compute turbine powers via the turbopark_solver (target-centric port)
-fn compute_powers_turbopark(
-    config: &FlorisConfig,
-    yaw_angles: Option<&Array2>,
-) -> Vec<Vec<f64>> {
+fn compute_powers_turbopark(config: &FlorisConfig, yaw_angles: Option<&Array2>) -> Vec<Vec<f64>> {
     let mut model = FlorisModel::from_config(config.clone()).expect("Failed to create FlorisModel");
 
     if let Some(yaw) = yaw_angles {
-        model.set_yaw_angles(yaw.clone()).expect("Failed to set yaw angles");
+        model
+            .set_yaw_angles(yaw.clone())
+            .expect("Failed to set yaw angles");
     }
 
     model.initialize_grid().expect("init grid failed");
-    model.initialize_flow_field().expect("init flow field failed");
+    model
+        .initialize_flow_field()
+        .expect("init flow field failed");
 
     let farm = model.core().farm.clone();
     let mut flow_field = model.core().flow_field.clone();
@@ -323,9 +328,9 @@ fn test_jensen_regression() {
         },
         CombinationModelConfig::SOSFS,
         TurbulenceModelConfig::None,
-        true,  // enable_secondary_steering
-        true,  // enable_yaw_added_recovery
-        true,  // enable_transverse_velocities
+        true, // enable_secondary_steering
+        true, // enable_yaw_added_recovery
+        true, // enable_transverse_velocities
     );
 
     let powers = compute_powers_manual(&config, None);
@@ -349,9 +354,7 @@ fn test_jensen_yawed() {
         true,
     );
 
-    let yaw = Array2::from_shape_fn((16, 3), |(fi, ti)| {
-        if ti == 0 { 5.0 } else { 0.0 }
-    });
+    let yaw = Array2::from_shape_fn((16, 3), |(fi, ti)| if ti == 0 { 5.0 } else { 0.0 });
 
     let powers = compute_powers_manual(&config, Some(&yaw));
     let golden = common::load_wake_golden("jensen_yawed");
@@ -396,7 +399,13 @@ fn test_gauss_regression() {
 
     let powers = compute_powers_manual(&config, None);
     let golden = common::load_wake_golden("gauss_regression");
-    assert_powers_close_tol(&powers, &golden.turbine_powers, "gauss_regression", 0.35, 100000.0);
+    assert_powers_close_tol(
+        &powers,
+        &golden.turbine_powers,
+        "gauss_regression",
+        0.35,
+        100000.0,
+    );
 }
 
 #[test]
@@ -430,13 +439,17 @@ fn test_gauss_yawed() {
         true,
     );
 
-    let yaw = Array2::from_shape_fn((16, 3), |(fi, ti)| {
-        if ti == 0 { 5.0 } else { 0.0 }
-    });
+    let yaw = Array2::from_shape_fn((16, 3), |(fi, ti)| if ti == 0 { 5.0 } else { 0.0 });
 
     let powers = compute_powers_manual(&config, Some(&yaw));
     let golden = common::load_wake_golden("gauss_yawed");
-    assert_powers_close_tol(&powers, &golden.turbine_powers, "gauss_yawed", 0.35, 100000.0);
+    assert_powers_close_tol(
+        &powers,
+        &golden.turbine_powers,
+        "gauss_yawed",
+        0.35,
+        100000.0,
+    );
 }
 
 // ============================================================
@@ -468,7 +481,13 @@ fn test_turbopark_regression() {
 
     let powers = compute_powers_turbopark(&config, None);
     let golden = common::load_wake_golden("turbopark_regression");
-    assert_powers_close_tol(&powers, &golden.turbine_powers, "turbopark_regression", 0.50, 150000.0);
+    assert_powers_close_tol(
+        &powers,
+        &golden.turbine_powers,
+        "turbopark_regression",
+        0.50,
+        150000.0,
+    );
 }
 
 #[test]
@@ -494,13 +513,17 @@ fn test_turbopark_yawed() {
         false,
     );
 
-    let yaw = Array2::from_shape_fn((16, 3), |(fi, ti)| {
-        if ti == 0 { 5.0 } else { 0.0 }
-    });
+    let yaw = Array2::from_shape_fn((16, 3), |(fi, ti)| if ti == 0 { 5.0 } else { 0.0 });
 
     let powers = compute_powers_turbopark(&config, Some(&yaw));
     let golden = common::load_wake_golden("turbopark_yawed");
-    assert_powers_close_tol(&powers, &golden.turbine_powers, "turbopark_yawed", 0.50, 150000.0);
+    assert_powers_close_tol(
+        &powers,
+        &golden.turbine_powers,
+        "turbopark_yawed",
+        0.50,
+        150000.0,
+    );
 }
 
 // ============================================================
@@ -580,5 +603,11 @@ fn test_cc_regression() {
 
     let powers = compute_powers_cc(&config, None);
     let golden = common::load_wake_golden("cc_regression");
-    assert_powers_close_tol(&powers, &golden.turbine_powers, "cc_regression", 0.65, 400000.0);
+    assert_powers_close_tol(
+        &powers,
+        &golden.turbine_powers,
+        "cc_regression",
+        0.65,
+        400000.0,
+    );
 }

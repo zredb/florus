@@ -6,8 +6,8 @@
 //! Note: Full implementation requires calculate_horizontal_plane_with_turbines() method.
 //! This example uses standard horizontal plane calculation as a placeholder.
 
-use florus::{FlorisModel, Result};
 use florus::visualization::*;
+use florus::{FlorisModel, Result};
 
 fn main() -> Result<()> {
     println!("=== Flow Visualization by Sweeping Turbines Example ===\n");
@@ -18,10 +18,7 @@ fn main() -> Result<()> {
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
     // Set a 2 turbine layout
-    fmodel.set_layout(
-        &ndarray::arr1(&[0.0, 500.0]),
-        &ndarray::arr1(&[0.0, 0.0]),
-    )?;
+    fmodel.set_layout(&ndarray::arr1(&[0.0, 500.0]), &ndarray::arr1(&[0.0, 0.0]))?;
     fmodel.set_wind_conditions(
         ndarray::arr1(&[8.0]),
         ndarray::arr1(&[270.0]),
@@ -34,7 +31,9 @@ fn main() -> Result<()> {
     println!("Running simulation...");
     fmodel.run()?;
 
-    println!("\nNote: The 'calculate_horizontal_plane_with_turbines' method is not yet implemented.");
+    println!(
+        "\nNote: The 'calculate_horizontal_plane_with_turbines' method is not yet implemented."
+    );
     println!("This method would:");
     println!("  - Scan across the flow field using turbine models");
     println!("  - Calculate velocities at each point by applying wake models");
@@ -45,8 +44,8 @@ fn main() -> Result<()> {
     match visualize_horizontal_plane(
         &fmodel,
         "output/examples_visualizations/sweep_turbines_demo.png",
-        Some(3.0),   // Min speed
-        Some(9.0),   // Max speed
+        Some(3.0), // Min speed
+        Some(9.0), // Max speed
         Some("Horizontal Plane (Turbine Sweep Method Not Implemented)"),
     ) {
         Ok(_) => {

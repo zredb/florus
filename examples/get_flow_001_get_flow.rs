@@ -32,7 +32,10 @@ fn main() -> Result<()> {
 
     // Get turbine average velocities
     let turbine_avg_velocities = fmodel.turbine_average_velocities();
-    println!("Turbine average velocities shape: {:?}", turbine_avg_velocities.shape());
+    println!(
+        "Turbine average velocities shape: {:?}",
+        turbine_avg_velocities.shape()
+    );
     println!("  Dimensions: [findex, turbines]\n");
 
     // Show that one is equivalent to the other following averaging
@@ -42,7 +45,7 @@ fn main() -> Result<()> {
 
     // Recompute: cbrt(mean(u^3))
     let u_cubed = &u_points.mapv(|x| x.powi(3));
-    
+
     // Mean over axes 2 and 3 (grid_y and grid_z)
     let mean_u_cubed_axis2 = u_cubed.mean_axis(ndarray::Axis(2)).unwrap();
     let mean_u_cubed = mean_u_cubed_axis2.mean_axis(ndarray::Axis(2)).unwrap();

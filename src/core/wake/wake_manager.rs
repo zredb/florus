@@ -7,6 +7,7 @@ use crate::floris_config::{
     CombinationModelConfig, DeflectionModelConfig, TurbulenceModelConfig, VelocityModelConfig,
     WakeConfig,
 };
+use crate::types::Float;
 
 /// Wake model manager created from WakeConfig
 ///
@@ -24,6 +25,8 @@ pub struct WakeModelManager {
     pub enable_wake_mixing: bool,
     pub use_parallel_calc: bool,
     pub velocity_model_name: String,
+    /// Atmospheric TI gain from the wake_induced_mixing turbulence config
+    pub atmospheric_ti_gain: Float,
 }
 
 impl std::fmt::Debug for WakeModelManager {
@@ -61,6 +64,7 @@ impl Clone for WakeModelManager {
             enable_wake_mixing: self.enable_wake_mixing,
             use_parallel_calc: self.use_parallel_calc,
             velocity_model_name: self.velocity_model_name.clone(),
+            atmospheric_ti_gain: self.atmospheric_ti_gain,
         }
     }
 }
@@ -76,6 +80,13 @@ impl WakeModelManager {
         let combination_model =
             Self::create_combination_model(&config.model_strings.combination_model)?;
 
+        let atmospheric_ti_gain = match &config.model_strings.turbulence_model {
+            TurbulenceModelConfig::WakeInducedMixing {
+                atmospheric_ti_gain,
+            } => *atmospheric_ti_gain,
+            _ => 0.0,
+        };
+
         Ok(Self {
             velocity_model,
             deflection_model,
@@ -88,6 +99,7 @@ impl WakeModelManager {
             enable_wake_mixing: config.enable_wake_mixing,
             use_parallel_calc: config.use_parallel_calc,
             velocity_model_name: config.model_strings.velocity_model.model_name(),
+            atmospheric_ti_gain,
         })
     }
 
@@ -153,9 +165,25 @@ impl WakeModelManager {
                     )
                 ))
             }
-            VelocityModelConfig::EmpiricalGauss { ad, bd: _, alpha, beta } => {
+            VelocityModelConfig::EmpiricalGauss {
+                wake_expansion_rates,
+                breakpoints_d,
+                sigma_0_d,
+                smoothing_length_d,
+                mixing_gain_velocity,
+                awc_wake_exp,
+                awc_wake_denominator,
+            } => {
                 Ok(Box::new(
-                    crate::core::wake_velocity::empirical_gauss::EmpiricalGaussVelocityDeficit::new(*alpha, *beta, *ad)
+                    crate::core::wake_velocity::empirical_gauss::EmpiricalGaussVelocityDeficit::new(
+                        wake_expansion_rates.clone(),
+                        breakpoints_d.clone(),
+                        *sigma_0_d,
+                        *smoothing_length_d,
+                        *mixing_gain_velocity,
+                        *awc_wake_exp,
+                        *awc_wake_denominator,
+                    )
                 ))
             }
         }
@@ -187,9 +215,21 @@ impl WakeModelManager {
                     crate::core::wake_deflection::jimenez::JimenezVelocityDeflection::new(*kd, *ad)
                 ))
             }
-            DeflectionModelConfig::EmpiricalGauss { ad, bd, kd } => {
+            DeflectionModelConfig::EmpiricalGauss {
+                horizontal_deflection_gain_d,
+                vertical_deflection_gain_d,
+                deflection_rate,
+                mixing_gain_deflection,
+                yaw_added_mixing_gain,
+            } => {
                 Ok(Box::new(
-                    crate::core::wake_deflection::empirical_gauss::EmpiricalGaussVelocityDeflection::new(*ad, *bd, *kd)
+                    crate::core::wake_deflection::empirical_gauss::EmpiricalGaussVelocityDeflection::new(
+                        *horizontal_deflection_gain_d,
+                        *vertical_deflection_gain_d,
+                        *deflection_rate,
+                        *mixing_gain_deflection,
+                        *yaw_added_mixing_gain,
+                    )
                 ))
             }
         }
@@ -207,15 +247,18 @@ impl WakeModelManager {
                 downstream,
             } => Ok(Box::new(
                 crate::core::wake_turbulence::crespo_hernandez::CrespoHernandez::new(
-                    *initial, *constant, *ai, *downstream,
+                    *initial,
+                    *constant,
+                    *ai,
+                    *downstream,
                 ),
             )),
             TurbulenceModelConfig::WakeInducedMixing { .. } => {
-                // WakeInducedMixing not fully implemented yet, use CrespoHernandez as fallback
+                // WakeInducedMixing is not used through the WAT path: the
+                // empirical_gauss_solver consumes its 2-arg mixing term directly.
+                // The WAT path gets no wake-added turbulence.
                 Ok(Box::new(
-                    crate::core::wake_turbulence::crespo_hernandez::CrespoHernandez::new(
-                        0.1, 0.9, 0.8, -0.32,
-                    ),
+                    crate::core::wake_turbulence::none::NoneTurbulence::new(),
                 ))
             }
             TurbulenceModelConfig::None => Ok(Box::new(

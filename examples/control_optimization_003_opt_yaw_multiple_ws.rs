@@ -10,7 +10,7 @@ use florus::{FlorisModel, Result};
 fn main() -> Result<()> {
     println!("=== Yaw Optimization - Multiple Wind Speeds ===\n");
     println!("This example optimizes yaw angles for multiple wind speeds.\n");
-    
+
     println!("Configuration:");
     println!("  - Turbines: 3 (aligned in x-direction)");
     println!("  - Wind directions: 270°");
@@ -19,7 +19,7 @@ fn main() -> Result<()> {
 
     // Initialize FlorisModel
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-    
+
     // Set 3-turbine layout aligned in x-direction
     fmodel.set_layout(
         &ndarray::arr1(&[0.0, 630.0, 1260.0]),
@@ -27,9 +27,18 @@ fn main() -> Result<()> {
     )?;
 
     let wind_speeds = vec![6.0, 8.0, 10.0, 12.0];
-    
-    println!("{:<15} | {:<20} | {:<20} | {:<15}", "Wind Speed", "Baseline Power", "Optimized Power", "Gain (%)");
-    println!("{}|{}|{}|{}", "-".repeat(16), "-".repeat(21), "-".repeat(21), "-".repeat(16));
+
+    println!(
+        "{:<15} | {:<20} | {:<20} | {:<15}",
+        "Wind Speed", "Baseline Power", "Optimized Power", "Gain (%)"
+    );
+    println!(
+        "{}|{}|{}|{}",
+        "-".repeat(16),
+        "-".repeat(21),
+        "-".repeat(21),
+        "-".repeat(16)
+    );
 
     for ws in &wind_speeds {
         // Set wind conditions
@@ -38,21 +47,23 @@ fn main() -> Result<()> {
             ndarray::arr1(&[270.0]),
             ndarray::arr1(&[0.06]),
         )?;
-        
+
         // Run baseline (no yaw)
         fmodel.set_yaw_angles(ndarray::arr2(&[[0.0, 0.0, 0.0]]))?;
         fmodel.run()?;
         let baseline_power = fmodel.get_farm_power()[0];
-        
+
         // Note: Full yaw optimization requires YawOptimizationSR implementation
         // For now, demonstrate the concept
-        println!("{:<15.1} | {:<20.2} | {:<20} | {:<15}", 
-                 ws, 
-                 baseline_power / 1000.0,
-                 "Requires optimizer",
-                 "-");
+        println!(
+            "{:<15.1} | {:<20.2} | {:<20} | {:<15}",
+            ws,
+            baseline_power / 1000.0,
+            "Requires optimizer",
+            "-"
+        );
     }
-    
+
     println!("\n=== Analysis ===");
     println!("Yaw optimization effectiveness varies with wind speed:");
     println!("  - Low wind speeds: Less benefit (wake effects smaller)");

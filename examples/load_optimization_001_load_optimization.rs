@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== Load Optimization ===\n");
 
     println!("Wind Farm Load Optimization:\\n");
-    
+
     println!("Objective:");
     println!("  - Minimize structural loads on turbines");
     println!("  - Extend turbine lifetime");

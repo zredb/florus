@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== WRG with Heterogeneous Inflow ===\n");
 
     println!("WRG-Driven Heterogeneous Inflow:\\n");
-    
+
     println!("Integration Concept:");
     println!("  - Use WRG grid as heterogeneous wind field");
     println!("  - Interpolate WRG data to turbine locations");

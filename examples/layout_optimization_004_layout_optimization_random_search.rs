@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== Layout Optimization - Random Search ===\n");
 
     println!("Random Search Layout Optimization:\\n");
-    
+
     println!("Algorithm:");
     println!("  1. Generate random turbine layouts");
     println!("  2. Evaluate AEP for each layout");

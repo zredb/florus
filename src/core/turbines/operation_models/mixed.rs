@@ -5,10 +5,10 @@
 //! If power setpoint is set, use derating control (SimpleDeratingTurbine)
 //! Otherwise use simple control (SimpleTurbine)
 
-use crate::core::turbines::POWER_SETPOINT_DEFAULT;
 use crate::core::turbines::operation_models::simple::SimpleTurbine;
 use crate::core::turbines::operation_models::simple_derating::SimpleDeratingTurbine;
 use crate::core::turbines::operation_models::OperationModel;
+use crate::core::turbines::POWER_SETPOINT_DEFAULT;
 use crate::core::{TurbineContext, TurbineParameters};
 use crate::types::Array2;
 

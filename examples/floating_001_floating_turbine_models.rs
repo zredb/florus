@@ -10,9 +10,9 @@ fn main() -> Result<()> {
     println!("=== Floating Turbine Models ===\n");
 
     println!("Floating Wind Turbine Modeling:\\n");
-    
+
     println!("Key Differences from Fixed-Bottom:\\n");
-    
+
     println!("1. Platform Motion:");
     println!("   - Pitch, roll, heave motions");
     println!("   - Affects rotor orientation");

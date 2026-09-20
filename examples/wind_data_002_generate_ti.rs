@@ -4,8 +4,8 @@
 //!
 //! Corresponds to: examples_wind_data/002_generate_ti.py
 
+use florus::wind_data::{TIParams, TimeSeries, WindRose};
 use florus::{FlorisModel, Result};
-use florus::wind_data::{TimeSeries, WindRose, TIParams};
 use ndarray::Array1;
 
 fn main() -> Result<()> {
@@ -44,19 +44,32 @@ fn main() -> Result<()> {
     println!("  ----|------|-------------");
     for (i, &wd) in wind_directions.iter().enumerate() {
         for (j, &ws) in wind_speeds.iter().enumerate() {
-            println!("  {:4.0} | {:4.1} | {:11.4}", wd, ws, wind_rose.ti_table[[i, j]]);
+            println!(
+                "  {:4.0} | {:4.1} | {:11.4}",
+                wd,
+                ws,
+                wind_rose.ti_table[[i, j]]
+            );
         }
     }
 
     // Method 2: IEC 61400-1 method
     println!("\nMethod 2: IEC 61400-1 method (Iref=0.07)");
-    wind_rose.assign_ti_using_iec_method(Some(TIParams { iref: 0.07, offset: 3.8 }));
+    wind_rose.assign_ti_using_iec_method(Some(TIParams {
+        iref: 0.07,
+        offset: 3.8,
+    }));
 
     println!("  WD  |  WS  |  TI (IEC)");
     println!("  ----|------|----------");
     for (i, &wd) in wind_directions.iter().enumerate() {
         for (j, &ws) in wind_speeds.iter().enumerate() {
-            println!("  {:4.0} | {:4.1} | {:9.4}", wd, ws, wind_rose.ti_table[[i, j]]);
+            println!(
+                "  {:4.0} | {:4.1} | {:9.4}",
+                wd,
+                ws,
+                wind_rose.ti_table[[i, j]]
+            );
         }
     }
 
@@ -67,20 +80,23 @@ fn main() -> Result<()> {
         Array1::from_vec(vec![6.0, 8.0, 10.0]),
         Array1::from_vec(vec![0.06, 0.06, 0.06]),
     )?;
-    ts.assign_ti_using_iec_method(Some(TIParams { iref: 0.07, offset: 3.8 }));
+    ts.assign_ti_using_iec_method(Some(TIParams {
+        iref: 0.07,
+        offset: 3.8,
+    }));
 
     println!("  WS  |  TI (IEC)");
     println!("  ----|----------");
     for i in 0..ts.wind_speeds.len() {
-        println!("  {:4.1} | {:9.4}", ts.wind_speeds[i], ts.turbulence_intensities[i]);
+        println!(
+            "  {:4.1} | {:9.4}",
+            ts.wind_speeds[i], ts.turbulence_intensities[i]
+        );
     }
 
     // Show the model with IEC TI
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-    fmodel.set_layout(
-        &ndarray::arr1(&[0.0, 500.0]),
-        &ndarray::arr1(&[0.0, 0.0]),
-    )?;
+    fmodel.set_layout(&ndarray::arr1(&[0.0, 500.0]), &ndarray::arr1(&[0.0, 0.0]))?;
 
     println!("\nFarm power with IEC TI values:");
     println!("{:<10} | {:<10} | {:<10}", "WS (m/s)", "Farm (kW)", "TI");
@@ -95,7 +111,12 @@ fn main() -> Result<()> {
         )?;
         fmodel.run()?;
         let p = fmodel.get_turbine_powers();
-        println!("{:<10.1} | {:<10.1} | {:<10.4}", ws_val, p.row(0).sum() / 1000.0, ti_val);
+        println!(
+            "{:<10.1} | {:<10.1} | {:<10.4}",
+            ws_val,
+            p.row(0).sum() / 1000.0,
+            ti_val
+        );
     }
 
     println!("\n=== Example Complete ===");

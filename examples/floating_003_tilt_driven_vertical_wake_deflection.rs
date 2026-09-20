@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== Tilt-Driven Vertical Wake Deflection ===\n");
 
     println!("Vertical Wake Steering Concept:\\n");
-    
+
     println!("Traditional Yaw Control:");
     println!("  - Horizontal wake deflection");
     println!("  - Redirects wake left or right");

@@ -167,7 +167,6 @@ impl WindRoseWRG {
             Array2::from_elem((n_dir, n_ws), 0.06)
         });
 
-    
         // Calculate wind directions from WRG sectors or use specified step
         let (wind_directions, wd_step) = if let Some(step) = wd_step {
             let n_dir = (360.0 / step).ceil() as usize;
@@ -993,8 +992,6 @@ impl WindData for WindRoseByTurbine {
         self.wind_directions.len() * self.wind_speeds.len()
     }
 
-
-
     fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig {
         let n_conditions = self.n_conditions();
         HeterogeneousInflowConfig {
@@ -1648,8 +1645,6 @@ mod tests {
 
         // Clean up
         let _ = std::fs::remove_file(&file_path);
-
-
     }
 
     #[test]

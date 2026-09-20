@@ -92,12 +92,13 @@ impl Farm {
         if turbine_types.len() == 1 {
             // Single turbine type for all turbines - share the same Arc instance
             let turbine_path = format!("turbine_library/{}.yaml", turbine_types[0]);
-            let turbine_type = TurbineType::load_turbine_type(&turbine_path)
-                .map_err(|e| anyhow::anyhow!("Failed to load turbine type '{}': {}", turbine_types[0], e))?;
+            let turbine_type = TurbineType::load_turbine_type(&turbine_path).map_err(|e| {
+                anyhow::anyhow!("Failed to load turbine type '{}': {}", turbine_types[0], e)
+            })?;
             let turbine_type_arc = Arc::new(turbine_type);
             turbines = (0..n_turbines)
-                .map(|_| Turbine { 
-                    turbine_type: Arc::clone(&turbine_type_arc) 
+                .map(|_| Turbine {
+                    turbine_type: Arc::clone(&turbine_type_arc),
                 })
                 .collect();
         } else {
@@ -106,8 +107,8 @@ impl Farm {
                 let turbine_path = format!("turbine_library/{}.yaml", t);
                 let turbine_type = TurbineType::load_turbine_type(&turbine_path)
                     .map_err(|e| anyhow::anyhow!("Failed to load turbine type '{}': {}", t, e))?;
-                turbines.push(Turbine { 
-                    turbine_type: Arc::new(turbine_type) 
+                turbines.push(Turbine {
+                    turbine_type: Arc::new(turbine_type),
                 });
             }
         }
@@ -603,17 +604,21 @@ impl Farm {
 
         // Only initialize if arrays don't exist or have wrong size
         // This preserves user-set values like yaw_angles during optimization
-        let needs_init = self.yaw_angles.dim().0 != n_findex || self.yaw_angles.dim().1 != n_turbines;
-        
+        let needs_init =
+            self.yaw_angles.dim().0 != n_findex || self.yaw_angles.dim().1 != n_turbines;
+
         if needs_init {
             self.yaw_angles = Array2::zeros((n_findex, n_turbines));
             self.yaw_angles_sorted = Array2::zeros((n_findex, n_turbines));
             self.tilt_angles = Array2::zeros((n_findex, n_turbines));
             self.tilt_angles_sorted = Array2::zeros((n_findex, n_turbines));
-            self.power_setpoints = Array2::from_elem((n_findex, n_turbines), POWER_SETPOINT_DEFAULT);
-            self.power_setpoints_sorted = Array2::from_elem((n_findex, n_turbines), POWER_SETPOINT_DEFAULT);
+            self.power_setpoints =
+                Array2::from_elem((n_findex, n_turbines), POWER_SETPOINT_DEFAULT);
+            self.power_setpoints_sorted =
+                Array2::from_elem((n_findex, n_turbines), POWER_SETPOINT_DEFAULT);
             self.awc_modes = NdArray2::from_elem((n_findex, n_turbines), "baseline".to_string());
-            self.awc_modes_sorted = NdArray2::from_elem((n_findex, n_turbines), "baseline".to_string());
+            self.awc_modes_sorted =
+                NdArray2::from_elem((n_findex, n_turbines), "baseline".to_string());
             self.awc_amplitudes = Array2::zeros((n_findex, n_turbines));
             self.awc_amplitudes_sorted = Array2::zeros((n_findex, n_turbines));
             self.awc_frequencies = Array2::zeros((n_findex, n_turbines));

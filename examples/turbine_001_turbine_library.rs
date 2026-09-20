@@ -12,14 +12,9 @@ fn main() -> Result<()> {
 
     // Get list of available turbine types from the library
     println!("Available turbine types in library:\n");
-    
+
     // List common reference turbines
-    let turbines = vec![
-        "nrel_5MW",
-        "iea_10MW",
-        "iea_15MW",
-        "iea_22MW",
-    ];
+    let turbines = vec!["nrel_5MW", "iea_10MW", "iea_15MW", "iea_22MW"];
 
     for (i, turbine_name) in turbines.iter().enumerate() {
         println!("{}. {}", i + 1, turbine_name);
@@ -29,10 +24,7 @@ fn main() -> Result<()> {
 
     // Create a single turbine simulation
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-    fmodel.set_layout(
-        &ndarray::arr1(&[0.0]),
-        &ndarray::arr1(&[0.0]),
-    )?;
+    fmodel.set_layout(&ndarray::arr1(&[0.0]), &ndarray::arr1(&[0.0]))?;
 
     // Test at different wind speeds
     let wind_speeds = vec![3.0, 6.0, 9.0, 12.0, 15.0, 20.0, 25.0];
@@ -49,7 +41,7 @@ fn main() -> Result<()> {
     // Run simulation and get results
     fmodel.run()?;
     let powers = fmodel.get_turbine_powers();
-    
+
     for (i, ws) in wind_speeds.iter().enumerate() {
         let power_kw = powers[[i, 0]] / 1000.0;
         println!("{:16.1} | {:10.2}", ws, power_kw);
@@ -80,9 +72,13 @@ fn main() -> Result<()> {
         fmodel.run()?;
         let power = fmodel.get_turbine_powers()[[0, 0]];
         let power_loss_pct = (1.0 - power / baseline_power) * 100.0;
-        
-        println!("{:15.1} | {:13.2} | {:14.2}", 
-                 yaw, power / 1000.0, power_loss_pct);
+
+        println!(
+            "{:15.1} | {:13.2} | {:14.2}",
+            yaw,
+            power / 1000.0,
+            power_loss_pct
+        );
     }
 
     println!("\n=== Example Complete ===");

@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== Wind Resource Grid ===\n");
 
     println!("Wind Resource Grid (WRG) Overview:\\n");
-    
+
     println!("Definition:");
     println!("  - Standard format for wind resource data");
     println!("  - Developed by UL Solutions (formerly Garrad Hassan)");

@@ -68,9 +68,8 @@ mod tests {
 
     #[test]
     fn test_optimize_power_setpoints() {
-        let (setpoints, _power) = optimize_power_setpoints(
-            8.0, 270.0, 0.06, 5_000_000.0, 3, 0.5, 1.0,
-        );
+        let (setpoints, _power) =
+            optimize_power_setpoints(8.0, 270.0, 0.06, 5_000_000.0, 3, 0.5, 1.0);
         assert_eq!(setpoints.shape()[0], 1);
         assert_eq!(setpoints.shape()[1], 3);
     }

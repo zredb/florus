@@ -113,12 +113,17 @@ impl FlowField {
     }
 
     /// Initialize flow field on a grid
-    /// 
+    ///
     /// Applies wind shear profile to create height-dependent velocity field.
     /// Wind speed varies with height according to power law:
     ///   v(z) = v_ref * (z / z_ref) ^ alpha
     /// where alpha is the wind_shear exponent.
-    pub fn initialize_flow_field(&mut self, grid_shape: (usize, usize, usize, usize), z_grid: &Array4, hub_heights: &Array1) {
+    pub fn initialize_flow_field(
+        &mut self,
+        grid_shape: (usize, usize, usize, usize),
+        z_grid: &Array4,
+        hub_heights: &Array1,
+    ) {
         let (n_findex, n_turbines, n_y, n_z) = grid_shape;
 
         // Initialize velocity fields with wind shear profile
@@ -129,10 +134,14 @@ impl FlowField {
         // Apply wind shear profile to initial velocity field
         for fi in 0..n_findex {
             let ws_ref = self.wind_speeds[fi];
-            
+
             // Get reference height (use first turbine's hub height if reference_wind_height is -1)
             let h_ref = if self.reference_wind_height < 0.0 {
-                if hub_heights.len() > 0 { hub_heights[0] } else { 90.0 }
+                if hub_heights.len() > 0 {
+                    hub_heights[0]
+                } else {
+                    90.0
+                }
             } else {
                 self.reference_wind_height
             };
@@ -142,14 +151,14 @@ impl FlowField {
                     for iz in 0..n_z {
                         // Get height at this grid point
                         let height = z_grid[[fi, ti, iy, iz]];
-                        
+
                         // Apply wind shear: v(z) = v_ref * (z / z_ref) ^ alpha
                         let height_factor = if height > 0.0 && h_ref > 0.0 {
                             (height / h_ref).powf(self.wind_shear)
                         } else {
                             1.0
                         };
-                        
+
                         self.u_initial_sorted[[fi, ti, iy, iz]] = ws_ref * height_factor;
                     }
                 }
@@ -162,7 +171,11 @@ impl FlowField {
         for fi in 0..n_findex {
             // Get reference height (use first turbine's hub height if reference_wind_height is -1)
             let h_ref = if self.reference_wind_height < 0.0 {
-                if hub_heights.len() > 0 { hub_heights[0] } else { 90.0 }
+                if hub_heights.len() > 0 {
+                    hub_heights[0]
+                } else {
+                    90.0
+                }
             } else {
                 self.reference_wind_height
             };
@@ -291,7 +304,7 @@ impl FlowField {
                 let old_i = unsorted_indices[[fi, new_i]] as usize;
                 for iy in 0..n_y {
                     for iz in 0..n_z {
-                        self.turbulence_intensity_field[[fi, new_i, iy, iz]] = 
+                        self.turbulence_intensity_field[[fi, new_i, iy, iz]] =
                             self.turbulence_intensity_field_sorted[[fi, old_i, iy, iz]];
                     }
                 }

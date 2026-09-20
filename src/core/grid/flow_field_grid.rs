@@ -32,7 +32,12 @@ impl FlowFieldGrid {
     ) -> crate::Result<Self> {
         // Convert single resolution to [usize; 3] tuple
         let grid_resolution = [grid_resolution, grid_resolution, grid_resolution];
-        Self::new_with_resolution(turbine_coordinates, turbine_diameters, wind_directions, grid_resolution)
+        Self::new_with_resolution(
+            turbine_coordinates,
+            turbine_diameters,
+            wind_directions,
+            grid_resolution,
+        )
     }
 
     pub fn new_with_resolution(
@@ -50,15 +55,42 @@ impl FlowFieldGrid {
 
         // Calculate domain bounds
         let eps = 0.01;
-        let max_diameter = turbine_diameters.iter().cloned().fold(Float::NEG_INFINITY, Float::max);
+        let max_diameter = turbine_diameters
+            .iter()
+            .cloned()
+            .fold(Float::NEG_INFINITY, Float::max);
 
         // Use first findex for bounds calculation (assuming all turbines visible in all conditions)
-        let xmin = x.column(0).iter().cloned().fold(Float::INFINITY, Float::min) - 2.0 * max_diameter;
-        let xmax = x.column(0).iter().cloned().fold(Float::NEG_INFINITY, Float::max) + 10.0 * max_diameter;
-        let ymin = y.column(0).iter().cloned().fold(Float::INFINITY, Float::min) - 2.0 * max_diameter;
-        let ymax = y.column(0).iter().cloned().fold(Float::NEG_INFINITY, Float::max) + 2.0 * max_diameter;
+        let xmin = x
+            .column(0)
+            .iter()
+            .cloned()
+            .fold(Float::INFINITY, Float::min)
+            - 2.0 * max_diameter;
+        let xmax = x
+            .column(0)
+            .iter()
+            .cloned()
+            .fold(Float::NEG_INFINITY, Float::max)
+            + 10.0 * max_diameter;
+        let ymin = y
+            .column(0)
+            .iter()
+            .cloned()
+            .fold(Float::INFINITY, Float::min)
+            - 2.0 * max_diameter;
+        let ymax = y
+            .column(0)
+            .iter()
+            .cloned()
+            .fold(Float::NEG_INFINITY, Float::max)
+            + 2.0 * max_diameter;
         let zmin = eps;
-        let zmax = 6.0 * z.column(0).iter().cloned().fold(Float::NEG_INFINITY, Float::max);
+        let zmax = 6.0
+            * z.column(0)
+                .iter()
+                .cloned()
+                .fold(Float::NEG_INFINITY, Float::max);
 
         let nx = grid_resolution[0];
         let ny = grid_resolution[1];
@@ -90,14 +122,20 @@ impl FlowFieldGrid {
         // We'll store as (1, nx*ny*nz, 1, 1) or keep as is and reshape when needed
         // For compatibility with Grid trait, we reshape to (n_findex, n_points, 1, 1)
         // But flow field grid doesn't have turbine dimension, so we use (1, total_points, 1, 1)
-        
+
         let total_points = nx * ny * nz;
-        
+
         // Reshape to (1, total_points, 1, 1) for consistency with Grid trait
         // This represents: (dummy_findex, point_index, dummy_dim1, dummy_dim2)
-        let x_sorted = x_points.clone().into_shape_with_order((1, total_points, 1, 1))?;
-        let y_sorted = y_points.clone().into_shape_with_order((1, total_points, 1, 1))?;
-        let z_sorted = z_points.clone().into_shape_with_order((1, total_points, 1, 1))?;
+        let x_sorted = x_points
+            .clone()
+            .into_shape_with_order((1, total_points, 1, 1))?;
+        let y_sorted = y_points
+            .clone()
+            .into_shape_with_order((1, total_points, 1, 1))?;
+        let z_sorted = z_points
+            .clone()
+            .into_shape_with_order((1, total_points, 1, 1))?;
 
         // Reverse rotate to get inertial frame coordinates
         let (x_sorted_inertial_frame, y_sorted_inertial_frame, z_sorted_inertial_frame) =

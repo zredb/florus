@@ -10,8 +10,8 @@ use florus::types::Array2;
 use ndarray::Array;
 
 const WIND_DIRECTIONS: [f64; 16] = [
-    270.0, 270.0, 270.0, 270.0, 360.0, 360.0, 360.0, 360.0, 285.0, 285.0, 285.0, 285.0,
-    315.0, 315.0, 315.0, 315.0,
+    270.0, 270.0, 270.0, 270.0, 360.0, 360.0, 360.0, 360.0, 285.0, 285.0, 285.0, 285.0, 315.0,
+    315.0, 315.0, 315.0,
 ];
 
 const WIND_SPEEDS: [f64; 16] = [
@@ -161,8 +161,8 @@ fn debug_power_calculation() {
 #[test]
 fn debug_direct_solver() {
     // Compare with the manual solver approach that works in regression tests
-    use florus::core::TurbineGrid;
     use florus::core::wake::WakeModelManager;
+    use florus::core::TurbineGrid;
     use florus::floris_config::{SolverType, WakeModelStringsConfig};
     use florus::types::Array1;
 
@@ -215,7 +215,9 @@ fn debug_direct_solver() {
 
     // Use the manual approach
     model.initialize_grid().expect("init grid failed");
-    model.initialize_flow_field().expect("init flow field failed");
+    model
+        .initialize_flow_field()
+        .expect("init flow field failed");
 
     let grid = model.core().grid.as_ref().unwrap();
     let turbine_grid = grid.as_any().downcast_ref::<TurbineGrid>().unwrap();
@@ -228,8 +230,14 @@ fn debug_direct_solver() {
         .expect("solver failed");
 
     println!("=== DIRECT SOLVER RESULTS ===");
-    println!("u_sorted[fi=0, ti=0, 0, 0]: {:.6}", flow_field.u_sorted[[0, 0, 0, 0]]);
-    println!("u_sorted[fi=0, ti=1, 0, 0]: {:.6}", flow_field.u_sorted[[0, 1, 0, 0]]);
+    println!(
+        "u_sorted[fi=0, ti=0, 0, 0]: {:.6}",
+        flow_field.u_sorted[[0, 0, 0, 0]]
+    );
+    println!(
+        "u_sorted[fi=0, ti=1, 0, 0]: {:.6}",
+        flow_field.u_sorted[[0, 1, 0, 0]]
+    );
 
     // Compute power from u_sorted manually (like regression tests)
     use florus::core::turbines::cp_ct_table::TableConditions;

@@ -80,7 +80,8 @@ pub fn calculate_transverse_velocity(
         let vel_top = ((hh + d / 2.0) / hh).powf(wind_shear);
         let gamma_top = sind(yaw_f) * cosd(yaw_f) * gamma(d, vel_top, uinf, ct_f, scale);
         let vel_bottom = ((hh - d / 2.0) / hh).powf(wind_shear);
-        let gamma_bottom = -1.0 * sind(yaw_f) * cosd(yaw_f) * gamma(d, vel_bottom, uinf, ct_f, scale);
+        let gamma_bottom =
+            -1.0 * sind(yaw_f) * cosd(yaw_f) * gamma(d, vel_bottom, uinf, ct_f, scale);
 
         // turbine_average_velocity = cbrt(mean(u_i**3, axis=(2, 3)))
         let mut sum3 = 0.0;
@@ -93,9 +94,8 @@ pub fn calculate_transverse_velocity(
             }
         }
         let turbine_average_velocity = (sum3 / count3).powf(1.0 / 3.0);
-        let gamma_wake_rotation = 0.25 * 2.0 * PI * d * (ai_f - ai_f * ai_f)
-            * turbine_average_velocity
-            / tsr_f;
+        let gamma_wake_rotation =
+            0.25 * 2.0 * PI * d * (ai_f - ai_f * ai_f) * turbine_average_velocity / tsr_f;
 
         // Mixing-length based eddy viscosity for downstream decay
         let lmda = d / 8.0;
@@ -133,7 +133,8 @@ pub fn calculate_transverse_velocity(
                     let rc2 = ylocs * ylocs + zc * zc;
                     let corec = 1.0 - (-rc2 / (eps * eps)).exp();
                     let v5 = (gamma_wake_rotation * zc) / (2.0 * PI * rc2) * corec * decay;
-                    let w5 = (-1.0 * gamma_wake_rotation * ylocs) / (2.0 * PI * rc2) * corec * decay;
+                    let w5 =
+                        (-1.0 * gamma_wake_rotation * ylocs) / (2.0 * PI * rc2) * corec * decay;
 
                     // ground mirror - top vortex
                     let ztb = zz + (hh + d / 2.0) + NUM_EPS;
@@ -153,7 +154,8 @@ pub fn calculate_transverse_velocity(
                     let zcb = zz + hh + NUM_EPS;
                     let r_cb2 = ylocs * ylocs + zcb * zcb;
                     let corecb = 1.0 - (-r_cb2 / (eps * eps)).exp();
-                    let v6 = (-1.0 * gamma_wake_rotation * zcb) / (2.0 * PI * r_cb2) * corecb * decay;
+                    let v6 =
+                        (-1.0 * gamma_wake_rotation * zcb) / (2.0 * PI * r_cb2) * corecb * decay;
                     let w6 = (gamma_wake_rotation * ylocs) / (2.0 * PI * r_cb2) * corecb * decay;
 
                     let mut vv = v1 + v2 + v3 + v4 + v5 + v6;
@@ -263,9 +265,8 @@ pub fn wake_added_yaw(
             }
         }
         let turbine_average_velocity = (sum3 / cnt3).powf(1.0 / 3.0);
-        let gamma_wake_rotation = 0.25 * 2.0 * PI * d * (ai_f - ai_f * ai_f)
-            * turbine_average_velocity
-            / tsr_f;
+        let gamma_wake_rotation =
+            0.25 * 2.0 * PI * d * (ai_f - ai_f * ai_f) * turbine_average_velocity / tsr_f;
 
         // Compute v_top, v_bottom, v_core averaged over (iy, iz)
         let mut sum_vtop = 0.0;

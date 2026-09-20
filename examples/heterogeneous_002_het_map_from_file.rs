@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== Heterogeneous Map from File ===\n");
 
     println!("Loading Heterogeneous Data from Files:\\n");
-    
+
     println!("Data Sources:");
     println!("  1. CSV files:");
     println!("     - Grid coordinates (x, y)");

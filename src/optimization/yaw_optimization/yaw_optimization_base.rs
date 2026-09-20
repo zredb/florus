@@ -1,5 +1,5 @@
-use crate::types::{Array2, Float};
 use crate::floris_model::FlorisModel;
+use crate::types::{Array2, Float};
 
 /// Result of yaw optimization
 #[derive(Debug, Clone)]
@@ -134,8 +134,14 @@ pub mod variable_handling {
         if value.shape() == [n_findex, n_turbines] {
             Ok(value.clone())
         } else {
-            let result = value.broadcast((n_findex, n_turbines))
-                .ok_or_else(|| anyhow::anyhow!("Cannot broadcast array from {:?} to ({}, {})", value.shape(), n_findex, n_turbines))?;
+            let result = value.broadcast((n_findex, n_turbines)).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Cannot broadcast array from {:?} to ({}, {})",
+                    value.shape(),
+                    n_findex,
+                    n_turbines
+                )
+            })?;
             Ok(result.to_owned())
         }
     }
@@ -198,7 +204,9 @@ pub fn simple_yaw_optimization(
     let n_findex = fmodel.flow_field().n_findex;
     let n_turbines = fmodel.farm().n_turbines();
 
-    let baseline_yaw_angles = config.yaw_angles_baseline.clone()
+    let baseline_yaw_angles = config
+        .yaw_angles_baseline
+        .clone()
         .unwrap_or_else(|| Array2::zeros((n_findex, n_turbines)));
     fmodel.set_yaw_angles(baseline_yaw_angles.clone())?;
     fmodel.run()?;
@@ -216,7 +224,9 @@ pub fn simple_yaw_optimization(
         .filter(|ti| !downstream_indices.contains(ti))
         .collect();
 
-    let turbine_weights = config.turbine_weights.clone()
+    let turbine_weights = config
+        .turbine_weights
+        .clone()
         .unwrap_or_else(|| vec![1.0; n_turbines]);
 
     let min_yaw = config.minimum_yaw_angle;

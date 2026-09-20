@@ -10,7 +10,7 @@ use florus::{FlorisModel, Result};
 fn main() -> Result<()> {
     println!("=== Yaw Optimization - AEP ===\n");
     println!("This example optimizes yaw angles to maximize Annual Energy Production.\n");
-    
+
     println!("Configuration:");
     println!("  - Uses WindRose with full wind distribution");
     println!("  - Optimizes across all wind conditions");
@@ -18,7 +18,7 @@ fn main() -> Result<()> {
 
     // Initialize FlorisModel
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-    
+
     // Set 3-turbine layout
     fmodel.set_layout(
         &ndarray::arr1(&[0.0, 630.0, 1260.0]),
@@ -53,7 +53,7 @@ fn main() -> Result<()> {
     )?;
     fmodel.run()?;
     let baseline_power = fmodel.get_farm_power()[0];
-    
+
     println!("Example (single condition):");
     println!("  Wind: 8 m/s @ 270°, TI=0.06");
     println!("  Baseline farm power: {:.2} kW", baseline_power / 1000.0);

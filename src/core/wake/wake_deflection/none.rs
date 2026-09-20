@@ -1,11 +1,11 @@
+use crate::core::wake::{BaseModel, DeflectionModel};
+use crate::core::{FlowField, Grid};
 /// None wake deflection model
 ///
 /// No wake deflection - wakes propagate straight downstream
-use crate::types::{Float, Array1, Array2};
-use crate::core::wake::{BaseModel, DeflectionModel};
-use crate::core::{Grid, FlowField};
-use std::collections::HashMap;
+use crate::types::{Array1, Array2, Float};
 use ndarray::Array;
+use std::collections::HashMap;
 
 /// No wake deflection
 #[derive(Debug, Clone)]
@@ -38,6 +38,10 @@ impl DeflectionModel for NoneVelocityDeflection {
 
     fn clone_box(&self) -> Box<dyn DeflectionModel> {
         Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 
     fn function(

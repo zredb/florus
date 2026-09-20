@@ -29,7 +29,14 @@ fn main() -> Result<()> {
     let mut awc_amplitudes = ndarray::Array2::zeros((1, 4));
     awc_amplitudes[[0, 0]] = 2.5;
 
-    fmodel.set_operation(None, None, Some(awc_modes), Some(awc_amplitudes), None, None)?;
+    fmodel.set_operation(
+        None,
+        None,
+        Some(awc_modes),
+        Some(awc_amplitudes),
+        None,
+        None,
+    )?;
     fmodel.run()?;
 
     let powers = fmodel.get_turbine_powers() / 1000.0;
@@ -43,7 +50,10 @@ fn main() -> Result<()> {
     // Sweep helix amplitudes
     let n = 10;
     println!("\nHelix amplitude sweep (T0):");
-    println!("{:<20} | {:<15} | {:<15} | {:<15}", "Amplitude (deg)", "T0 Power (kW)", "Farm (kW)", "T1 Power (kW)");
+    println!(
+        "{:<20} | {:<15} | {:<15} | {:<15}",
+        "Amplitude (deg)", "T0 Power (kW)", "Farm (kW)", "T1 Power (kW)"
+    );
     println!("{}", "-".repeat(68));
 
     for i in 0..n {
@@ -58,7 +68,10 @@ fn main() -> Result<()> {
         let p = fmodel.get_turbine_powers() / 1000.0;
         println!(
             "{:<20.1} | {:<15.2} | {:<15.2} | {:<15.2}",
-            amp, p[[0, 0]], p.row(0).sum(), p[[0, 1]]
+            amp,
+            p[[0, 0]],
+            p.row(0).sum(),
+            p[[0, 1]]
         );
     }
 

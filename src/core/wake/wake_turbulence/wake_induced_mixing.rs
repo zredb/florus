@@ -6,10 +6,10 @@
 //!
 //! Based on the Python implementation from floris-4.6
 
-use crate::types::{Float, Array4};
 use crate::core::wake::BaseModel;
-use std::collections::HashMap;
+use crate::types::{Array4, Float};
 use ndarray::Array;
+use std::collections::HashMap;
 
 /// Wake-Induced Mixing model parameters
 ///
@@ -48,11 +48,7 @@ impl WakeInducedMixing {
         HashMap::new()
     }
 
-    fn function(
-        &self,
-        axial_induction_i: &Array4,
-        downstream_distance_d_i: &Array4,
-    ) -> Array4 {
+    fn function(&self, axial_induction_i: &Array4, downstream_distance_d_i: &Array4) -> Array4 {
         let shape = axial_induction_i.shape();
         let n_findex = shape[0];
         let n_turbines = shape[1];
@@ -150,14 +146,25 @@ mod tests {
         let result_2 = mixing.function(&axial_induction, &dist_2);
         let result_4 = mixing.function(&axial_induction, &dist_4);
 
-        assert_relative_eq!(result_2[[0, 0, 0, 0]], result_1[[0, 0, 0, 0]] / 4.0, epsilon = 1e-6);
-        assert_relative_eq!(result_4[[0, 0, 0, 0]], result_1[[0, 0, 0, 0]] / 16.0, epsilon = 1e-6);
+        assert_relative_eq!(
+            result_2[[0, 0, 0, 0]],
+            result_1[[0, 0, 0, 0]] / 4.0,
+            epsilon = 1e-6
+        );
+        assert_relative_eq!(
+            result_4[[0, 0, 0, 0]],
+            result_1[[0, 0, 0, 0]] / 16.0,
+            epsilon = 1e-6
+        );
     }
 
     #[test]
     fn test_wake_induced_mixing_with_turbine_types() {
         let mixing = WakeInducedMixing::new(0.0);
         assert_eq!(mixing.base.parameters.len(), 1);
-        assert_eq!(mixing.base.parameters.get("atmospheric_ti_gain"), Some(&0.0));
+        assert_eq!(
+            mixing.base.parameters.get("atmospheric_ti_gain"),
+            Some(&0.0)
+        );
     }
 }

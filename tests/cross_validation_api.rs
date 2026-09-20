@@ -169,11 +169,15 @@ fn compute_powers_manual(config: &FlorisConfig, yaw_angles: Option<&Array2>) -> 
     let mut model = FlorisModel::from_config(config.clone()).expect("Failed to create FlorisModel");
 
     if let Some(yaw) = yaw_angles {
-        model.set_yaw_angles(yaw.clone()).expect("Failed to set yaw angles");
+        model
+            .set_yaw_angles(yaw.clone())
+            .expect("Failed to set yaw angles");
     }
 
     model.initialize_grid().expect("init grid failed");
-    model.initialize_flow_field().expect("init flow field failed");
+    model
+        .initialize_flow_field()
+        .expect("init flow field failed");
 
     let grid = model.core().grid.as_ref().unwrap();
     let turbine_grid = grid.as_any().downcast_ref::<TurbineGrid>().unwrap();
@@ -322,9 +326,7 @@ fn test_single_condition_power() {
 fn test_yaw_effect() {
     let config = create_api_config_2t(API_WIND_SPEEDS_8.to_vec(), 1.225);
 
-    let yaw = Array2::from_shape_fn((1, 2), |(fi, ti)| {
-        if ti == 0 { 10.0 } else { 0.0 }
-    });
+    let yaw = Array2::from_shape_fn((1, 2), |(fi, ti)| if ti == 0 { 10.0 } else { 0.0 });
 
     let powers = compute_powers_manual(&config, Some(&yaw));
     let golden = common::load_api_golden("yaw_effect");
@@ -346,12 +348,11 @@ fn test_air_density_effect() {
     let powers_1225 = compute_powers_manual(&config_1225, None);
     let powers_10 = compute_powers_manual(&config_10, None);
 
-    let golden: AirDensityGolden =
-        serde_json::from_str(&std::fs::read_to_string(
-            "tests/golden_values/floris_model_api/air_density_effect.json",
-        )
-        .unwrap())
-        .unwrap();
+    let golden: AirDensityGolden = serde_json::from_str(
+        &std::fs::read_to_string("tests/golden_values/floris_model_api/air_density_effect.json")
+            .unwrap(),
+    )
+    .unwrap();
 
     assert_powers_close(
         &powers_1225,
@@ -383,11 +384,12 @@ fn test_air_density_effect() {
 fn test_no_wake_power() {
     let config = create_api_config_2t(API_WIND_SPEEDS_8.to_vec(), 1.225);
 
-    let mut model =
-        FlorisModel::from_config(config.clone()).expect("Failed to create FlorisModel");
+    let mut model = FlorisModel::from_config(config.clone()).expect("Failed to create FlorisModel");
 
     model.initialize_grid().expect("init grid failed");
-    model.initialize_flow_field().expect("init flow field failed");
+    model
+        .initialize_flow_field()
+        .expect("init flow field failed");
 
     let grid = model.core().grid.as_ref().unwrap();
     let turbine_grid = grid.as_any().downcast_ref::<TurbineGrid>().unwrap();
@@ -401,7 +403,9 @@ fn test_no_wake_power() {
     // which skips the solver entirely and just uses the initial flow field
 
     // Re-initialize flow field to get initial state (no wake)
-    model.initialize_flow_field().expect("init flow field failed");
+    model
+        .initialize_flow_field()
+        .expect("init flow field failed");
     let flow_field_no_wake = model.core().flow_field.clone();
 
     let n_findex = flow_field_no_wake.u_sorted.shape()[0];
@@ -416,8 +420,7 @@ fn test_no_wake_power() {
                 flow_field_no_wake.u_sorted.shape()[2] * flow_field_no_wake.u_sorted.shape()[3];
             for iy in 0..flow_field_no_wake.u_sorted.shape()[2] {
                 for iz in 0..flow_field_no_wake.u_sorted.shape()[3] {
-                    v_cubed_sum +=
-                        flow_field_no_wake.u_sorted[[fi, ti, iy, iz]].powi(3);
+                    v_cubed_sum += flow_field_no_wake.u_sorted[[fi, ti, iy, iz]].powi(3);
                 }
             }
             let rotor_avg_velocity = (v_cubed_sum / grid_points as f64).powf(1.0 / 3.0);
@@ -428,8 +431,7 @@ fn test_no_wake_power() {
                 .power_thrust_table
                 .ref_air_density
                 .unwrap_or(1.225);
-            let density_factor =
-                (flow_field_no_wake.air_density / ref_air_density).powf(1.0 / 3.0);
+            let density_factor = (flow_field_no_wake.air_density / ref_air_density).powf(1.0 / 3.0);
             let rotor_effective_velocity = rotor_avg_velocity * density_factor;
 
             let mut conditions = TableConditions::default();

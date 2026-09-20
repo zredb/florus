@@ -10,14 +10,14 @@ fn main() -> Result<()> {
     println!("=== Floating vs Fixed-Bottom Farm ===\n");
 
     println!("Comparison of Floating and Fixed-Bottom Farms:\\n");
-    
+
     println!("Fixed-Bottom Turbines:");
     println!("  Advantages:");
     println!("    - Proven technology");
     println!("    - Lower cost in shallow water");
     println!("    - Simpler installation");
     println!("    - Stable platform\\n");
-    
+
     println!("  Limitations:");
     println!("    - Depth limit (~60m)");
     println!("    - Foundation costs increase with depth");
@@ -29,7 +29,7 @@ fn main() -> Result<()> {
     println!("    - Higher wind resources offshore");
     println!("    - Reduced visual impact");
     println!("    - Potential for larger farms\\n");
-    
+
     println!("  Challenges:");
     println!("    - Higher initial cost");
     println!("    - Complex dynamics");

@@ -6,16 +6,16 @@ use serde::{Deserialize, Serialize};
 pub struct State {
     /// Whether the flow field has been initialized
     pub initialized: bool,
-    
+
     /// Current iteration count
     pub iteration: usize,
-    
+
     /// Maximum iterations allowed
     pub max_iterations: usize,
-    
+
     /// Convergence tolerance
     pub tolerance: f64,
-    
+
     /// Whether the solution has converged
     pub converged: bool,
 }
@@ -31,7 +31,7 @@ impl State {
             converged: false,
         }
     }
-    
+
     /// Reset state
     pub fn reset(&mut self) {
         self.initialized = false;
@@ -54,7 +54,7 @@ mod tests {
     #[test]
     fn test_state_new() {
         let state = State::new();
-        
+
         assert!(!state.initialized);
         assert_eq!(state.iteration, 0);
         assert_eq!(state.max_iterations, 100);
@@ -68,9 +68,9 @@ mod tests {
         state.initialized = true;
         state.iteration = 50;
         state.converged = true;
-        
+
         state.reset();
-        
+
         assert!(!state.initialized);
         assert_eq!(state.iteration, 0);
         assert!(!state.converged);
@@ -79,7 +79,7 @@ mod tests {
     #[test]
     fn test_state_default() {
         let state = State::default();
-        
+
         assert!(!state.initialized);
         assert_eq!(state.iteration, 0);
         assert!(!state.converged);
@@ -89,7 +89,7 @@ mod tests {
     fn test_state_clone() {
         let state = State::new();
         let cloned = state.clone();
-        
+
         assert_eq!(state.initialized, cloned.initialized);
         assert_eq!(state.iteration, cloned.iteration);
         assert_eq!(state.tolerance, cloned.tolerance);

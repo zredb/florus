@@ -18,10 +18,11 @@ pub mod yaw_optimization;
 
 // Re-export main types from yaw_optimization module
 pub use yaw_optimization::{
-    coordinate_descent_yaw, estimate_wake_deflection_angle, geometric_yaw, golden_section_search_yaw,
-    simple_yaw_optimization, yaw_cosine_loss, yaw_cosine_loss_derivative, TrapezoidBounds,
-    YawAngleBounds, YawOptimization, YawOptimizationConfig, YawOptimizationGeometric,
-    YawOptimizationResult, YawOptimizationSR, YawOptimizationScipy,
+    coordinate_descent_yaw, estimate_wake_deflection_angle, geometric_yaw,
+    golden_section_search_yaw, simple_yaw_optimization, yaw_cosine_loss,
+    yaw_cosine_loss_derivative, TrapezoidBounds, YawAngleBounds, YawOptimization,
+    YawOptimizationConfig, YawOptimizationGeometric, YawOptimizationResult, YawOptimizationSR,
+    YawOptimizationScipy,
 };
 
 pub use power_setpoint::{

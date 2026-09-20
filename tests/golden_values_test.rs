@@ -30,7 +30,10 @@ fn test_load_operation_golden() {
 fn test_load_timeseries_golden() {
     let golden = common::load_timeseries_golden();
     assert!(golden.timeseries.n_findex > 0);
-    assert_eq!(golden.timeseries.wind_speeds.len(), golden.timeseries.n_findex);
+    assert_eq!(
+        golden.timeseries.wind_speeds.len(),
+        golden.timeseries.n_findex
+    );
 }
 
 #[test]

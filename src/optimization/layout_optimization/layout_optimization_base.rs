@@ -15,7 +15,12 @@ pub enum Boundary {
     /// Polygon boundary defined by x, y coordinates
     Polygon(Vec<(Float, Float)>),
     /// Rectangle boundary
-    Rectangle { min_x: Float, max_x: Float, min_y: Float, max_y: Float },
+    Rectangle {
+        min_x: Float,
+        max_x: Float,
+        min_y: Float,
+        max_y: Float,
+    },
 }
 
 impl Default for Boundary {
@@ -34,15 +39,30 @@ impl Boundary {
     pub fn bounds(&self) -> (Float, Float, Float, Float) {
         match self {
             Boundary::Polygon(points) => {
-                let min_x = points.iter().map(|&(x, _)| x).fold(Float::INFINITY, Float::min);
-                let max_x = points.iter().map(|&(x, _)| x).fold(Float::NEG_INFINITY, Float::max);
-                let min_y = points.iter().map(|&(_, y)| y).fold(Float::INFINITY, Float::min);
-                let max_y = points.iter().map(|&(_, y)| y).fold(Float::NEG_INFINITY, Float::max);
+                let min_x = points
+                    .iter()
+                    .map(|&(x, _)| x)
+                    .fold(Float::INFINITY, Float::min);
+                let max_x = points
+                    .iter()
+                    .map(|&(x, _)| x)
+                    .fold(Float::NEG_INFINITY, Float::max);
+                let min_y = points
+                    .iter()
+                    .map(|&(_, y)| y)
+                    .fold(Float::INFINITY, Float::min);
+                let max_y = points
+                    .iter()
+                    .map(|&(_, y)| y)
+                    .fold(Float::NEG_INFINITY, Float::max);
                 (min_x, max_x, min_y, max_y)
             }
-            Boundary::Rectangle { min_x, max_x, min_y, max_y } => {
-                (*min_x, *max_x, *min_y, *max_y)
-            }
+            Boundary::Rectangle {
+                min_x,
+                max_x,
+                min_y,
+                max_y,
+            } => (*min_x, *max_x, *min_y, *max_y),
         }
     }
 
@@ -55,17 +75,19 @@ impl Boundary {
                 let mut j = points.len() - 1;
                 for (i, &(xi, yi)) in points.iter().enumerate() {
                     let (xj, yj) = points[j];
-                    if ((yi > y) != (yj > y)) && 
-                       (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+                    if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
                         inside = !inside;
                     }
                     j = i;
                 }
                 inside
             }
-            Boundary::Rectangle { min_x, max_x, min_y, max_y } => {
-                x >= *min_x && x <= *max_x && y >= *min_y && y <= *max_y
-            }
+            Boundary::Rectangle {
+                min_x,
+                max_x,
+                min_y,
+                max_y,
+            } => x >= *min_x && x <= *max_x && y >= *min_y && y <= *max_y,
         }
     }
 
@@ -73,7 +95,12 @@ impl Boundary {
     pub fn to_polygon(&self) -> Vec<(Float, Float)> {
         match self {
             Boundary::Polygon(points) => points.clone(),
-            Boundary::Rectangle { min_x, max_x, min_y, max_y } => {
+            Boundary::Rectangle {
+                min_x,
+                max_x,
+                min_y,
+                max_y,
+            } => {
                 vec![
                     (*min_x, *min_y),
                     (*max_x, *min_y),
@@ -149,26 +176,26 @@ impl Default for LayoutOptimizationResult {
 pub trait LayoutOptimizer {
     /// Get the number of turbines
     fn n_turbines(&self) -> usize;
-    
+
     /// Get the minimum distance between turbines
     fn min_dist(&self) -> Float;
-    
+
     /// Get the boundaries
     fn boundaries(&self) -> &Boundary;
-    
+
     /// Calculate the objective function value (AEP or AVP)
     fn calculate_objective(&self, x: &Array1, y: &Array1) -> Float;
-    
+
     /// Normalize coordinates to [0, 1] range
     fn normalize(&self, val: Float, x1: Float, x2: Float) -> Float {
         (val - x1) / (x2 - x1)
     }
-    
+
     /// Denormalize coordinates from [0, 1] range
     fn denormalize(&self, val: Float, x1: Float, x2: Float) -> Float {
         val * (x2 - x1) + x1
     }
-    
+
     /// Calculate minimum distance between any two turbines
     fn calculate_min_distance(&self, x: &Array1, y: &Array1) -> Float {
         let mut min_dist = Float::INFINITY;
@@ -184,7 +211,7 @@ pub trait LayoutOptimizer {
         }
         min_dist
     }
-    
+
     /// Check if all turbines are within boundaries
     fn check_boundary_constraints(&self, x: &Array1, y: &Array1) -> bool {
         for i in 0..x.len() {
@@ -194,12 +221,12 @@ pub trait LayoutOptimizer {
         }
         true
     }
-    
+
     /// Calculate space constraint violation (returns 0 if satisfied)
     fn space_constraint(&self, x: &Array1, y: &Array1, rho: Float) -> Float {
         let min_dist = self.min_dist();
         let mut distances = Vec::new();
-        
+
         for i in 0..x.len() {
             for j in (i + 1)..x.len() {
                 let dx = x[i] - x[j];
@@ -208,25 +235,23 @@ pub trait LayoutOptimizer {
                 distances.push(dist);
             }
         }
-        
+
         if distances.is_empty() {
             return 0.0;
         }
-        
+
         // Calculate constraint using KS aggregation
         let g: Vec<Float> = distances.iter().map(|&d| 1.0 - d / min_dist).collect();
         let g_max = g.iter().fold(Float::NEG_INFINITY, |a, &b| a.max(b));
-        
-        let sum_exp: Float = g.iter()
-            .map(|&gi| ((gi - g_max) * rho).exp())
-            .sum();
-        
+
+        let sum_exp: Float = g.iter().map(|&gi| ((gi - g_max) * rho).exp()).sum();
+
         // Constraint is satisfied when KS_constraint <= 0
         let ks_constraint = g_max + (1.0 / rho) * sum_exp.ln();
-        
+
         -ks_constraint // Return negative for minimization
     }
-    
+
     /// Run the optimization
     fn optimize(&mut self) -> Result<LayoutOptimizationResult>;
 }
@@ -237,10 +262,7 @@ pub fn is_point_in_boundary(x: Float, y: Float, boundary: &Boundary) -> bool {
 }
 
 /// Generate grid points within boundary
-pub fn generate_grid_points(
-    boundary: &Boundary,
-    n_points: usize,
-) -> Vec<(Float, Float)> {
+pub fn generate_grid_points(boundary: &Boundary, n_points: usize) -> Vec<(Float, Float)> {
     let mut points = Vec::with_capacity(n_points);
 
     let (min_x, max_x, min_y, max_y) = boundary.bounds();
@@ -272,7 +294,10 @@ pub fn generate_grid_points(
 }
 
 /// Calculate pairwise distances between all turbines
-pub fn calculate_pairwise_distances(x: &Array1, y: &Array1) -> Array<Float, ndarray::Dim<[usize; 2]>> {
+pub fn calculate_pairwise_distances(
+    x: &Array1,
+    y: &Array1,
+) -> Array<Float, ndarray::Dim<[usize; 2]>> {
     let n = x.len();
     let mut distances = Array::zeros((n, n));
 
@@ -360,7 +385,8 @@ pub fn load_optimization(path: impl AsRef<std::path::Path>) -> Result<LayoutOpti
     let config_value = load_yaml(path)?;
 
     // Try to deserialize as OptimizationConfigFile first
-    if let Ok(config_file) = serde_yaml::from_value::<OptimizationConfigFile>(config_value.clone()) {
+    if let Ok(config_file) = serde_yaml::from_value::<OptimizationConfigFile>(config_value.clone())
+    {
         match config_file.optimization {
             OptimizationType::Scipy { config, .. } => return Ok(config),
             OptimizationType::RandomSearch { config, .. } => return Ok(config),
@@ -381,7 +407,10 @@ pub fn load_optimization(path: impl AsRef<std::path::Path>) -> Result<LayoutOpti
 ///
 /// * `config` - The optimization configuration to save
 /// * `path` - Path to save the YAML file
-pub fn save_optimization(config: &LayoutOptimizationConfig, path: impl AsRef<std::path::Path>) -> Result<()> {
+pub fn save_optimization(
+    config: &LayoutOptimizationConfig,
+    path: impl AsRef<std::path::Path>,
+) -> Result<()> {
     let yaml = serde_yaml::to_string(config)?;
     std::fs::write(path, yaml)?;
     Ok(())
@@ -396,7 +425,9 @@ pub fn save_optimization(config: &LayoutOptimizationConfig, path: impl AsRef<std
 /// # Returns
 ///
 /// Returns `Ok(LayoutOptimizationResult)` if successful, or an error otherwise.
-pub fn load_optimization_result(path: impl AsRef<std::path::Path>) -> Result<LayoutOptimizationResult> {
+pub fn load_optimization_result(
+    path: impl AsRef<std::path::Path>,
+) -> Result<LayoutOptimizationResult> {
     use crate::utilities::load_yaml;
 
     let config_value = load_yaml(path)?;
@@ -410,7 +441,10 @@ pub fn load_optimization_result(path: impl AsRef<std::path::Path>) -> Result<Lay
 ///
 /// * `result` - The optimization result to save
 /// * `path` - Path to save the YAML file
-pub fn save_optimization_result(result: &LayoutOptimizationResult, path: impl AsRef<std::path::Path>) -> Result<()> {
+pub fn save_optimization_result(
+    result: &LayoutOptimizationResult,
+    path: impl AsRef<std::path::Path>,
+) -> Result<()> {
     let yaml = serde_yaml::to_string(result)?;
     std::fs::write(path, yaml)?;
     Ok(())
@@ -429,7 +463,7 @@ mod tests {
             min_y: 0.0,
             max_y: 100.0,
         };
-        
+
         let (xmin, xmax, ymin, ymax) = boundary.bounds();
         assert_eq!(xmin, 0.0);
         assert_eq!(xmax, 100.0);
@@ -445,7 +479,7 @@ mod tests {
             min_y: 0.0,
             max_y: 100.0,
         };
-        
+
         assert!(boundary.contains(50.0, 50.0));
         assert!(boundary.contains(0.0, 0.0));
         assert!(!boundary.contains(150.0, 50.0));
@@ -454,13 +488,9 @@ mod tests {
 
     #[test]
     fn test_polygon_boundary() {
-        let boundary = Boundary::Polygon(vec![
-            (0.0, 0.0),
-            (100.0, 0.0),
-            (100.0, 100.0),
-            (0.0, 100.0),
-        ]);
-        
+        let boundary =
+            Boundary::Polygon(vec![(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]);
+
         assert!(boundary.contains(50.0, 50.0));
         assert!(!boundary.contains(150.0, 50.0));
     }
@@ -469,26 +499,34 @@ mod tests {
     fn test_min_distance_calculation() {
         let x = Array1::from_vec(vec![0.0, 500.0, 1000.0]);
         let y = Array1::from_vec(vec![0.0, 0.0, 0.0]);
-        
+
         let min_dist = 500.0; // Expected minimum distance
-        
+
         struct TestOptimizer;
         impl LayoutOptimizer for TestOptimizer {
-            fn n_turbines(&self) -> usize { 3 }
-            fn min_dist(&self) -> Float { 500.0 }
+            fn n_turbines(&self) -> usize {
+                3
+            }
+            fn min_dist(&self) -> Float {
+                500.0
+            }
             fn boundaries(&self) -> &Boundary {
                 static BOUNDARY: Boundary = Boundary::Rectangle {
-                    min_x: -1000.0, max_x: 2000.0,
-                    min_y: -1000.0, max_y: 2000.0,
+                    min_x: -1000.0,
+                    max_x: 2000.0,
+                    min_y: -1000.0,
+                    max_y: 2000.0,
                 };
                 &BOUNDARY
             }
-            fn calculate_objective(&self, _: &Array1, _: &Array1) -> Float { 0.0 }
+            fn calculate_objective(&self, _: &Array1, _: &Array1) -> Float {
+                0.0
+            }
             fn optimize(&mut self) -> Result<LayoutOptimizationResult> {
                 Ok(LayoutOptimizationResult::default())
             }
         }
-        
+
         let optimizer = TestOptimizer;
         assert_relative_eq!(optimizer.calculate_min_distance(&x, &y), min_dist);
     }

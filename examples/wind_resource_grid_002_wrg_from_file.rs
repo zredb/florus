@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== WRG from File ===\n");
 
     println!("Loading WRG Files:\\n");
-    
+
     println!("WRG File Format:");
     println!("  - Text-based format");
     println!("  - Human-readable header");

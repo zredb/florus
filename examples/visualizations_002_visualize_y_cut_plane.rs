@@ -4,8 +4,8 @@
 //!
 //! Corresponds to: examples_visualizations/002_visualize_y_cut_plane.py
 
-use florus::{FlorisModel, Result};
 use florus::visualization::*;
+use florus::{FlorisModel, Result};
 
 fn main() -> Result<()> {
     println!("=== Y Cut Plane Visualization ===\n");

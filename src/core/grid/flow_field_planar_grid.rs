@@ -9,10 +9,10 @@ use std::any::Any;
 pub struct FlowFieldPlanarGrid {
     pub turbine_coordinates: Array2,
     pub turbine_diameters: Array1,
-    pub turbine_hub_heights: Array1,  // Added to store hub heights
+    pub turbine_hub_heights: Array1, // Added to store hub heights
     pub wind_directions: Array1,
     pub grid_resolution: [usize; 2], // [nx1, nx2]
-    pub normal_vector: String, // "x", "y", or "z"
+    pub normal_vector: String,       // "x", "y", or "z"
     pub planar_coordinate: Float,
     pub x1_bounds: Option<(Float, Float)>,
     pub x2_bounds: Option<(Float, Float)>,
@@ -50,7 +50,10 @@ impl FlowFieldPlanarGrid {
         let (x, y, z, x_center_of_rotation, y_center_of_rotation) =
             rotate_coordinates_rel_west(&wind_directions, &turbine_coordinates)?;
 
-        let max_diameter = turbine_diameters.iter().cloned().fold(Float::NEG_INFINITY, Float::max);
+        let max_diameter = turbine_diameters
+            .iter()
+            .cloned()
+            .fold(Float::NEG_INFINITY, Float::max);
 
         // Determine bounds based on normal vector
         let (x1_min, x1_max) = if let Some(bounds) = x1_bounds {
@@ -97,16 +100,34 @@ impl FlowFieldPlanarGrid {
                 "x" => {
                     // Cross plane: x2 is z-direction
                     // Use turbine_hub_heights to determine z range
-                    let min_height = turbine_hub_heights.iter().cloned().fold(Float::INFINITY, Float::min);
-                    let max_height = turbine_hub_heights.iter().cloned().fold(Float::NEG_INFINITY, Float::max);
-                    (min_height - 2.0 * max_diameter, max_height + 2.0 * max_diameter)
+                    let min_height = turbine_hub_heights
+                        .iter()
+                        .cloned()
+                        .fold(Float::INFINITY, Float::min);
+                    let max_height = turbine_hub_heights
+                        .iter()
+                        .cloned()
+                        .fold(Float::NEG_INFINITY, Float::max);
+                    (
+                        min_height - 2.0 * max_diameter,
+                        max_height + 2.0 * max_diameter,
+                    )
                 }
                 "y" => {
                     // Y-plane: x2 is z-direction
                     // Use turbine_hub_heights to determine z range
-                    let min_height = turbine_hub_heights.iter().cloned().fold(Float::INFINITY, Float::min);
-                    let max_height = turbine_hub_heights.iter().cloned().fold(Float::NEG_INFINITY, Float::max);
-                    (min_height - 2.0 * max_diameter, max_height + 2.0 * max_diameter)
+                    let min_height = turbine_hub_heights
+                        .iter()
+                        .cloned()
+                        .fold(Float::INFINITY, Float::min);
+                    let max_height = turbine_hub_heights
+                        .iter()
+                        .cloned()
+                        .fold(Float::NEG_INFINITY, Float::max);
+                    (
+                        min_height - 2.0 * max_diameter,
+                        max_height + 2.0 * max_diameter,
+                    )
                 }
                 _ => {
                     return Err(anyhow::anyhow!(
@@ -199,10 +220,10 @@ impl FlowFieldPlanarGrid {
         // Reshape to add batch dimension for findex
         // Python uses [None, :, :, :] which adds one dimension at the front
         // Shape becomes (n_findex, nx1, nx2, nz_or_1)
-        
+
         // For simplicity and consistency with Grid trait, reshape to (n_findex, total_points, 1, 1)
         let total_points = x_points.len();
-        
+
         // Broadcast to n_findex
         let x_sorted = if n_findex == 1 {
             x_points.into_shape_with_order((1, total_points, 1, 1))?
@@ -249,9 +270,8 @@ impl FlowFieldPlanarGrid {
         let mut unsorted_indices = Array::zeros((n_findex, n_turbines));
 
         for fi in 0..n_findex {
-            let mut indices: Vec<(usize, Float)> = (0..n_turbines)
-                .map(|i| (i, x[[fi, i]]))
-                .collect();
+            let mut indices: Vec<(usize, Float)> =
+                (0..n_turbines).map(|i| (i, x[[fi, i]])).collect();
             indices.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
             for (new_i, (old_i, _)) in indices.iter().enumerate() {

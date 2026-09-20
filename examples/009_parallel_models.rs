@@ -10,7 +10,6 @@
 /// - std::thread for manual threading
 ///
 /// This example shows how the same FlorisModel can be used in different contexts.
-
 use florus::{Array1, FlorisModel};
 
 fn main() -> florus::Result<()> {
@@ -36,8 +35,11 @@ fn main() -> florus::Result<()> {
     let turbulence_intensities = vec![0.06; n_ws];
 
     // Configure all models with the same conditions
-    println!("\nConfiguring models with wind speed sweep ({} conditions)...", n_ws);
-    
+    println!(
+        "\nConfiguring models with wind speed sweep ({} conditions)...",
+        n_ws
+    );
+
     for fmodel in [&mut fmodel1, &mut fmodel2, &mut fmodel3] {
         fmodel.set_wind_conditions(
             Array1::from_vec(wind_speeds.clone()),
@@ -48,26 +50,27 @@ fn main() -> florus::Result<()> {
 
     // Run models sequentially (in production, these could run in parallel)
     println!("\nRunning models...");
-    
+
     println!("  Running model 1...");
     fmodel1.run()?;
     let powers1 = fmodel1.get_farm_power();
-    
+
     println!("  Running model 2...");
     fmodel2.run()?;
     let powers2 = fmodel2.get_farm_power();
-    
+
     println!("  Running model 3...");
     fmodel3.run()?;
     let powers3 = fmodel3.get_farm_power();
 
     // Verify results are identical
     println!("\nVerifying results consistency...");
-    let all_close = powers1.iter().zip(powers2.iter()).zip(powers3.iter())
-        .all(|((p1, p2), p3)| {
-            (p1 - p2).abs() < 1e-6 && (p1 - p3).abs() < 1e-6
-        });
-    
+    let all_close = powers1
+        .iter()
+        .zip(powers2.iter())
+        .zip(powers3.iter())
+        .all(|((p1, p2), p3)| (p1 - p2).abs() < 1e-6 && (p1 - p3).abs() < 1e-6);
+
     println!("  All models produce identical results: {}", all_close);
 
     // Show sample results

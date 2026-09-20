@@ -1,8 +1,7 @@
 /// Output formatting utilities to match Python FLORIS output style
-/// 
+///
 /// This module provides helper functions to format arrays and values
 /// in a way that matches Python's numpy output.
-
 use ndarray::{Array1, Array2, Array3};
 
 /// Format a 1D array similar to Python's numpy print
@@ -23,7 +22,7 @@ pub fn format_array_2d(arr: &Array2<f64>) -> String {
     let rows = arr.shape()[0];
     let cols = arr.shape()[1];
     let mut result = String::new();
-    
+
     for i in 0..rows {
         if i == 0 {
             result.push('[');
@@ -49,11 +48,16 @@ pub fn format_array_2d(arr: &Array2<f64>) -> String {
 
 /// Format a 3D array shape description
 pub fn format_shape_3d(arr: &Array3<f64>) -> String {
-    format!("({}, {}, {})", arr.shape()[0], arr.shape()[1], arr.shape()[2])
+    format!(
+        "({}, {}, {})",
+        arr.shape()[0],
+        arr.shape()[1],
+        arr.shape()[2]
+    )
 }
 
 /// Format a 2D array shape description
-pub fn format_shape_2d<T>(arr: &ndarray::ArrayBase<T, ndarray::Dim<[usize; 2]>>) -> String 
+pub fn format_shape_2d<T>(arr: &ndarray::ArrayBase<T, ndarray::Dim<[usize; 2]>>) -> String
 where
     T: ndarray::Data,
 {
@@ -61,7 +65,7 @@ where
 }
 
 /// Format a 1D array shape description
-pub fn format_shape_1d<T>(arr: &ndarray::ArrayBase<T, ndarray::Dim<[usize; 1]>>) -> String 
+pub fn format_shape_1d<T>(arr: &ndarray::ArrayBase<T, ndarray::Dim<[usize; 1]>>) -> String
 where
     T: ndarray::Data,
 {

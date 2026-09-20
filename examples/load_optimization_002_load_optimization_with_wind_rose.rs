@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== Load Optimization with Wind Rose ===\n");
 
     println!("Load Optimization with Full Wind Distribution:\\n");
-    
+
     println!("Concept:");
     println!("  - Optimize loads across all wind conditions");
     println!("  - Weight by wind direction/speed frequency");

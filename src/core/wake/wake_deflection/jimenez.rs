@@ -1,11 +1,11 @@
+use crate::core::wake::{BaseModel, DeflectionModel};
+use crate::core::{FlowField, Grid};
 /// Jimenez wake deflection model
 ///
 /// Based on Jimenez et al. (2010) - wake deflection due to yaw misalignment
-use crate::types::{Float, Array1, Array2};
-use crate::core::wake::{BaseModel, DeflectionModel};
-use crate::core::{Grid, FlowField};
-use std::collections::HashMap;
+use crate::types::{Array1, Array2, Float};
 use ndarray::Array;
+use std::collections::HashMap;
 
 /// Jimenez wake deflection model parameters
 #[derive(Debug, Clone)]
@@ -20,7 +20,7 @@ impl JimenezVelocityDeflection {
         let mut params = HashMap::new();
         params.insert("kd".to_string(), kd);
         params.insert("ad".to_string(), ad);
-        
+
         Self {
             base: BaseModel::new(params, "wind_vector"),
             kd,
@@ -42,6 +42,10 @@ impl DeflectionModel for JimenezVelocityDeflection {
         Box::new(self.clone())
     }
 
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn function(
         &self,
         x: Array2,
@@ -53,7 +57,7 @@ impl DeflectionModel for JimenezVelocityDeflection {
         _model_args: &HashMap<String, Array1>,
     ) -> anyhow::Result<Array2> {
         let yaw_rad = yaw_angle.to_radians();
-        
+
         let shape = x.shape();
         let n_findex = shape[0];
         let n_turbines = shape[1];
@@ -63,7 +67,7 @@ impl DeflectionModel for JimenezVelocityDeflection {
         for fi in 0..n_findex {
             for ti in 0..n_turbines {
                 let x_downstream = x[[fi, ti]];
-                
+
                 if x_downstream > 0.0 {
                     let exp_term = (-self.kd * x_downstream / rotor_diameter).exp();
                     deflection[[fi, ti]] = (self.ad / self.kd) * (1.0 - exp_term) * yaw_rad;
@@ -94,11 +98,8 @@ mod tests {
         let jimenez = JimenezVelocityDeflection::new(0.01, 0.05);
         let x = Array::from_shape_vec((1, 1), vec![0.0]).unwrap();
         let y = Array::from_shape_vec((1, 1), vec![0.0]).unwrap();
-        
-        let result = jimenez.function(
-            x, y, 25.0, 0.06, 0.33, 126.0, 
-            &HashMap::new()
-        );
+
+        let result = jimenez.function(x, y, 25.0, 0.06, 0.33, 126.0, &HashMap::new());
         assert!(result.is_ok());
     }
 
@@ -107,10 +108,30 @@ mod tests {
         let jimenez = JimenezVelocityDeflection::new(0.01, 0.05);
         let x = Array::from_shape_vec((1, 1), vec![100.0]).unwrap();
         let y = Array::from_shape_vec((1, 1), vec![0.0]).unwrap();
-        
-        let result_10 = jimenez.function(x.clone(), y.clone(), 10.0, 0.06, 0.33, 126.0, &HashMap::new()).unwrap();
-        let result_20 = jimenez.function(x.clone(), y.clone(), 20.0, 0.06, 0.33, 126.0, &HashMap::new()).unwrap();
-        
+
+        let result_10 = jimenez
+            .function(
+                x.clone(),
+                y.clone(),
+                10.0,
+                0.06,
+                0.33,
+                126.0,
+                &HashMap::new(),
+            )
+            .unwrap();
+        let result_20 = jimenez
+            .function(
+                x.clone(),
+                y.clone(),
+                20.0,
+                0.06,
+                0.33,
+                126.0,
+                &HashMap::new(),
+            )
+            .unwrap();
+
         let ratio = result_20[[0, 0]] / result_10[[0, 0]];
         assert_relative_eq!(ratio, 2.0, epsilon = 0.01);
     }

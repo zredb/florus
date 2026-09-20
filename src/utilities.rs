@@ -2,14 +2,14 @@
 //!
 //! Corresponds to utilities.py in the Python implementation
 
-use crate::types::{Float, Array1, Array2, Array4};
+use crate::types::{Array1, Array2, Array4, Float};
 use anyhow::{Context, Result};
+use ndarray::{Array, ArrayView1};
 use serde_yaml::Value;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-use ndarray::{Array, ArrayView1};
 
 /// Small value for floating-point comparisons
 const EPSILON: f64 = 1e-6;
@@ -19,7 +19,7 @@ const EPSILON: f64 = 1e-6;
 // ============================================================================
 
 /// Print shape of an array with optional label (for debugging)
-pub fn pshape<D>(array: &ndarray::ArrayBase<ndarray::OwnedRepr<f64>, D>, label: &str) 
+pub fn pshape<D>(array: &ndarray::ArrayBase<ndarray::OwnedRepr<f64>, D>, label: &str)
 where
     D: ndarray::Dimension,
 {
@@ -100,7 +100,8 @@ pub fn check_and_identify_step_size(wind_directions: ArrayView1<f64>) -> Result<
     let wind_dirs_slice = wind_directions.as_slice().unwrap();
 
     // First compute the steps between each wind direction
-    let steps: Vec<f64> = wind_dirs_slice.windows(2)
+    let steps: Vec<f64> = wind_dirs_slice
+        .windows(2)
         .map(|window| window[1] - window[0])
         .collect();
 
@@ -136,7 +137,10 @@ pub fn check_and_identify_step_size(wind_directions: ArrayView1<f64>) -> Result<
     // For len > 3
     // Check if all steps are approximately equal
     let first_step = steps[0];
-    if steps.iter().all(|&step| (step - first_step).abs() < EPSILON) {
+    if steps
+        .iter()
+        .all(|&step| (step - first_step).abs() < EPSILON)
+    {
         return Ok(first_step);
     }
 
@@ -170,7 +174,8 @@ pub fn check_and_identify_step_size(wind_directions: ArrayView1<f64>) -> Result<
     }
 
     // Find the most common step size
-    let most_common_step = step_values.iter()
+    let most_common_step = step_values
+        .iter()
         .max_by(|a, b| a.1.cmp(&b.1))
         .map(|(value, _)| *value)
         .unwrap();
@@ -205,14 +210,14 @@ pub fn make_wind_directions_adjacent(wind_directions: ArrayView1<f64>) -> (Array
     let n = wind_directions.len();
 
     // Get a list of steps
-    let steps: Vec<f64> = wind_dirs_slice.windows(2)
+    let steps: Vec<f64> = wind_dirs_slice
+        .windows(2)
         .map(|window| window[1] - window[0])
         .collect();
 
     // There will be at most one step with a size larger than the step size
     // If there is one, find it
-    let large_step_idx = steps.iter()
-        .position(|&step| step > step_size + EPSILON);
+    let large_step_idx = steps.iter().position(|&step| step > step_size + EPSILON);
 
     match large_step_idx {
         Some(idx) => {
@@ -289,7 +294,7 @@ pub fn wind_delta_scalar(wind_direction: f64) -> f64 {
 // ============================================================================
 
 /// Rotate coordinates relative to west (270 degrees).
-/// 
+///
 /// This function rotates the given coordinates so that they are aligned with West (270) rather
 /// than North (0). The rotation happens about the centroid of the coordinates.
 ///
@@ -307,7 +312,7 @@ pub fn rotate_coordinates_rel_west(
 ) -> Result<(Array2, Array2, Array2, Array2, Array2)> {
     let n_findex = wind_directions.len();
     let n_coords = coordinates.shape()[0];
-    
+
     // Construct the arrays storing the coordinates
     let x_coordinates = coordinates.column(0);
     let y_coordinates = coordinates.column(1);
@@ -316,43 +321,55 @@ pub fn rotate_coordinates_rel_west(
     } else {
         Array1::zeros(n_coords)
     };
-    
+
     // Find center of rotation - this is the center of box bounding all coordinates
     let x_min = x_coordinates.iter().cloned().fold(f64::INFINITY, f64::min);
-    let x_max = x_coordinates.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let x_max = x_coordinates
+        .iter()
+        .cloned()
+        .fold(f64::NEG_INFINITY, f64::max);
     let y_min = y_coordinates.iter().cloned().fold(f64::INFINITY, f64::min);
-    let y_max = y_coordinates.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let y_max = y_coordinates
+        .iter()
+        .cloned()
+        .fold(f64::NEG_INFINITY, f64::max);
     let x_center = (x_min + x_max) / 2.0;
     let y_center = (y_min + y_max) / 2.0;
-    
+
     // Calculate the difference in given wind direction from 270 / West
     let wind_deviation_from_west = wind_delta(wind_directions.view());
-    
+
     let mut x_rotated = Array2::zeros((n_findex, n_coords));
     let mut y_rotated = Array2::zeros((n_findex, n_coords));
     let mut z_rotated = Array2::zeros((n_findex, n_coords));
     let mut x_center_array = Array2::zeros((n_findex, n_coords));
     let mut y_center_array = Array2::zeros((n_findex, n_coords));
-    
+
     for fi in 0..n_findex {
         let angle = wind_deviation_from_west[fi];
         let cos_angle = cosd(angle);
         let sin_angle = sind(angle);
-        
+
         for ci in 0..n_coords {
             let x_offset = coordinates[[ci, 0]] - x_center;
             let y_offset = coordinates[[ci, 1]] - y_center;
-            
+
             x_rotated[[fi, ci]] = x_offset * cos_angle - y_offset * sin_angle + x_center;
             y_rotated[[fi, ci]] = x_offset * sin_angle + y_offset * cos_angle + y_center;
             z_rotated[[fi, ci]] = z_coordinates[ci];
-            
+
             x_center_array[[fi, ci]] = x_center;
             y_center_array[[fi, ci]] = y_center;
         }
     }
-    
-    Ok((x_rotated, y_rotated, z_rotated, x_center_array, y_center_array))
+
+    Ok((
+        x_rotated,
+        y_rotated,
+        z_rotated,
+        x_center_array,
+        y_center_array,
+    ))
 }
 
 /// Reverse rotate coordinates from wind frame back to inertial frame.
@@ -380,38 +397,40 @@ pub fn reverse_rotate_coordinates_rel_west(
 ) -> Result<(Array4, Array4, Array4)> {
     let shape = grid_x.shape();
     let n_findex = shape[0];
-    
+
     let mut x_reversed = grid_x.to_owned();
     let mut y_reversed = grid_y.to_owned();
     let z_reversed = grid_z.clone();
-    
+
     for fi in 0..n_findex {
         // Calculate the difference in given wind direction from 270 / West
         // We are rotating in the other direction
         let angle = -wind_delta_scalar(wind_directions[fi]);
         let cos_angle = cosd(angle);
         let sin_angle = sind(angle);
-        
+
         // Get center of rotation for this findex (use first turbine's center)
         let x_center = x_center_of_rotation[[fi, 0]];
         let y_center = y_center_of_rotation[[fi, 0]];
-        
+
         for ti in 0..shape[1] {
             for i in 0..shape[2] {
                 for j in 0..shape[3] {
                     let x_rot = grid_x[[fi, ti, i, j]];
                     let y_rot = grid_y[[fi, ti, i, j]];
-                    
+
                     let x_offset = x_rot - x_center;
                     let y_offset = y_rot - y_center;
-                    
-                    x_reversed[[fi, ti, i, j]] = x_offset * cos_angle - y_offset * sin_angle + x_center;
-                    y_reversed[[fi, ti, i, j]] = x_offset * sin_angle + y_offset * cos_angle + y_center;
+
+                    x_reversed[[fi, ti, i, j]] =
+                        x_offset * cos_angle - y_offset * sin_angle + x_center;
+                    y_reversed[[fi, ti, i, j]] =
+                        x_offset * sin_angle + y_offset * cos_angle + y_center;
                 }
             }
         }
     }
-    
+
     Ok((x_reversed, y_reversed, z_reversed))
 }
 
@@ -423,14 +442,13 @@ pub fn reverse_rotate_coordinates_rel_west(
 pub fn load_yaml<P: AsRef<Path>>(path: P) -> Result<Value> {
     let mut file = File::open(path.as_ref())
         .with_context(|| format!("Failed to open file: {:?}", path.as_ref()))?;
-    
+
     let mut contents = String::new();
     file.read_to_string(&mut contents)
         .context("Failed to read file contents")?;
-    
-    let value: Value = serde_yaml::from_str(&contents)
-        .context("Failed to parse YAML")?;
-    
+
+    let value: Value = serde_yaml::from_str(&contents).context("Failed to parse YAML")?;
+
     Ok(value)
 }
 
@@ -476,11 +494,11 @@ pub fn round_nearest(x: f64, base: i64) -> i64 {
 /// Get nested value from configuration dictionary
 pub fn nested_get<'a>(dict: &'a Value, keys: &[&str]) -> Option<&'a Value> {
     let mut current = dict;
-    
+
     for key in keys {
         current = current.get(key)?;
     }
-    
+
     Some(current)
 }
 
@@ -489,16 +507,16 @@ pub fn nested_set(dict: &mut Value, keys: &[&str], value: Value) -> Result<()> {
     if keys.is_empty() {
         anyhow::bail!("Keys cannot be empty");
     }
-    
+
     let mut current = dict;
-    
+
     // Navigate to the parent of the final key
     for key in &keys[..keys.len() - 1] {
         current = current
             .get_mut(key)
             .ok_or_else(|| anyhow::anyhow!("Key not found: {}", key))?;
     }
-    
+
     // Set the value at the final key
     let final_key = keys[keys.len() - 1];
     if let Some(map) = current.as_mapping_mut() {
@@ -543,27 +561,27 @@ pub fn is_all_scalar_dict(dictionary: &Value) -> bool {
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
-    
+
     #[test]
     fn test_cosd() {
         assert_relative_eq!(cosd(0.0), 1.0);
         assert_relative_eq!(cosd(90.0), 0.0, epsilon = 1e-10);
         assert_relative_eq!(cosd(180.0), -1.0, epsilon = 1e-10);
     }
-    
+
     #[test]
     fn test_sind() {
         assert_relative_eq!(sind(0.0), 0.0);
         assert_relative_eq!(sind(90.0), 1.0, epsilon = 1e-10);
         assert_relative_eq!(sind(180.0), 0.0, epsilon = 1e-10);
     }
-    
+
     #[test]
     fn test_tand() {
         assert_relative_eq!(tand(0.0), 0.0);
         assert_relative_eq!(tand(45.0), 1.0, epsilon = 1e-10);
     }
-    
+
     #[test]
     fn test_wrap_360() {
         assert_relative_eq!(wrap_360(0.0), 0.0);
@@ -571,7 +589,7 @@ mod tests {
         assert_relative_eq!(wrap_360(-90.0), 270.0);
         assert_relative_eq!(wrap_360(450.0), 90.0);
     }
-    
+
     #[test]
     fn test_wrap_180() {
         assert_relative_eq!(wrap_180(0.0), 0.0);
@@ -595,7 +613,9 @@ mod tests {
 
     #[test]
     fn test_check_step_size_valid_many_elements() {
-        let directions = Array1::from_vec(vec![0.0, 30.0, 60.0, 90.0, 120.0, 150.0, 180.0, 210.0, 240.0, 270.0, 300.0, 330.0]);
+        let directions = Array1::from_vec(vec![
+            0.0, 30.0, 60.0, 90.0, 120.0, 150.0, 180.0, 210.0, 240.0, 270.0, 300.0, 330.0,
+        ]);
         let result = check_and_identify_step_size(directions.view());
         assert_eq!(result.unwrap(), 30.0);
     }
@@ -638,7 +658,10 @@ mod tests {
         let (reordered, indices) = make_wind_directions_adjacent(directions.view());
 
         // After reordering: [330-360, 0, 30, 60, 90] = [-30, 0, 30, 60, 90]
-        assert_eq!(reordered, Array1::from_vec(vec![-30.0, 0.0, 30.0, 60.0, 90.0]));
+        assert_eq!(
+            reordered,
+            Array1::from_vec(vec![-30.0, 0.0, 30.0, 60.0, 90.0])
+        );
         assert_eq!(indices, vec![4, 0, 1, 2, 3]);
     }
 
@@ -646,7 +669,7 @@ mod tests {
     fn test_wind_delta() {
         let directions = Array1::from_vec(vec![270.0, 280.0, 360.0, 180.0]);
         let deltas = wind_delta(directions.view());
-        
+
         assert_relative_eq!(deltas[0], 0.0);
         assert_relative_eq!(deltas[1], 10.0);
         assert_relative_eq!(deltas[2], 90.0);
@@ -656,13 +679,13 @@ mod tests {
     #[test]
     fn test_round_nearest_2_or_5() {
         // Test with Python: min(2*ceil((x+0.5)/2), 5*ceil((x+0.5)/5))
-        assert_eq!(round_nearest_2_or_5(3.0), 4);   // min(2*2, 5*1) = min(4, 5) = 4
-        assert_eq!(round_nearest_2_or_5(6.0), 8);   // min(2*4, 5*2) = min(8, 10) = 8
-        assert_eq!(round_nearest_2_or_5(7.0), 8);   // min(2*4, 5*2) = min(8, 10) = 8
+        assert_eq!(round_nearest_2_or_5(3.0), 4); // min(2*2, 5*1) = min(4, 5) = 4
+        assert_eq!(round_nearest_2_or_5(6.0), 8); // min(2*4, 5*2) = min(8, 10) = 8
+        assert_eq!(round_nearest_2_or_5(7.0), 8); // min(2*4, 5*2) = min(8, 10) = 8
         assert_eq!(round_nearest_2_or_5(11.0), 12); // min(2*6, 5*3) = min(12, 15) = 12
-        // For 4.0: ceil((4.0+0.5)/2) = ceil(2.25) = 3, so 2*3 = 6
-        //          ceil((4.0+0.5)/5) = ceil(0.9) = 1, so 5*1 = 5
-        //          min(6, 5) = 5
+                                                    // For 4.0: ceil((4.0+0.5)/2) = ceil(2.25) = 3, so 2*3 = 6
+                                                    //          ceil((4.0+0.5)/5) = ceil(0.9) = 1, so 5*1 = 5
+                                                    //          min(6, 5) = 5
         assert_eq!(round_nearest_2_or_5(4.0), 5);
         // For 5.0: ceil((5.0+0.5)/2) = ceil(2.75) = 3, so 2*3 = 6
         //          ceil((5.0+0.5)/5) = ceil(1.1) = 2, so 5*2 = 10
@@ -682,25 +705,31 @@ mod tests {
         let x = 4.0_f64;
         let base_2: i64 = 2;
         let base_5: i64 = 5;
-        
+
         let val1 = (x + 0.5) / (base_2 as f64);
         let ceil1 = val1.ceil();
         let as_i64_1 = ceil1 as i64;
         let rounded_2 = base_2 * as_i64_1;
-        
+
         let val2 = (x + 0.5) / (base_5 as f64);
         let ceil2 = val2.ceil();
         let as_i64_2 = ceil2 as i64;
         let rounded_5 = base_5 * as_i64_2;
-        
+
         eprintln!("Manual calculation:");
-        eprintln!("val1={}, ceil1={}, as_i64_1={}, rounded_2={}", val1, ceil1, as_i64_1, rounded_2);
-        eprintln!("val2={}, ceil2={}, as_i64_2={}, rounded_5={}", val2, ceil2, as_i64_2, rounded_5);
+        eprintln!(
+            "val1={}, ceil1={}, as_i64_1={}, rounded_2={}",
+            val1, ceil1, as_i64_1, rounded_2
+        );
+        eprintln!(
+            "val2={}, ceil2={}, as_i64_2={}, rounded_5={}",
+            val2, ceil2, as_i64_2, rounded_5
+        );
         eprintln!("min={}", rounded_2.min(rounded_5));
-        
+
         let result = round_nearest_2_or_5(4.0);
         eprintln!("\nFunction result: {}", result);
-        
+
         assert_eq!(result, 5);
     }
 }

@@ -42,7 +42,11 @@ fn main() -> florus::Result<()> {
             println!("]");
         }
     }
-    println!("Shape:  ({}, {})", turbine_powers.shape()[0], turbine_powers.shape()[1]);
+    println!(
+        "Shape:  ({}, {})",
+        turbine_powers.shape()[0],
+        turbine_powers.shape()[1]
+    );
 
     println!("\nThe farm power should be a 1D array of length 4 (n_findex)");
     print!("[");

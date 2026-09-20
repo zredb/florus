@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== Heterogeneous Multi-Turbine ===\n");
 
     println!("Heterogeneous Inflow with Multiple Turbine Types:\\n");
-    
+
     println!("Scenario:");
     println!("  - Wind farm with different turbine models");
     println!("  - Spatially varying wind conditions");

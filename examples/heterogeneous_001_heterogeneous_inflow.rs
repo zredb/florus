@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== Heterogeneous Inflow ===\n");
 
     println!("Heterogeneous Inflow Concept:\\n");
-    
+
     println!("Definition:");
     println!("  - Wind conditions vary spatially across the farm");
     println!("  - Different wind speeds at different locations");

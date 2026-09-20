@@ -3,15 +3,14 @@
 /// Corresponds to wake.py in Python implementation
 pub mod wake_combination;
 pub mod wake_deflection;
+pub mod wake_manager;
 pub mod wake_turbulence;
 pub mod wake_velocity;
-pub mod wake_manager;
 pub mod yaw_added_recovery;
 
 // Re-export base traits
 pub use super::models::{
-    BaseModel, CombinationModel, DeflectionModel,
-    TurbulenceModel, VelocityModel,
+    BaseModel, CombinationModel, DeflectionModel, TurbulenceModel, VelocityModel,
 };
 
 // Re-export yaw-added recovery (GCH) helpers

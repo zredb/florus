@@ -75,29 +75,16 @@ pub mod yaw_optimizer_sr;
 
 // Re-export main types and functions from submodules
 pub use yaw_optimization_base::{
-    YawOptimization,
-    YawOptimizationResult,
-    YawOptimizationConfig,
-    YawAngleBounds,
-    TrapezoidBounds,
-    variable_handling,
-    control_problem,
-    simple_yaw_optimization,
-    geometric_yaw,
+    control_problem, geometric_yaw, simple_yaw_optimization, variable_handling, TrapezoidBounds,
+    YawAngleBounds, YawOptimization, YawOptimizationConfig, YawOptimizationResult,
 };
 
 pub use yaw_optimization_tools::{
-    derive_downstream_turbines,
-    yaw_cosine_loss,
-    yaw_cosine_loss_derivative,
-    estimate_wake_deflection_angle,
-    is_turbine_in_wake,
-    calculate_turbine_weights,
-    optimize_yaw_single_findex,
-    coordinate_descent_yaw,
-    golden_section_search_yaw,
+    calculate_turbine_weights, coordinate_descent_yaw, derive_downstream_turbines,
+    estimate_wake_deflection_angle, golden_section_search_yaw, is_turbine_in_wake,
+    optimize_yaw_single_findex, yaw_cosine_loss, yaw_cosine_loss_derivative,
 };
 
 pub use yaw_optimizer_geometric::YawOptimizationGeometric;
-pub use yaw_optimizer_scipy::{YawOptimizationScipy, SciPyOptimizationConfig};
-pub use yaw_optimizer_sr::{YawOptimizationSR, SerialRefineConfig};
+pub use yaw_optimizer_scipy::{SciPyOptimizationConfig, YawOptimizationScipy};
+pub use yaw_optimizer_sr::{SerialRefineConfig, YawOptimizationSR};

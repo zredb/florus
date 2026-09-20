@@ -75,17 +75,34 @@ impl TurbineType {
     /// Create a new TurbineType with a different operation model
     pub fn with_operation_model(&self, model_name: &str) -> TurbineType {
         let om = match model_name {
-            "simple" => Box::new(operation_models::simple::SimpleTurbine) as Box<dyn OperationModel>,
-            "cosine-loss" => Box::new(operation_models::cosine_loss::CosineLossTurbine) as Box<dyn OperationModel>,
-            "simple-derating" => Box::new(operation_models::simple_derating::SimpleDeratingTurbine) as Box<dyn OperationModel>,
-            "peak-shaving" => Box::new(operation_models::peak_shaving::PeakShavingTurbine) as Box<dyn OperationModel>,
-            "mixed" => Box::new(operation_models::mixed::MixedOperationTurbine) as Box<dyn OperationModel>,
+            "simple" => {
+                Box::new(operation_models::simple::SimpleTurbine) as Box<dyn OperationModel>
+            }
+            "cosine-loss" => Box::new(operation_models::cosine_loss::CosineLossTurbine)
+                as Box<dyn OperationModel>,
+            "simple-derating" => Box::new(operation_models::simple_derating::SimpleDeratingTurbine)
+                as Box<dyn OperationModel>,
+            "peak-shaving" => Box::new(operation_models::peak_shaving::PeakShavingTurbine)
+                as Box<dyn OperationModel>,
+            "mixed" => {
+                Box::new(operation_models::mixed::MixedOperationTurbine) as Box<dyn OperationModel>
+            }
             "awc" => Box::new(operation_models::awc::AWCTurbine) as Box<dyn OperationModel>,
-            "unified-momentum" => Box::new(operation_models::unified_momentum::UnifiedMomentumTurbine) as Box<dyn OperationModel>,
-            "controller-dependent" => Box::new(operation_models::controller_dependent::ControllerDependentTurbine) as Box<dyn OperationModel>,
+            "unified-momentum" => {
+                Box::new(operation_models::unified_momentum::UnifiedMomentumTurbine)
+                    as Box<dyn OperationModel>
+            }
+            "controller-dependent" => {
+                Box::new(operation_models::controller_dependent::ControllerDependentTurbine)
+                    as Box<dyn OperationModel>
+            }
             _ => {
-                warn!("Unknown operation model '{}', defaulting to cosine-loss", model_name);
-                Box::new(operation_models::cosine_loss::CosineLossTurbine) as Box<dyn OperationModel>
+                warn!(
+                    "Unknown operation model '{}', defaulting to cosine-loss",
+                    model_name
+                );
+                Box::new(operation_models::cosine_loss::CosineLossTurbine)
+                    as Box<dyn OperationModel>
             }
         };
 

@@ -44,12 +44,12 @@ impl VelocityModel for GaussVelocity {
         flow_field: &FlowField,
     ) -> anyhow::Result<HashMap<String, Array4>> {
         let mut params = HashMap::new();
-        
+
         // Add wind_veer to parameters
         let wind_veer_value = flow_field.wind_veer;
         let wind_veer_array = Array4::from_elem(grid.x_sorted().dim(), wind_veer_value);
         params.insert("wind_veer".to_string(), wind_veer_array);
-        
+
         Ok(params)
     }
 
@@ -137,15 +137,14 @@ impl VelocityModel for GaussVelocity {
 
             // Initial wake width (sigma at x0)
             let sigma_z0 = rotor_diameter * 0.5 * (uR / (u_initial + u0)).sqrt();
-            let sigma_y0 = sigma_z0 * cosd(yaw) * cosd(wind_veer);  // Apply wind veer correction
+            let sigma_y0 = sigma_z0 * cosd(yaw) * cosd(wind_veer); // Apply wind veer correction
 
             // Start of the far wake (x0), relative to the rotor plane.
             // Matches Python: x0 = D * cosd(yaw) * (1 + sqrt(1-ct)) / (sqrt(2) * (4*alpha*TI + 2*beta*(1-sqrt(1-ct)))) + x_i
             let x0 = rotor_diameter * cosd(yaw) * (1.0 + sqrt_one_minus_ct)
                 / (2.0_f64.sqrt()
-                    * (4.0 * self.alpha * ti
-                        + 2.0 * self.beta * (1.0 - sqrt_one_minus_ct)));
-            let x0 = x0 + x_i;  // Add turbine location to x0
+                    * (4.0 * self.alpha * ti + 2.0 * self.beta * (1.0 - sqrt_one_minus_ct)));
+            let x0 = x0 + x_i; // Add turbine location to x0
 
             // Wake expansion rate
             let ky = self.ka * ti + self.kb;
@@ -199,9 +198,12 @@ impl VelocityModel for GaussVelocity {
                         let sin_veer_sq = sind(wind_veer).powi(2);
                         let sin_2veer = sind(2.0 * wind_veer);
 
-                        let a = (cos_veer_sq / (2.0 * sigma_y * sigma_y)) + (sin_veer_sq / (2.0 * sigma_z * sigma_z));
-                        let b = (-sin_2veer / (4.0 * sigma_y * sigma_y)) + (sin_2veer / (4.0 * sigma_z * sigma_z));
-                        let c_coeff = (sin_veer_sq / (2.0 * sigma_y * sigma_y)) + (cos_veer_sq / (2.0 * sigma_z * sigma_z));
+                        let a = (cos_veer_sq / (2.0 * sigma_y * sigma_y))
+                            + (sin_veer_sq / (2.0 * sigma_z * sigma_z));
+                        let b = (-sin_2veer / (4.0 * sigma_y * sigma_y))
+                            + (sin_2veer / (4.0 * sigma_z * sigma_z));
+                        let c_coeff = (sin_veer_sq / (2.0 * sigma_y * sigma_y))
+                            + (cos_veer_sq / (2.0 * sigma_z * sigma_z));
 
                         let dy_offset = dy;
                         let dz_offset = dz;
@@ -211,13 +213,14 @@ impl VelocityModel for GaussVelocity {
                             + c_coeff * (dz_offset * dz_offset);
 
                         // C coefficient for velocity deficit
-                        let d = 1.0 - (ct * cosd(yaw) / (8.0 * sigma_y * sigma_z / (rotor_diameter * rotor_diameter)));
-                        let d_clipped = d.max(0.0).min(1.0);  // Use max/min instead of clamp for compatibility
+                        let d = 1.0
+                            - (ct * cosd(yaw)
+                                / (8.0 * sigma_y * sigma_z / (rotor_diameter * rotor_diameter)));
+                        let d_clipped = d.max(0.0).min(1.0); // Use max/min instead of clamp for compatibility
                         let c = 1.0 - d_clipped.sqrt();
 
                         // Gaussian function
                         let deficit = c * (-r_squared).exp();
-
 
                         if deficit > 1e-10 {
                             velocity_deficit[[fi, ti_grid, iy, iz]] = deficit;

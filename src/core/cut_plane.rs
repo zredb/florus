@@ -1,5 +1,5 @@
 //! CutPlane module for FLORUS
-//! 
+//!
 //! This module provides the CutPlane structure and related functions
 //! for extracting 2D slices from 3D flow fields.
 //! Corresponds to `floris/cut_plane.py` in Python FLORIS.
@@ -48,7 +48,14 @@ impl CutPlane {
         resolution: (usize, usize),
     ) -> Self {
         Self {
-            data: CutPlaneData { x1, x2, x3, u, v, w },
+            data: CutPlaneData {
+                x1,
+                x2,
+                x3,
+                u,
+                v,
+                w,
+            },
             normal_vector: normal_vector.to_string(),
             resolution,
         }
@@ -86,7 +93,7 @@ impl CutPlane {
 }
 
 /// Extract a horizontal plane (z-normal) from flow field data at hub height
-/// 
+///
 /// This is a simplified version that extracts data at a specific z-level.
 /// Full implementation would support interpolation between grid points.
 pub fn extract_horizontal_plane(
@@ -104,15 +111,15 @@ pub fn extract_horizontal_plane(
     if z_shape.len() < 2 {
         return None;
     }
-    
+
     let n_y = z_shape[0];
     let n_z = z_shape[1];
-    
+
     // For simplicity, use the middle turbine's hub height grid
     // In full implementation, would search across all turbines
     let mut closest_z_idx = 0;
     let mut min_diff = f64::INFINITY;
-    
+
     for k in 0..n_z {
         let diff = (z_coords[[0, k]] - z_value).abs();
         if diff < min_diff {
@@ -120,7 +127,7 @@ pub fn extract_horizontal_plane(
             closest_z_idx = k;
         }
     }
-    
+
     // Extract the slice at this z-level for all y points
     let mut x1_vals = Vec::new();
     let mut x2_vals = Vec::new();
@@ -128,15 +135,15 @@ pub fn extract_horizontal_plane(
     let mut u_vals = Vec::new();
     let mut v_vals = Vec::new();
     let mut w_vals = Vec::new();
-    
+
     // Average over turbines (for now, just use first turbine)
     let turbine_idx = 0;
-    
+
     for j in 0..n_y {
         let x = x_coords[[j, closest_z_idx]];
         let y = y_coords[[j, closest_z_idx]];
         let z = z_coords[[j, closest_z_idx]];
-        
+
         // Get velocity at this point (averaged over y-z plane for this turbine)
         // Note: This is simplified - proper implementation would handle the 4D array correctly
         let u = if u_field.shape().len() >= 4 && turbine_idx < u_field.shape()[1] {
@@ -144,19 +151,19 @@ pub fn extract_horizontal_plane(
         } else {
             0.0
         };
-        
+
         let v = if v_field.shape().len() >= 4 && turbine_idx < v_field.shape()[1] {
             v_field[[findex, turbine_idx, j, closest_z_idx]]
         } else {
             0.0
         };
-        
+
         let w = if w_field.shape().len() >= 4 && turbine_idx < w_field.shape()[1] {
             w_field[[findex, turbine_idx, j, closest_z_idx]]
         } else {
             0.0
         };
-        
+
         x1_vals.push(x);
         x2_vals.push(y);
         x3_vals.push(z);
@@ -164,9 +171,9 @@ pub fn extract_horizontal_plane(
         v_vals.push(v);
         w_vals.push(w);
     }
-    
+
     let resolution = (n_y, 1); // Simplified - only one z-level
-    
+
     Some(CutPlane::new(
         Array::from_vec(x1_vals),
         Array::from_vec(x2_vals),
@@ -183,7 +190,7 @@ pub fn extract_horizontal_plane(
 mod tests {
     use super::*;
     use ndarray::arr1;
-    
+
     #[test]
     fn test_cutplane_creation() {
         let x1 = arr1(&[0.0, 1.0, 2.0]);
@@ -192,15 +199,23 @@ mod tests {
         let u = arr1(&[8.0, 7.5, 7.0]);
         let v = arr1(&[0.0, 0.1, 0.2]);
         let w = arr1(&[0.0, 0.0, 0.0]);
-        
-        let cp = CutPlane::new(x1.clone(), x2.clone(), x3.clone(), 
-                               u.clone(), v.clone(), w.clone(), "z", (3, 1));
-        
+
+        let cp = CutPlane::new(
+            x1.clone(),
+            x2.clone(),
+            x3.clone(),
+            u.clone(),
+            v.clone(),
+            w.clone(),
+            "z",
+            (3, 1),
+        );
+
         assert_eq!(cp.normal_vector, "z");
         assert_eq!(cp.resolution, (3, 1));
         assert_eq!(cp.data.x1.len(), 3);
     }
-    
+
     #[test]
     fn test_set_origin() {
         let x1 = arr1(&[10.0, 20.0, 30.0]);
@@ -209,10 +224,10 @@ mod tests {
         let u = arr1(&[8.0, 8.0, 8.0]);
         let v = arr1(&[0.0, 0.0, 0.0]);
         let w = arr1(&[0.0, 0.0, 0.0]);
-        
+
         let cp = CutPlane::new(x1, x2, x3, u, v, w, "z", (3, 1));
         let cp_shifted = cp.set_origin(10.0, 5.0);
-        
+
         assert!((cp_shifted.data.x1[0] - 0.0).abs() < 1e-10);
         assert!((cp_shifted.data.x2[0] - 0.0).abs() < 1e-10);
     }

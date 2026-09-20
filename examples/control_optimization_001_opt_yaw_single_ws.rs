@@ -3,11 +3,11 @@
 //! Use the serial-refine method to optimize the yaw angles for a 3-turbine wind farm.
 //! This corresponds to `examples_control_optimization/001_opt_yaw_single_ws.py` in Python FLORIS.
 
-use florus::{FlorisModel, Result};
-use florus::wind_data::TimeSeries;
 use florus::optimization::yaw_optimization::{
-    YawOptimizationSR, YawOptimizationConfig, YawOptimization
+    YawOptimization, YawOptimizationConfig, YawOptimizationSR,
 };
+use florus::wind_data::TimeSeries;
+use florus::{FlorisModel, Result};
 use ndarray::Array1;
 
 fn main() -> Result<()> {
@@ -40,7 +40,10 @@ fn main() -> Result<()> {
     println!("Wind farm configuration:");
     println!("  - Turbines: 3 (aligned in x-direction)");
     println!("  - Spacing: 5D (630 m) between turbines");
-    println!("  - Wind directions: {} conditions (0° to 357°, step 3°)", n);
+    println!(
+        "  - Wind directions: {} conditions (0° to 357°, step 3°)",
+        n
+    );
     println!("  - Wind speed: 8.0 m/s (constant)");
     println!("  - Turbulence intensity: 0.06 (constant)\n");
 
@@ -52,7 +55,7 @@ fn main() -> Result<()> {
     // Initialize optimizer object and run optimization using the Serial-Refine method
     println!("Running yaw optimization (Serial-Refine method)...");
     let mut yaw_opt = YawOptimizationSR::new();
-    
+
     let config = YawOptimizationConfig {
         minimum_yaw_angle: -30.0,
         maximum_yaw_angle: 30.0,
@@ -65,7 +68,10 @@ fn main() -> Result<()> {
     println!("  - Baseline farm power: {:.0} W", result.baseline_power);
     println!("  - Optimized farm power: {:.0} W", result.optimized_power);
     println!("  - Power improvement: {:.0} W", result.power_improvement);
-    println!("  - Improvement percentage: {:.2}%", result.improvement_percentage);
+    println!(
+        "  - Improvement percentage: {:.2}%",
+        result.improvement_percentage
+    );
 
     // Print yaw angles for each turbine
     println!("\nOptimal yaw angles (first wind direction):");

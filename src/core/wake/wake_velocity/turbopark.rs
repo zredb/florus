@@ -319,15 +319,13 @@ pub fn turbopark_velocity_deficit(
                     let overlap_real = interp.interpolate(r_dist / sigma, d_i / 2.0 / sigma);
                     let dz_image = z_i + z_m;
                     let r_dist_image = (dy * dy + dz_image * dz_image).sqrt();
-                    let overlap_image =
-                        interp.interpolate(r_dist_image / sigma, d_i / 2.0 / sigma);
+                    let overlap_image = interp.interpolate(r_dist_image / sigma, d_i / 2.0 / sigma);
 
                     let d_real = c_m * overlap_real;
                     let d_image = c_m * overlap_image;
 
                     let cur = sum_sq[[fi, target_index, iy, iz]];
-                    sum_sq[[fi, target_index, iy, iz]] =
-                        cur + d_real * d_real + d_image * d_image;
+                    sum_sq[[fi, target_index, iy, iz]] = cur + d_real * d_real + d_image * d_image;
                 }
             }
         }
@@ -421,10 +419,9 @@ impl VelocityModel for TurbOParkVelocityDeficit {
                             thrust_coefficient[[fi, turbine_index]],
                             self.a,
                         );
-                        let sigma_downstream = (self.a * turbulence_intensity[[fi, turbine_index]]
-                            + epsilon
-                            + dw)
-                            .max(epsilon);
+                        let sigma_downstream =
+                            (self.a * turbulence_intensity[[fi, turbine_index]] + epsilon + dw)
+                                .max(epsilon);
 
                         let normalized_r = r / (sigma_downstream * rotor_diameter);
                         let normalized_radius_down = r0 / (sigma_downstream * rotor_diameter);

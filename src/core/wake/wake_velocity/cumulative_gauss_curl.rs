@@ -246,10 +246,8 @@ pub fn cc_velocity_deficit(
                     let delta_x = x_pt - x_i_loc;
                     let x_tilde = delta_x.abs() / d_i;
                     let defl = deflection_field[[fi, t, 0, 0]];
-                    let r_tilde = ((y_pt - y_i_loc - defl).powi(2)
-                        + (z_pt - z_i_loc).powi(2))
-                    .sqrt()
-                        / d_i;
+                    let r_tilde =
+                        ((y_pt - y_i_loc - defl).powi(2) + (z_pt - z_i_loc).powi(2)).sqrt() / d_i;
 
                     let sigma_n = wake_expansion(delta_x, ct_i, ti_i, d_i);
 
@@ -319,7 +317,6 @@ fn gamma_fn(x: Float) -> Float {
 }
 
 impl VelocityModel for CumulativeCurlVelocityDeficit {
-
     fn prepare_function(
         &self,
         _grid: &dyn Grid,
@@ -400,13 +397,9 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
 
                         // Wake expansion in D-units, converted to meters
                         let downstream_x = x_point - x_wake_source;
-                        let sigma = calculate_wake_spread(
-                            downstream_x,
-                            ti_i,
-                            ct_i,
-                            rotor_diameter,
-                            self,
-                        ) * rotor_diameter;
+                        let sigma =
+                            calculate_wake_spread(downstream_x, ti_i, ct_i, rotor_diameter, self)
+                                * rotor_diameter;
 
                         // Apply curl correction for yawed turbines
                         let curl_correction = self.calculate_curl_correction(

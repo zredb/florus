@@ -492,14 +492,8 @@ pub fn turbopark_solver(
                 "WARNING: Deflection with the TurbOPark model has not been fully validated."
             );
             for ii in 0..i {
-                let x_ii = grid
-                    .x_sorted()
-                    .slice(s![.., ii..ii + 1, .., ..])
-                    .to_owned();
-                let y_ii = grid
-                    .y_sorted()
-                    .slice(s![.., ii..ii + 1, .., ..])
-                    .to_owned();
+                let x_ii = grid.x_sorted().slice(s![.., ii..ii + 1, .., ..]).to_owned();
+                let y_ii = grid.y_sorted().slice(s![.., ii..ii + 1, .., ..]).to_owned();
                 let x_2d = mean_value_4d_slice(&x_ii)?;
                 let y_2d = mean_value_4d_slice(&y_ii)?;
 
@@ -532,19 +526,18 @@ pub fn turbopark_solver(
         }
 
         // Target-centric turbopark deficit at turbine i
-        let velocity_deficit =
-            crate::core::wake_velocity::turbopark::turbopark_velocity_deficit(
-                &flow_field.turbulence_intensities,
-                &cts_all,
-                &farm.rotor_diameters.clone(),
-                grid.x_sorted(),
-                grid.y_sorted(),
-                grid.z_sorted(),
-                &deflection_field,
-                i,
-                tp.a,
-                tp.sigma_max_rel,
-            );
+        let velocity_deficit = crate::core::wake_velocity::turbopark::turbopark_velocity_deficit(
+            &flow_field.turbulence_intensities,
+            &cts_all,
+            &farm.rotor_diameters.clone(),
+            grid.x_sorted(),
+            grid.y_sorted(),
+            grid.z_sorted(),
+            &deflection_field,
+            i,
+            tp.a,
+            tp.sigma_max_rel,
+        );
 
         // Convert relative deficit to absolute, accumulate via the combination model
         let mut velocity_deficit_absolute = flow_field.u_initial_sorted.clone();
@@ -575,10 +568,7 @@ pub fn turbopark_solver(
             grid.average_method(),
         )?;
 
-        let x_i_4d_slice = grid
-            .x_sorted()
-            .slice(s![.., i..i + 1, .., ..])
-            .to_owned();
+        let x_i_4d_slice = grid.x_sorted().slice(s![.., i..i + 1, .., ..]).to_owned();
         let x_2d = mean_value_4d_slice(&x_i_4d_slice)?;
 
         let mut x_i_4d = Array4::zeros((n_findex, 1, 1, 1));
@@ -642,9 +632,9 @@ pub fn turbopark_solver(
             for ti in 0..n_turbines {
                 for iy in 0..grid_y_dim {
                     for iz in 0..grid_z_dim {
-                        flow_field.u_sorted[[fi, ti, iy, iz]] =
-                            flow_field.u_initial_sorted[[fi, ti, iy, iz]]
-                                - wake_field[[fi, ti, iy, iz]];
+                        flow_field.u_sorted[[fi, ti, iy, iz]] = flow_field.u_initial_sorted
+                            [[fi, ti, iy, iz]]
+                            - wake_field[[fi, ti, iy, iz]];
                     }
                 }
             }
@@ -1102,14 +1092,14 @@ pub fn cc_solver(
             for t in 0..n_turbines {
                 for iy in 0..grid_y_dim {
                     for iz in 0..grid_z_dim {
-                        let at_rotor =
-                            (grid.x_sorted()[[fi, t, iy, iz]] - x_i_2d[[fi, 0]]).abs() < 0.01
-                                && (grid.y_sorted()[[fi, t, iy, iz]] - y_i_2d[[fi, 0]]).abs()
-                                    < 0.51 * d_i;
+                        let at_rotor = (grid.x_sorted()[[fi, t, iy, iz]] - x_i_2d[[fi, 0]]).abs()
+                            < 0.01
+                            && (grid.y_sorted()[[fi, t, iy, iz]] - y_i_2d[[fi, 0]]).abs()
+                                < 0.51 * d_i;
                         if at_rotor {
-                            turb_inflow_field[[fi, t, iy, iz]] =
-                                flow_field.u_initial_sorted[[fi, t, iy, iz]]
-                                    - turb_u_wake[[fi, t, iy, iz]];
+                            turb_inflow_field[[fi, t, iy, iz]] = flow_field.u_initial_sorted
+                                [[fi, t, iy, iz]]
+                                - turb_u_wake[[fi, t, iy, iz]];
                         }
                     }
                 }
@@ -1168,14 +1158,8 @@ pub fn cc_solver(
                 .v_sorted
                 .slice(s![.., i..i + 1, .., ..])
                 .to_owned();
-            let y_i_block = grid
-                .y_sorted()
-                .slice(s![.., i..i + 1, .., ..])
-                .to_owned();
-            let z_i_block = grid
-                .z_sorted()
-                .slice(s![.., i..i + 1, .., ..])
-                .to_owned();
+            let y_i_block = grid.y_sorted().slice(s![.., i..i + 1, .., ..]).to_owned();
+            let z_i_block = grid.z_sorted().slice(s![.., i..i + 1, .., ..]).to_owned();
             let hub_height_i = farm.hub_heights_sorted[[0, i]];
             let tsr_i = farm.tsrs_sorted[[0, i]];
 
@@ -1295,8 +1279,7 @@ pub fn cc_solver(
 
                 let dx = x_mean_all[[fi, j]] - x_i_2d[[fi, 0]];
                 let dy = (y_i_2d[[fi, 0]] - y_mean_all[[fi, j]]).abs();
-                let downstream_ok =
-                    dx > 0.0 && dx <= downstream_influence_length && dy < 2.0 * d_i;
+                let downstream_ok = dx > 0.0 && dx <= downstream_influence_length && dy < 2.0 * d_i;
 
                 let ti_added = if downstream_ok {
                     area_overlap * wake_added_center

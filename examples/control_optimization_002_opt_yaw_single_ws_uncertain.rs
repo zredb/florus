@@ -6,8 +6,10 @@
 //! Note: This is a simplified version. Full uncertainty modeling requires
 //! UncertainFlorisModel which may not be fully implemented yet.
 
-use florus::{FlorisModel, TimeSeries, Result};
-use florus::optimization::yaw_optimization::{YawOptimizationSR, YawOptimizationConfig, YawOptimization};
+use florus::optimization::yaw_optimization::{
+    YawOptimization, YawOptimizationConfig, YawOptimizationSR,
+};
+use florus::{FlorisModel, Result, TimeSeries};
 use ndarray::Array1;
 
 fn main() -> Result<()> {
@@ -19,7 +21,7 @@ fn main() -> Result<()> {
     // Define wind directions to sweep (250° to 290°, step 1°)
     let wind_directions: Vec<f64> = (250..290).map(|d| d as f64).collect();
     let n_dirs = wind_directions.len();
-    
+
     let wind_speeds = vec![8.0; n_dirs];
     let turbulence_intensities = vec![0.06; n_dirs];
 
@@ -52,7 +54,7 @@ fn main() -> Result<()> {
         maximum_yaw_angle: 30.0,
         ..Default::default()
     };
-    
+
     let mut yaw_opt = YawOptimizationSR::new();
     let result = yaw_opt.optimize(&mut fmodel, Some(config))?;
 
@@ -60,7 +62,10 @@ fn main() -> Result<()> {
     println!("  - Baseline farm power: {:.0} W", result.baseline_power);
     println!("  - Optimized farm power: {:.0} W", result.optimized_power);
     println!("  - Power improvement: {:.0} W", result.power_improvement);
-    println!("  - Improvement percentage: {:.2}%", result.improvement_percentage);
+    println!(
+        "  - Improvement percentage: {:.2}%",
+        result.improvement_percentage
+    );
 
     // Show optimal yaw angles for first few wind directions
     println!("\nOptimal yaw angles (first 5 wind directions):");

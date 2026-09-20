@@ -2,9 +2,9 @@
 //!
 //! No additional wake turbulence - ambient turbulence only
 
-use crate::types::{Array1, Array4, Float};
 use crate::core::wake::{BaseModel, TurbulenceModel};
-use crate::core::{Grid, FlowField};
+use crate::core::{FlowField, Grid};
+use crate::types::{Array1, Array4, Float};
 use std::collections::HashMap;
 
 /// No additional wake turbulence

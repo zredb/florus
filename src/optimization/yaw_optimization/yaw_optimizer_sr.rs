@@ -1,7 +1,7 @@
-use crate::types::Float;
+use super::{YawOptimization, YawOptimizationConfig, YawOptimizationResult};
 use crate::floris_model::FlorisModel;
+use crate::types::Float;
 use crate::Array2;
-use super::{YawOptimization, YawOptimizationResult, YawOptimizationConfig};
 
 /// Configuration for Serial Refine optimizer
 #[derive(Debug, Clone)]
@@ -46,9 +46,7 @@ impl YawOptimizationSR {
         let n_turbines = fmodel.farm().n_turbines();
         let layout_x = fmodel.farm().layout_x.clone();
 
-        let mut indices: Vec<(Float, usize)> = (0..n_turbines)
-            .map(|i| (layout_x[i], i))
-            .collect();
+        let mut indices: Vec<(Float, usize)> = (0..n_turbines).map(|i| (layout_x[i], i)).collect();
 
         indices.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
@@ -81,7 +79,10 @@ impl YawOptimization for YawOptimizationSR {
 
         self.turbine_order = Self::calculate_turbine_order(fmodel);
 
-        let baseline_yaw_angles = self.config.yaw_angles_baseline.clone()
+        let baseline_yaw_angles = self
+            .config
+            .yaw_angles_baseline
+            .clone()
             .unwrap_or_else(|| Array2::zeros((n_findex, n_turbines)));
 
         fmodel.set_yaw_angles(baseline_yaw_angles.clone())?;

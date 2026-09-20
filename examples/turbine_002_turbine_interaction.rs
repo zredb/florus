@@ -14,10 +14,16 @@ fn main() -> Result<()> {
     let fmodel = FlorisModel::from_file("examples/inputs/gch_multiple_turbine_types.yaml")?;
 
     println!("Farm Configuration:");
-    println!("  Number of turbines: {}", fmodel.core().farm.turbines.len());
+    println!(
+        "  Number of turbines: {}",
+        fmodel.core().farm.turbines.len()
+    );
     println!("  Layout X: {:?}", fmodel.core().farm.layout_x);
     println!("  Layout Y: {:?}", fmodel.core().farm.layout_y);
-    println!("  Rotor diameters: {:?}", fmodel.core().farm.rotor_diameters);
+    println!(
+        "  Rotor diameters: {:?}",
+        fmodel.core().farm.rotor_diameters
+    );
 
     // Run simulation
     println!("\nRunning simulation...\n");
@@ -26,13 +32,13 @@ fn main() -> Result<()> {
 
     // Get turbine powers
     let powers = fmodel.get_turbine_powers();
-    
+
     println!("Turbine Powers:");
     for ti in 0..powers.ncols() {
         let power_kw = powers[[0, ti]] / 1000.0;
         println!("  T{}: {:.2} kW", ti, power_kw);
     }
-    
+
     let farm_power: f64 = powers.row(0).sum();
     println!("\nFarm Total Power: {:.2} kW", farm_power / 1000.0);
 

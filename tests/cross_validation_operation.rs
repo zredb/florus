@@ -63,7 +63,9 @@ fn compute_powers_manual(config: &FlorisConfig) -> Vec<Vec<f64>> {
     let mut model = FlorisModel::from_config(config.clone()).expect("Failed to create FlorisModel");
 
     model.initialize_grid().expect("init grid failed");
-    model.initialize_flow_field().expect("init flow field failed");
+    model
+        .initialize_flow_field()
+        .expect("init flow field failed");
 
     let grid = model.core().grid.as_ref().unwrap();
     let turbine_grid = grid.as_any().downcast_ref::<TurbineGrid>().unwrap();
@@ -200,7 +202,11 @@ fn test_unified_momentum_operation_model() {
     let config = create_operation_config("unified-momentum");
     let powers = compute_powers_manual(&config);
     let golden = common::load_operation_golden("unified-momentum");
-    assert_power_close(powers[0][0], golden.turbine_powers[0][0], "unified-momentum");
+    assert_power_close(
+        powers[0][0],
+        golden.turbine_powers[0][0],
+        "unified-momentum",
+    );
 }
 
 #[test]
@@ -208,7 +214,11 @@ fn test_controller_dependent_operation_model() {
     let config = create_operation_config("controller-dependent");
     let powers = compute_powers_manual(&config);
     let golden = common::load_operation_golden("controller-dependent");
-    assert_power_close(powers[0][0], golden.turbine_powers[0][0], "controller-dependent");
+    assert_power_close(
+        powers[0][0],
+        golden.turbine_powers[0][0],
+        "controller-dependent",
+    );
 }
 
 // ============================================================
@@ -234,8 +244,14 @@ fn test_windrose_golden_structure() {
     let golden = common::load_windrose_golden();
     assert_eq!(golden.windrose.n_wind_directions, 4);
     assert_eq!(golden.windrose.n_wind_speeds, 5);
-    assert_eq!(golden.windrose.wind_directions, vec![0.0, 90.0, 180.0, 270.0]);
-    assert_eq!(golden.windrose.wind_speeds, vec![6.0, 8.0, 10.0, 12.0, 14.0]);
+    assert_eq!(
+        golden.windrose.wind_directions,
+        vec![0.0, 90.0, 180.0, 270.0]
+    );
+    assert_eq!(
+        golden.windrose.wind_speeds,
+        vec![6.0, 8.0, 10.0, 12.0, 14.0]
+    );
     assert_eq!(golden.windrose.freq_table_shape, vec![4, 5]);
     assert!((golden.windrose.freq_table_sum - 1.0).abs() < 1e-10);
 }

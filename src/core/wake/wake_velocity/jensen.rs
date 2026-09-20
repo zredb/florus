@@ -2,11 +2,11 @@
 //!
 //! Classical Jensen (N.O. Jensen) wake model with linear wake expansion
 
-use crate::types::{Float, Array2, Array4};
 use crate::core::wake::{BaseModel, VelocityModel};
-use crate::core::{Grid, FlowField};
-use std::collections::HashMap;
+use crate::core::{FlowField, Grid};
+use crate::types::{Array2, Array4, Float};
 use ndarray::Array;
+use std::collections::HashMap;
 
 /// Jensen wake velocity model parameters
 #[derive(Debug, Clone)]
@@ -21,7 +21,7 @@ impl JensenVelocity {
         let mut params = HashMap::new();
         params.insert("kd".to_string(), kd);
         params.insert("initial_wake_width".to_string(), initial_wake_width);
-        
+
         Self {
             base: BaseModel::new(params, "wind_vector"),
             kd,
@@ -82,7 +82,7 @@ impl VelocityModel for JensenVelocity {
 
             // Get deflection at the wake source turbine
             let deflection_at_source = deflection_field[[fi, turbine_index]];
-            
+
             // Calculate wake radius at the source
             let r0 = rotor_diameter / 2.0;
 
@@ -99,7 +99,7 @@ impl VelocityModel for JensenVelocity {
                 for iy in 0..n_y {
                     for iz in 0..n_z {
                         let x_point = x[[fi, ti, iy, iz]];
-                        
+
                         // Only apply if this point is downstream
                         if x_point <= x_wake_source {
                             continue;
@@ -108,7 +108,7 @@ impl VelocityModel for JensenVelocity {
                         // Calculate wake radius at this downstream position
                         let dx = x_point - x_wake_source;
                         let wake_radius = r0 + self.kd * dx + self.initial_wake_width * r0;
-                        
+
                         // Calculate distance from wake center
                         let y_point = y[[fi, ti, iy, iz]];
                         let wake_center_y = y_wake_source + deflection_at_source * dx;
@@ -132,13 +132,7 @@ impl JensenVelocity {
         r0 + self.kd * x + self.initial_wake_width * r0
     }
 
-    fn calculate_deficit(
-        &self,
-        axial_induction: Float,
-        x: Float,
-        r0: Float,
-        ti: Float,
-    ) -> Float {
+    fn calculate_deficit(&self, axial_induction: Float, x: Float, r0: Float, ti: Float) -> Float {
         // At x=0 (right at turbine), maximum deficit
         // Deficit decreases as wake expands
         if axial_induction <= 0.0 {
@@ -147,9 +141,9 @@ impl JensenVelocity {
 
         let wake_radius = self.calculate_wake_radius(x, r0, ti);
         let area_ratio = (r0 / wake_radius).powi(2);
-        
+
         let deficit = axial_induction * area_ratio;
-        
+
         deficit.max(0.0)
     }
 }

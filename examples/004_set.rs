@@ -7,7 +7,6 @@
 ///     1) Wind conditions
 ///     2) Wind farm layout
 ///     3) Controls settings
-
 use florus::{Array1, Array2, FlorisModel};
 
 fn main() -> florus::Result<()> {
@@ -61,11 +60,12 @@ fn main() -> florus::Result<()> {
     let yaw_angles = Array2::from_shape_vec(
         (3, 2),
         vec![
-            0.0, 0.0,   // Condition 0: both turbines at 0°
-            25.0, 0.0,  // Condition 1: front turbine at 25°, rear at 0°
-            0.0, 0.0,   // Condition 2: both turbines at 0°
+            0.0, 0.0, // Condition 0: both turbines at 0°
+            25.0, 0.0, // Condition 1: front turbine at 25°, rear at 0°
+            0.0, 0.0, // Condition 2: both turbines at 0°
         ],
-    ).expect("Failed to create yaw_angles array");
+    )
+    .expect("Failed to create yaw_angles array");
     println!("\nSet yaw angles: 3x2 matrix");
     println!("  Yaw angles shape: {:?}", yaw_angles.shape());
     fmodel.set_yaw_angles(yaw_angles)?;

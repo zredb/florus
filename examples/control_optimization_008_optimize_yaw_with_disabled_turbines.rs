@@ -3,8 +3,10 @@
 //! This example demonstrates yaw optimization when some turbines are disabled,
 //! showing how the optimizer adapts to different farm configurations.
 
-use florus::{FlorisModel, TimeSeries, Result};
-use florus::optimization::yaw_optimization::{YawOptimizationSR, YawOptimizationConfig, YawOptimization};
+use florus::optimization::yaw_optimization::{
+    YawOptimization, YawOptimizationConfig, YawOptimizationSR,
+};
+use florus::{FlorisModel, Result, TimeSeries};
 use ndarray::Array1;
 
 fn main() -> Result<()> {
@@ -35,16 +37,16 @@ fn main() -> Result<()> {
     // Test 1: All turbines enabled
     println!("Test 1: All turbines enabled");
     // Note: disable_turbines method not yet implemented, all turbines are enabled by default
-    
+
     let config = YawOptimizationConfig {
         minimum_yaw_angle: -30.0,
         maximum_yaw_angle: 30.0,
         ..Default::default()
     };
-    
+
     let mut yaw_opt = YawOptimizationSR::new();
     let result = yaw_opt.optimize(&mut fmodel, Some(config))?;
-    
+
     println!("  Baseline power: {:.0} W", result.baseline_power);
     println!("  Optimized power: {:.0} W", result.optimized_power);
     println!("  Improvement: {:.2}%\n", result.improvement_percentage);
@@ -54,10 +56,10 @@ fn main() -> Result<()> {
     println!("Test 2: Middle turbine (T1) disabled - SKIPPED");
     println!("  Note: disable_turbines() method not yet implemented");
     println!("  This feature requires setting turbine power setpoints to 0\n");
-    
+
     // let mut yaw_opt = YawOptimizationSR::new();
     // let result = yaw_opt.optimize(&mut fmodel, Some(config))?;
-    // 
+    //
     // println!("  Baseline power: {:.0} W", result.baseline_power);
     // println!("  Optimized power: {:.0} W", result.optimized_power);
     // println!("  Improvement: {:.2}%\n", result.improvement_percentage);

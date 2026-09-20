@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== Layout Optimization - Boundary Grid ===\n");
 
     println!("Boundary-Constrained Grid Layout:\\n");
-    
+
     println!("Concept:");
     println!("  - Define farm boundary polygon");
     println!("  - Create grid within boundary");

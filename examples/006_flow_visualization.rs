@@ -3,8 +3,8 @@
 //! Demonstrate the use of flow visualization functions in FLORUS
 //! Corresponds to examples_visualizations in Python FLORIS
 
-use florus::{FlorisModel, Result};
 use florus::visualization::flow_visualization;
+use florus::{FlorisModel, Result};
 use ndarray::Array;
 use std::path::Path;
 
@@ -14,29 +14,29 @@ fn main() -> Result<()> {
     // Initialize FLORIS model
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
-// Set a 3-turbine layout with wind direction from northwest
+    // Set a 3-turbine layout with wind direction from northwest
     let layout_x = Array::from_vec(vec![0.0, 630.0, 1260.0]);
     let layout_y = Array::from_vec(vec![0.0, 0.0, 0.0]);
     fmodel.set_layout(&layout_x, &layout_y)?;
-    
+
     let wind_speeds = Array::from_vec(vec![8.0]);
     let wind_directions = Array::from_vec(vec![300.0]);
     fmodel.set(
         Some(wind_speeds),
         Some(wind_directions),
-        None,  // reference_wind_height
-        None,  // turbulence_intensities (use default)
-        None,  // air_density
-        None,  // wind_shear
-        None,  // wind_veer
-        None,  // turbine_layout
-        None,  // yaw_angles
-        None,  // tilt_angles
-        None,  // power_setpoints
-        None,  // awc_modes
-        None,  // awc_amplitudes
-        None,  // awc_frequencies
-        None,  // correct_cp_ct_for_tilt
+        None, // reference_wind_height
+        None, // turbulence_intensities (use default)
+        None, // air_density
+        None, // wind_shear
+        None, // wind_veer
+        None, // turbine_layout
+        None, // yaw_angles
+        None, // tilt_angles
+        None, // power_setpoints
+        None, // awc_modes
+        None, // awc_amplitudes
+        None, // awc_frequencies
+        None, // correct_cp_ct_for_tilt
     )?;
 
     // Create output directory
@@ -45,7 +45,10 @@ fn main() -> Result<()> {
 
     // Example 1: Visualize horizontal plane with turbine points
     println!("Example 1: Flow visualization with turbine points");
-    visualize_horizontal_plane_with_turbines(&fmodel, &format!("{}/01_horizontal_flow.png", output_dir))?;
+    visualize_horizontal_plane_with_turbines(
+        &fmodel,
+        &format!("{}/01_horizontal_flow.png", output_dir),
+    )?;
 
     // Example 2: Visualize with yawed turbine
     println!("\nExample 2: Flow visualization with yawed turbine");
@@ -53,7 +56,10 @@ fn main() -> Result<()> {
 
     // Example 3: Visualize with turbine rotors and labels
     println!("\nExample 3: Flow visualization with turbine rotors and labels");
-    visualize_flow_with_rotors_and_labels(&fmodel, &format!("{}/03_flow_with_rotors_labels.png", output_dir))?;
+    visualize_flow_with_rotors_and_labels(
+        &fmodel,
+        &format!("{}/03_flow_with_rotors_labels.png", output_dir),
+    )?;
 
     println!("\n=== Visualization complete! ===");
     println!("Output files saved to: {}", output_dir);
@@ -73,11 +79,11 @@ fn visualize_horizontal_plane_with_turbines<P: AsRef<Path>>(
     flow_visualization::visualize_cut_plane(
         &horizontal_plane,
         &output_path,
-        Some(1.0),  // min_speed
-        Some(8.0),  // max_speed
+        Some(1.0), // min_speed
+        Some(8.0), // max_speed
         "coolwarm",
-        false,      // color_bar
-        "",         // title
+        false, // color_bar
+        "",    // title
     )?;
 
     println!("  Saved: {}", output_path.as_ref().display());
@@ -85,10 +91,7 @@ fn visualize_horizontal_plane_with_turbines<P: AsRef<Path>>(
 }
 
 /// Visualize flow with yawed turbine
-fn visualize_yawed_flow<P: AsRef<Path>>(
-    fmodel: &mut FlorisModel,
-    output_path: P,
-) -> Result<()> {
+fn visualize_yawed_flow<P: AsRef<Path>>(fmodel: &mut FlorisModel, output_path: P) -> Result<()> {
     // Set yaw angles for second turbine
     let yaw_angles = Array::from_shape_vec((1, 3), vec![0.0, 30.0, 0.0])?;
     fmodel.set_yaw_angles(yaw_angles)?;
@@ -101,11 +104,11 @@ fn visualize_yawed_flow<P: AsRef<Path>>(
         &horizontal_plane,
         fmodel,
         &output_path,
-        Some(1.0),  // min_speed
-        Some(8.0),  // max_speed
+        Some(1.0), // min_speed
+        Some(8.0), // max_speed
         "coolwarm",
-        true,       // show_rotors
-        false,      // color_bar
+        true,  // show_rotors
+        false, // color_bar
         "Flow visualization with yawed turbine",
     )?;
 
@@ -133,12 +136,12 @@ fn visualize_flow_with_rotors_and_labels<P: AsRef<Path>>(
         &horizontal_plane,
         fmodel,
         &output_path,
-        Some(1.0),  // min_speed
-        Some(8.0),  // max_speed
+        Some(1.0), // min_speed
+        Some(8.0), // max_speed
         "coolwarm",
         &turbine_names,
-        true,       // show_rotors
-        false,      // color_bar
+        true,  // show_rotors
+        false, // color_bar
         "Horizontal Flow with Turbine Rotors and labels",
     )?;
 

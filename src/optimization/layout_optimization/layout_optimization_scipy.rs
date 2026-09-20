@@ -254,7 +254,9 @@ mod tests {
 
     #[test]
     fn test_scipy_optimizer_creation() {
-        use crate::floris_config::{FarmConfig, FlorisConfig, FlowFieldConfig, SolverConfig, WakeConfig};
+        use crate::floris_config::{
+            FarmConfig, FlorisConfig, FlowFieldConfig, SolverConfig, WakeConfig,
+        };
 
         let farm_config = FarmConfig {
             layout_x: vec![0.0, 500.0],

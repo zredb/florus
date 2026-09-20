@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     println!("=== WRG Multi-Site Analysis ===\n");
 
     println!("Multi-Site Wind Resource Analysis:\\n");
-    
+
     println!("Scenario:");
     println!("  - Multiple potential wind farm sites");
     println!("  - Compare wind resources across sites");
