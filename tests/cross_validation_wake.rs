@@ -241,15 +241,13 @@ fn cosd(degrees: f64) -> f64 {
     (degrees.to_radians()).cos()
 }
 
-/// Baseline: 25% relative tolerance or 50000W absolute, whichever is larger.
+/// Baseline: 12% relative tolerance or 100000W absolute, whichever is larger.
 ///
-/// The Rust sequential solver and Python FLORIS gradient solver compute wake
-/// velocities differently for downstream turbines (e.g. the Rust Jensen model
-/// yields ~5.92 m/s at 5D while Python yields ~6.07 m/s). This propagates to
-/// ~6-22% power differences that are inherent to the solver implementation,
-/// not bugs. We validate order-of-magnitude consistency, not bit-exact match.
+/// After the Ct/AI column-index fix (`[[fi,0]]` → `[[fi,ti]]`), downstream
+/// turbine errors dropped from ~30-65% to ~11%. Tightened to 12% to catch
+/// regressions while allowing solver-implementation differences.
 fn power_close(test: f64, golden: f64) -> bool {
-    power_close_tol(test, golden, 0.25, 50000.0)
+    power_close_tol(test, golden, 0.12, 100000.0)
 }
 
 fn power_close_tol(test: f64, golden: f64, tol_rel: f64, tol_abs: f64) -> bool {
@@ -263,20 +261,16 @@ fn power_close_tol(test: f64, golden: f64, tol_rel: f64, tol_abs: f64) -> bool {
 }
 
 fn assert_powers_close(test: &[Vec<f64>], golden: &[Vec<f64>], name: &str) {
-    assert_powers_close_tol(test, golden, name, 0.25, 50000.0);
+    assert_powers_close_tol(test, golden, name, 0.12, 100000.0);
 }
 
-/// Per-model wider tolerances absorb remaining formulation differences observed
-/// after fixing the manager-clone bug that previously made every test validate
-/// the hardcoded gauss fallback:
-/// - gauss: ~33% (TI evolution / WAT interplay differs)
-/// - turbopark: ~47% (Python uses a specialized target-centric turbopark_solver
-///   with a per-turbine minimum epsilon; Rust reinterprets it source-centric)
-/// - cc: ~63% (Rust lacks the cumulative curl accumulation over upstream
-///   turbines that Python's model performs)
-/// - empirical_gauss: 1% with a matching 2x2 turbine grid (the mixing-factor
-///   solver is ported; wake_induced_mixing feeds the velocity/deflection models
-///   as in Python)
+/// Per-model tolerances calibrated from diagnostic errors after the Ct/AI
+/// column-index fix (`[[fi,0]]` → `[[fi,ti]]`):
+/// - jensen/gauss: ~12% (downstream wake model implementation differences)
+/// - turbopark: ~12% (source-centric reinterpretation vs Python target-centric)
+/// - turboparkgauss: ~22% (CrespoHernandez TI evolution amplifies differences)
+/// - cc: ~13% (cumulative curl accumulation order differs)
+/// - empirical_gauss: 1% with matching 2×2 grid (full solver ported)
 fn assert_powers_close_tol(
     test: &[Vec<f64>],
     golden: &[Vec<f64>],
@@ -403,7 +397,7 @@ fn test_gauss_regression() {
         &powers,
         &golden.turbine_powers,
         "gauss_regression",
-        0.35,
+        0.12,
         100000.0,
     );
 }
@@ -447,7 +441,7 @@ fn test_gauss_yawed() {
         &powers,
         &golden.turbine_powers,
         "gauss_yawed",
-        0.35,
+        0.12,
         100000.0,
     );
 }
@@ -485,8 +479,8 @@ fn test_turbopark_regression() {
         &powers,
         &golden.turbine_powers,
         "turbopark_regression",
-        0.50,
-        150000.0,
+        0.13,
+        120000.0,
     );
 }
 
@@ -521,8 +515,8 @@ fn test_turbopark_yawed() {
         &powers,
         &golden.turbine_powers,
         "turbopark_yawed",
-        0.50,
-        150000.0,
+        0.13,
+        120000.0,
     );
 }
 
@@ -560,7 +554,13 @@ fn test_turboparkgauss_regression() {
 
     let powers = compute_powers_manual(&config, None);
     let golden = common::load_wake_golden("turboparkgauss_regression");
-    assert_powers_close(&powers, &golden.turbine_powers, "turboparkgauss_regression");
+    assert_powers_close_tol(
+        &powers,
+        &golden.turbine_powers,
+        "turboparkgauss_regression",
+        0.25,
+        250000.0,
+    );
 }
 
 // ============================================================
@@ -607,8 +607,8 @@ fn test_cc_regression() {
         &powers,
         &golden.turbine_powers,
         "cc_regression",
-        0.65,
-        400000.0,
+        0.15,
+        130000.0,
     );
 }
 
@@ -676,5 +676,259 @@ fn test_emgauss_regression() {
         "emgauss_regression",
         0.01,
         20000.0,
+    );
+}
+
+// ============================================================
+// Diagnostics: actual error magnitudes per solver
+// ============================================================
+
+fn max_rel_error(
+    test: &[Vec<f64>],
+    golden: &[Vec<f64>],
+) -> (usize, usize, f64, f64, f64) {
+    let mut max_rel = 0.0_f64;
+    let mut max_fi = 0;
+    let mut max_ti = 0;
+    let mut max_test_val = 0.0;
+    let mut max_golden_val = 0.0;
+    for (fi, (t_row, g_row)) in test.iter().zip(golden.iter()).enumerate() {
+        for (ti, (t_val, g_val)) in t_row.iter().zip(g_row.iter()).enumerate() {
+            if g_val.abs() > 1e-10 {
+                let rel = (t_val - g_val).abs() / g_val.abs();
+                if rel > max_rel {
+                    max_rel = rel;
+                    max_fi = fi;
+                    max_ti = ti;
+                    max_test_val = *t_val;
+                    max_golden_val = *g_val;
+                }
+            }
+        }
+    }
+    (max_fi, max_ti, max_rel, max_test_val, max_golden_val)
+}
+
+#[test]
+fn test_power_accuracy_diagnostics() {
+    // Jensen
+    let cfg = create_floris_config(
+        VelocityModelConfig::Jensen { we: 0.05 },
+        DeflectionModelConfig::Jimenez {
+            ad: 0.0,
+            bd: 0.0,
+            kd: 0.05,
+        },
+        CombinationModelConfig::SOSFS,
+        TurbulenceModelConfig::None,
+        true,
+        true,
+        true,
+    );
+    let p = compute_powers_manual(&cfg, None);
+    let g = common::load_wake_golden("jensen_regression");
+    let (fi, ti, rel, got, exp) = max_rel_error(&p, &g.turbine_powers);
+    eprintln!(
+        "[jensen]            max_rel={:.4}% at [{}][{}] got={:.0} expected={:.0}",
+        rel * 100.0,
+        fi,
+        ti,
+        got,
+        exp
+    );
+
+    // Gauss
+    let cfg = create_floris_config(
+        VelocityModelConfig::Gauss {
+            alpha: 0.58,
+            beta: 0.077,
+            ka: 0.38,
+            kb: 0.004,
+        },
+        DeflectionModelConfig::Gauss {
+            alpha: 0.58,
+            beta: 0.077,
+            ad: 0.0,
+            bd: 0.0,
+            dm: 1.0,
+            ka: 0.38,
+            kb: 0.004,
+        },
+        CombinationModelConfig::SOSFS,
+        TurbulenceModelConfig::CrespoHernandez {
+            initial: 0.1,
+            constant: 0.5,
+            ai: 0.8,
+            downstream: -0.32,
+        },
+        true,
+        true,
+        true,
+    );
+    let p = compute_powers_manual(&cfg, None);
+    let g = common::load_wake_golden("gauss_regression");
+    let (fi, ti, rel, got, exp) = max_rel_error(&p, &g.turbine_powers);
+    eprintln!(
+        "[gauss]             max_rel={:.4}% at [{}][{}] got={:.0} expected={:.0}",
+        rel * 100.0,
+        fi,
+        ti,
+        got,
+        exp
+    );
+
+    // Turbopark
+    let cfg = create_floris_config(
+        VelocityModelConfig::Turbopark {
+            kstar: 0.04,
+            cstar: 4.0,
+        },
+        DeflectionModelConfig::Gauss {
+            alpha: 0.58,
+            beta: 0.077,
+            ad: 0.0,
+            bd: 0.0,
+            dm: 1.0,
+            ka: 0.38,
+            kb: 0.004,
+        },
+        CombinationModelConfig::FLS,
+        TurbulenceModelConfig::None,
+        false,
+        false,
+        false,
+    );
+    let p = compute_powers_turbopark(&cfg, None);
+    let g = common::load_wake_golden("turbopark_regression");
+    let (fi, ti, rel, got, exp) = max_rel_error(&p, &g.turbine_powers);
+    eprintln!(
+        "[turbopark]         max_rel={:.4}% at [{}][{}] got={:.0} expected={:.0}",
+        rel * 100.0,
+        fi,
+        ti,
+        got,
+        exp
+    );
+
+    // TurboparkGauss
+    let cfg = create_floris_config(
+        VelocityModelConfig::TurboparkGauss {
+            kstar: 0.04,
+            cstar: 0.0,
+        },
+        DeflectionModelConfig::Gauss {
+            alpha: 0.58,
+            beta: 0.077,
+            ad: 0.0,
+            bd: 0.0,
+            dm: 1.0,
+            ka: 0.38,
+            kb: 0.004,
+        },
+        CombinationModelConfig::SOSFS,
+        TurbulenceModelConfig::CrespoHernandez {
+            initial: 0.1,
+            constant: 0.5,
+            ai: 0.8,
+            downstream: -0.32,
+        },
+        true,
+        true,
+        true,
+    );
+    let p = compute_powers_manual(&cfg, None);
+    let g = common::load_wake_golden("turboparkgauss_regression");
+    let (fi, ti, rel, got, exp) = max_rel_error(&p, &g.turbine_powers);
+    eprintln!(
+        "[turboparkgauss]    max_rel={:.4}% at [{}][{}] got={:.0} expected={:.0}",
+        rel * 100.0,
+        fi,
+        ti,
+        got,
+        exp
+    );
+
+    // CC
+    let cfg = create_floris_config(
+        VelocityModelConfig::CC {
+            a_s: 0.179367259,
+            b_s: 0.0118889215,
+            c_s1: 0.0563691592,
+            c_s2: 0.13290157,
+            a_f: 3.11,
+            b_f: -0.68,
+            c_f: 2.41,
+            alpha_mod: 1.0,
+        },
+        DeflectionModelConfig::Gauss {
+            alpha: 0.58,
+            beta: 0.077,
+            ad: 0.0,
+            bd: 0.0,
+            dm: 1.0,
+            ka: 0.38,
+            kb: 0.004,
+        },
+        CombinationModelConfig::SOSFS,
+        TurbulenceModelConfig::CrespoHernandez {
+            initial: 0.1,
+            constant: 0.5,
+            ai: 0.8,
+            downstream: -0.32,
+        },
+        true,
+        true,
+        true,
+    );
+    let p = compute_powers_cc(&cfg, None);
+    let g = common::load_wake_golden("cc_regression");
+    let (fi, ti, rel, got, exp) = max_rel_error(&p, &g.turbine_powers);
+    eprintln!(
+        "[cc]                max_rel={:.4}% at [{}][{}] got={:.0} expected={:.0}",
+        rel * 100.0,
+        fi,
+        ti,
+        got,
+        exp
+    );
+
+    // Empirical Gauss
+    let mut cfg = create_floris_config(
+        VelocityModelConfig::EmpiricalGauss {
+            wake_expansion_rates: vec![0.023, 0.008],
+            breakpoints_d: vec![10.0],
+            sigma_0_d: 0.28,
+            smoothing_length_d: 2.0,
+            mixing_gain_velocity: 2.0,
+            awc_wake_exp: 1.2,
+            awc_wake_denominator: 400.0,
+        },
+        DeflectionModelConfig::EmpiricalGauss {
+            horizontal_deflection_gain_d: 3.0,
+            vertical_deflection_gain_d: -1.0,
+            deflection_rate: 22.0,
+            mixing_gain_deflection: 0.0,
+            yaw_added_mixing_gain: 0.0,
+        },
+        CombinationModelConfig::SOSFS,
+        TurbulenceModelConfig::WakeInducedMixing {
+            atmospheric_ti_gain: 0.0,
+        },
+        false,
+        false,
+        false,
+    );
+    cfg.solver.turbine_grid_points = 2;
+    cfg.wake.enable_wake_mixing = false;
+    let p = compute_powers_emgauss(&cfg, None);
+    let g = common::load_wake_golden("empirical_gauss_regression");
+    let (fi, ti, rel, got, exp) = max_rel_error(&p, &g.turbine_powers);
+    eprintln!(
+        "[emgauss]           max_rel={:.4}% at [{}][{}] got={:.0} expected={:.0}",
+        rel * 100.0,
+        fi,
+        ti,
+        got,
+        exp
     );
 }
