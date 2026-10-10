@@ -238,7 +238,7 @@ fn calculate_peak_deficit(ct: Float, sigma_over_d: Float) -> Float {
 /// source's grid points, combined via sqrt-sum-of-squares.
 #[allow(clippy::too_many_arguments)]
 pub fn turbopark_velocity_deficit(
-    ambient_turbulence_intensities: &Array1,
+    turbulence_intensity: &Array4,
     thrust_coefficients: &Array2,
     rotor_diameters: &Array1,
     grid_x: &Array4,
@@ -261,8 +261,6 @@ pub fn turbopark_velocity_deficit(
     const NUM_EPS: Float = 1e-6;
 
     for fi in 0..n_findex {
-        let ambient_ti = ambient_turbulence_intensities[fi];
-
         // Target turbine's mean positions (x is constant per turbine)
         let x_i = grid_x[[fi, target_index, 0, 0]];
         let mut y_i = 0.0;
@@ -296,7 +294,11 @@ pub fn turbopark_velocity_deficit(
                         continue;
                     }
 
-                    let dw = characteristic_wake_width(x_dist, ambient_ti, ct_m, a);
+                    // Per-point TI of source m (Python passes the evolved
+                    // turbine_turbulence_intensity field (n_findex, n_turbines,
+                    // gy, gz); characteristic_wake_width broadcasts pointwise)
+                    let ti_m = turbulence_intensity[[fi, m, iy, iz]];
+                    let dw = characteristic_wake_width(x_dist, ti_m, ct_m, a);
                     let eps = calculate_epsilon(ct_m);
                     let sigma = d_m * (eps + dw);
 
@@ -355,7 +357,7 @@ impl VelocityModel for TurbOParkVelocityDeficit {
         _axial_induction: Array2,
         deflection_field: Array4,
         _yaw_angle: Array2,
-        turbulence_intensity: Array2,
+        turbulence_intensity: Array4,
         thrust_coefficient: Array2,
         hub_height: Float,
         rotor_diameter: Float,
@@ -391,10 +393,6 @@ impl VelocityModel for TurbOParkVelocityDeficit {
             }
 
             let epsilon = calculate_epsilon(thrust_coefficient[[fi, turbine_index]]);
-            let c = calculate_peak_deficit(
-                thrust_coefficient[[fi, turbine_index]],
-                self.a * turbulence_intensity[[fi, turbine_index]] + epsilon,
-            );
 
             for ti in 0..n_turbines {
                 for iy in 0..n_y {
@@ -404,6 +402,13 @@ impl VelocityModel for TurbOParkVelocityDeficit {
                         if x_point <= x_wake_source {
                             continue;
                         }
+
+                        // Per-point TI (source's slice of the evolving 4D field)
+                        let ti_pt = turbulence_intensity[[fi, turbine_index, iy, iz]];
+                        let c = calculate_peak_deficit(
+                            thrust_coefficient[[fi, turbine_index]],
+                            self.a * ti_pt + epsilon,
+                        );
 
                         let y_point = y[[fi, ti, iy, iz]];
                         let z_point = z[[fi, ti, iy, iz]];
@@ -418,13 +423,11 @@ impl VelocityModel for TurbOParkVelocityDeficit {
                         let x_dist = (x_point - x_wake_source) / rotor_diameter;
                         let dw = characteristic_wake_width(
                             x_dist,
-                            turbulence_intensity[[fi, turbine_index]],
+                            ti_pt,
                             thrust_coefficient[[fi, turbine_index]],
                             self.a,
                         );
-                        let sigma_downstream =
-                            (self.a * turbulence_intensity[[fi, turbine_index]] + epsilon + dw)
-                                .max(epsilon);
+                        let sigma_downstream = (self.a * ti_pt + epsilon + dw).max(epsilon);
 
                         let normalized_r = r / (sigma_downstream * rotor_diameter);
                         let normalized_radius_down = r0 / (sigma_downstream * rotor_diameter);

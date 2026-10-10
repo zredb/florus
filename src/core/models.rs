@@ -38,9 +38,14 @@ pub trait VelocityModel {
 
     /// Main velocity deficit function
     /// turbine_index: which turbine is the wake source (for position lookup)
-    /// axial_induction, yaw_angle, turbulence_intensity, thrust_coefficient are
-    /// per-findex arrays of shape (n_findex, n_turbines), matching the Python
-    /// implementation which broadcasts these as (n_findex, 1, 1, 1).
+    /// axial_induction, yaw_angle, thrust_coefficient are per-findex arrays of
+    /// shape (n_findex, n_turbines), matching the Python implementation which
+    /// broadcasts these as (n_findex, 1, 1, 1).
+    /// turbulence_intensity is the full 4D TI field
+    /// (n_findex, n_turbines, grid_y, grid_z); models read the source's
+    /// per-point slice via `[[fi, turbine_index, iy, iz]]`, matching Python
+    /// where the solver passes the source slice `turbulence_intensity_i`
+    /// (n_findex, 1, grid_y, grid_z) broadcast over target turbines.
     /// deflection_field is the wake-source deflection evaluated at every grid
     /// point, shape (n_findex, n_turbines, grid_y, grid_z) — matching the
     /// Python `deflection_field_i` argument.
@@ -53,7 +58,7 @@ pub trait VelocityModel {
         axial_induction: Array2,
         deflection_field: Array4,
         yaw_angle: Array2,
-        turbulence_intensity: Array2,
+        turbulence_intensity: Array4,
         thrust_coefficient: Array2,
         hub_height: Float,
         rotor_diameter: Float,
@@ -85,7 +90,9 @@ pub trait DeflectionModel {
     ///
     /// * `x_i`, `y_i`: source turbine mean position, shape `[n_findex, 1]`
     /// * `yaw_i`: per-findex effective yaw [deg], shape `[n_findex]`
-    /// * `turbulence_intensity_i`: per-findex TI at the source, shape `[n_findex]`
+    /// * `turbulence_intensity_i`: per-point TI at the source, the source's
+    ///   slice of the evolving 4D TI field, shape `[n_findex, 1, grid_y, grid_z]`
+    ///   (Python: `turbulence_intensity_i = turbine_turbulence_intensity[:, i:i+1]`)
     /// * `thrust_coefficient_i`: per-findex Ct of the source, shape `[n_findex]`
     /// * `rotor_diameter`: source rotor diameter (scalar)
     /// * `grid_x`: full grid x-coordinates, shape `[n_findex, n_turbines, grid_y, grid_z]`
@@ -97,7 +104,7 @@ pub trait DeflectionModel {
         x_i: &Array2,
         y_i: &Array2,
         yaw_i: &Array1,
-        turbulence_intensity_i: &Array1,
+        turbulence_intensity_i: &Array4,
         thrust_coefficient_i: &Array1,
         rotor_diameter: Float,
         grid_x: &Array4,

@@ -69,7 +69,7 @@ impl VelocityModel for GaussLegacyVelocityDeficit {
         axial_induction: Array2,
         deflection_field: Array4,
         _yaw_angle: Array2,
-        turbulence_intensity: Array2,
+        turbulence_intensity: Array4,
         _thrust_coefficient: Array2,
         hub_height: Float,
         rotor_diameter: Float,
@@ -123,17 +123,10 @@ impl VelocityModel for GaussLegacyVelocityDeficit {
                         let dy = y_point - wake_center_y;
                         let dz = z_point - hub_height;
 
-                        // Wake parameters
-                        let sigma_y = self.calculate_sigma_y(
-                            x_point - x_wake_source,
-                            r0,
-                            turbulence_intensity[[fi, turbine_index]],
-                        );
-                        let sigma_z = self.calculate_sigma_z(
-                            x_point - x_wake_source,
-                            r0,
-                            turbulence_intensity[[fi, turbine_index]],
-                        );
+                        // Wake parameters (per-point TI)
+                        let ti_pt = turbulence_intensity[[fi, turbine_index, iy, iz]];
+                        let sigma_y = self.calculate_sigma_y(x_point - x_wake_source, r0, ti_pt);
+                        let sigma_z = self.calculate_sigma_z(x_point - x_wake_source, r0, ti_pt);
 
                         // Gaussian profile
                         let exponent =

@@ -285,6 +285,25 @@ The remaining 0.0046% at turbine 2 is caused by a 0.0000316 difference in turbin
 
 ---
 
+## Bug #18: 逐点 4D 湍流度场重构 — 每风机 2D 标量 TI → Python 式 WAT 演化 (nfi, nt, gy, gz) 场
+
+**Files**: `src/core/models.rs`(trait 签名)、`src/core/solver.rs`(5 个 solver)、`src/core/wake/wake_velocity/*.rs`、`src/core/wake/wake_deflection/*.rs`
+**Symptom**: 共线(串联)布局的黄金值测试残差掩盖了结构性偏差 — 旧的每风机 TI 标量 `(n_findex, n_turbines)` 在对称布局下"恰好"等于逐点值;错列/部分遮挡布局下 Rust 与 Python 必然分歧(旧近似无法表达转子平面上的 TI 非均匀性)。
+**Root cause**: Python FLORIS 维护**逐点** 4D 湍流度场 `turbulence_intensity_field_sorted`,shape `(n_findex, n_turbines, grid_y, grid_z)`,由:
+1. 初始环境 TI 广播(等价于 `(nfi, nt, 1, 1)` + 重绑定);
+2. GCH:源风机切片角点 `I_i[:,0,0,0]` + `gch_gain·I_mixing`(sequential/cc 求解器 gain 分别为 2.0/1.0)整片叠加;
+3. WAT:逐点掩码(`x_pt > x_src_mean`、`|y_src_mean − y_pt| < 2D`、`x_pt ≤ 15D + x_src_mean`)× 逐点 `wake_added`,取 `max(sqrt(ti_added² + amb²), 当前值)`;涡轮迭代间演化(迭代 i 的 WAT 更新所有 j 的切片,供迭代 i+1 的速度模型使用)。
+Rust 原以 2D 标量近似:中心点 wake_added + 均值掩码,且湍流场不演化传递到速度/偏转模型的语义与 Python 源切片广播不一致。
+**Fix**:
+- `VelocityModel::function` TI 参数 `Array2` → 全场 `Array4`,各模型按 `[[fi, turbine_index, iy, iz]]` 读源切片(与 Python 源切片对目标广播一致);`DeflectionModel::function` TI 参数 `&Array1` → `&Array4` 源切片 `(nfi, 1, gy, gz)`,按 `[[fi, 0, iy, iz]]` 读。
+- gauss(速度/偏转)把 x0、ky/kz、delta0 移入点循环逐点计算;GCH 用角点 `field[[fi, i, 0, 0]]` 作 `I_i` 并对源切片逐点叠加;WAT 改为逐点掩码 + 逐点 `wake_added` + 逐点 max 更新。
+- sequential/turbopark/cc/full_flow 求解器均初始化并演化 4D 场;empirical_gauss 与 Python 一致(模型不用 TI,输出常数环境场);emgauss 速度模型 TI 占位不变。
+- 清理 cc_solver 中不再使用的 `x_mean_all`/`y_mean_all`。
+**Validation**: 既有 10 项交叉验证残差逐位不变(gauss 0.0056/0.0157%、turbopark 0.0035/0.0039%、turboparkgauss 4.5e-4%、cc 0.0128%)——共线布局下新旧数值恰好相同(平转子网格各点 x 相等 → CH wake_added 与掩码在块内均匀)。新增**错列布局黄金值测试** `test_gauss_staggered_ti`(turbine 1 横向偏移 3D、turbine 0 偏航 5°、3×3 转子网格、SOSFS+CH WAT)对照 Python FLORIS v4.6.4:功率相对误差 **~1e-8**(1741508.6722/1753954.4590/1219408.2374 等逐位吻合),真正激活 4D TI 演化(源0 WAT 抬升 turbine 1 切片 0.1→0.10016,GCH 抬升 turbine 0 至 0.101069)。黄金值由 `tests/generate_golden_values.py::generate_wake_ti4d_value` 生成(`tests/golden_values/wake_regression/gauss_staggered_ti.json`)。
+**Impact**: 结构性对齐 Python TI 生命周期,消除错列/部分遮挡布局下的潜在分歧;既有残差与 clippy 基线(192)无变化,fmt 干净,337 lib + 全部集成测试通过。
+
+---
+
 ## Key Python vs Rust Correspondence Notes
 
 ### Sequential Solver Argument Passing

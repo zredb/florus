@@ -54,7 +54,7 @@ impl DeflectionModel for JimenezVelocityDeflection {
         x_i: &Array2,
         _y_i: &Array2,
         yaw_i: &Array1,
-        _turbulence_intensity_i: &Array1,
+        _turbulence_intensity_i: &Array4,
         thrust_coefficient_i: &Array1,
         rotor_diameter: Float,
         grid_x: &Array4,
@@ -119,7 +119,7 @@ mod tests {
         let x_i = Array::from_shape_vec((1, 1), vec![0.0]).unwrap();
         let y_i = Array::from_shape_vec((1, 1), vec![0.0]).unwrap();
         let yaw_arr = Array1::from_vec(vec![yaw]);
-        let ti = Array1::from_vec(vec![0.1]);
+        let ti = Array::from_shape_vec((1, 1, 1, 1), vec![0.1]).unwrap();
         let ct = Array1::from_vec(vec![ct]);
         let grid_x = Array::from_shape_vec((1, 1, 1, 1), vec![x_downstream]).unwrap();
 

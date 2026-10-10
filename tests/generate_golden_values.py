@@ -76,6 +76,7 @@ def create_floris_model(
     turbine_type: str = "nrel_5MW",
     operation_model: str = "cosine-loss",
     yaw_angles: Optional[List[List[float]]] = None,
+    turbine_grid_points: Optional[int] = None,
 ) -> FlorisModel:
     """Create a FlorisModel with specified configuration."""
     
@@ -108,7 +109,11 @@ def create_floris_model(
         },
         "solver": {
             "type": "turbine_grid",
-            "turbine_grid_points": TURBINE_GRID_RESOLUTION,
+            "turbine_grid_points": (
+                turbine_grid_points
+                if turbine_grid_points is not None
+                else TURBINE_GRID_RESOLUTION
+            ),
         },
         "farm": {
             "layout_x": layout_x,
@@ -306,6 +311,41 @@ def generate_wake_regression_values(output_dir: Path) -> None:
             
         except Exception as e:
             print(f"    ERROR: {e}")
+
+
+def generate_wake_ti4d_value(output_dir: Path) -> None:
+    """Generate the staggered-layout golden value exercising per-point 4D TI.
+
+    Turbine 1 is offset laterally (3 D) and turbine 0 is yawed 5 deg so the
+    wake-added-turbulence field evolves per point and feeds back into the
+    velocity models through the evolving 4D TI field (Front 2).
+    """
+    print("\n=== Generating Staggered-TI Wake Golden Value ===")
+
+    d = 126.0
+    fmodel = create_floris_model(
+        velocity_model="gauss",
+        deflection_model="gauss",
+        combination_model="sosfs",
+        turbulence_model="crespo_hernandez",
+        wind_speeds=[8.0, 10.0],
+        wind_directions=[270.0, 270.0],
+        turbulence_intensities=[0.1, 0.1],
+        layout_x=[0.0, 5 * d, 10 * d],
+        layout_y=[0.0, 3 * d, 0.0],
+        yaw_angles=[[5.0, 0.0, 0.0], [5.0, 0.0, 0.0]],
+        turbine_grid_points=3,
+    )
+
+    results = extract_results(fmodel)
+    results["config"] = {
+        "velocity_model": "gauss",
+        "deflection_model": "gauss",
+        "combination_model": "sosfs",
+        "turbulence_model": "crespo_hernandez",
+        "yawed": True,
+    }
+    save_json(results, output_dir / "wake_regression" / "gauss_staggered_ti.json")
 
 
 # =============================================================================

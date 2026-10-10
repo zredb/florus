@@ -957,3 +957,94 @@ fn test_power_accuracy_diagnostics() {
     eprintln!("[turbopark_yawed] ALL ERRORS:");
     print_all_errors(&p, &g.turbine_powers, "turbopark_yawed");
 }
+
+/// Staggered-layout + yaw + WAT regression against Python FLORIS v4.6.4.
+///
+/// Turbine 1 is offset laterally (3 D) and turbine 0 is yawed 5 deg so the
+/// wake-added-turbulence field evolves per point and feeds back into the
+/// gauss velocity model through the evolving 4D TI field. This case did NOT
+/// exist before the 4D-TI refactor: with colinear turbines the 2D per-turbine
+/// TI scalar happened to be exact, so a staggered case is required to lock in
+/// the per-point propagation semantics.
+#[test]
+fn test_gauss_staggered_ti() {
+    let d = 126.0;
+    let config = FlorisConfig {
+        name: "ti4d_staggered".to_string(),
+        description: None,
+        floris_version: "v4".to_string(),
+        logging: LoggingConfig::default(),
+        solver: SolverConfig {
+            turbine_grid_points: 3,
+            ..SolverConfig::default()
+        },
+        farm: FarmConfig {
+            layout_x: vec![0.0, 5.0 * d, 10.0 * d],
+            layout_y: vec![0.0, 3.0 * d, 0.0],
+            turbine_type: vec!["nrel_5MW".to_string(); 3],
+        },
+        flow_field: FlowFieldConfig {
+            wind_speeds: vec![8.0, 10.0],
+            wind_directions: vec![270.0, 270.0],
+            turbulence_intensities: vec![0.1, 0.1],
+            wind_shear: 0.12,
+            wind_veer: 0.0,
+            air_density: 1.225,
+            reference_wind_height: 90.0,
+            multidim_conditions: None,
+        },
+        wake: WakeConfig {
+            model_strings: WakeModelStringsConfig {
+                velocity_model: VelocityModelConfig::Gauss {
+                    alpha: 0.58,
+                    beta: 0.077,
+                    ka: 0.38,
+                    kb: 0.004,
+                },
+                deflection_model: DeflectionModelConfig::Gauss {
+                    alpha: 0.58,
+                    beta: 0.077,
+                    ad: 0.0,
+                    bd: 0.0,
+                    dm: 1.0,
+                    ka: 0.38,
+                    kb: 0.004,
+                },
+                combination_model: CombinationModelConfig::SOSFS,
+                turbulence_model: TurbulenceModelConfig::CrespoHernandez {
+                    initial: 0.1,
+                    constant: 0.5,
+                    ai: 0.8,
+                    downstream: -0.32,
+                },
+            },
+            enable_secondary_steering: true,
+            enable_yaw_added_recovery: true,
+            enable_transverse_velocities: true,
+            enable_active_wake_mixing: false,
+            enable_wake_mixing: false,
+            use_parallel_calc: false,
+        },
+        turbine_library: "turbine_library".to_string(),
+    };
+    let mut model = FlorisModel::from_config(config).expect("model");
+    let yaw = Array2::from_shape_fn((2, 3), |(_, ti)| if ti == 0 { 5.0 } else { 0.0 });
+    model.set_yaw_angles(yaw).expect("yaw");
+    model.initialize_grid().expect("grid");
+    model.initialize_flow_field().expect("ff");
+    let grid = model.core().grid.as_ref().unwrap();
+    let turbine_grid = grid.as_any().downcast_ref::<TurbineGrid>().unwrap();
+    let farm = model.core().farm.clone();
+    let mut flow_field = model.core().flow_field.clone();
+    let wake = model.core().wake.clone();
+    sequential_solver(&farm, &mut flow_field, turbine_grid, &wake).expect("solver");
+    let powers = powers_from_u_sorted(&farm, &flow_field);
+    let golden = common::load_wake_golden("gauss_staggered_ti");
+    assert_powers_close_tol(
+        &powers,
+        &golden.turbine_powers,
+        "gauss_staggered_ti",
+        1e-5,
+        1.0,
+    );
+}

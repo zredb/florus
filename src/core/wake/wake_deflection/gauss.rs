@@ -92,7 +92,7 @@ impl DeflectionModel for GaussVelocityDeflection {
         x_i: &Array2,
         _y_i: &Array2,
         yaw_i: &Array1,
-        turbulence_intensity_i: &Array1,
+        turbulence_intensity_i: &Array4,
         thrust_coefficient_i: &Array1,
         rotor_diameter: Float,
         grid_x: &Array4,
@@ -121,7 +121,6 @@ impl DeflectionModel for GaussVelocityDeflection {
             // Opposite sign convention in this model
             let yaw = -yaw_i[fi];
             let ct = thrust_coefficient_i[fi];
-            let ti = turbulence_intensity_i[fi];
             let x_src = x_i[[fi, 0]];
 
             // Initial velocity deficits (Python uses the freestream-normalized
@@ -135,18 +134,6 @@ impl DeflectionModel for GaussVelocityDeflection {
             // Python: u0 = freestream_velocity * np.sqrt(1 - ct_i) (no yaw factor)
             let u0 = u_initial * (1.0 - ct).max(0.0).sqrt();
 
-            // Length of near wake (Python x0 uses sqrt(1 - ct) in the
-            // denominator and (1 + sqrt(1 - ct*cosd(yaw))) in the numerator)
-            let x0 = rotor_diameter * (crate::utilities::cosd(yaw) * (1.0 + sqrt_ct_yaw_tilt))
-                / (2.0_f64.sqrt()
-                    * (4.0 * self.alpha * ti
-                        + 2.0 * self.beta * (1.0 - (1.0 - ct).max(0.0).sqrt())))
-                + x_src;
-
-            // Wake expansion parameters
-            let ky = self.ka * ti + self.kb;
-            let kz = self.ka * ti + self.kb;
-
             let c0 = 1.0 - u0 / u_initial;
             let m0 = c0 * (2.0 - c0);
             let e0 = c0 * c0 - 3.0 * (1.0 / 12.0_f64).exp() * c0 + 3.0 * (1.0 / 3.0_f64).exp();
@@ -159,7 +146,6 @@ impl DeflectionModel for GaussVelocityDeflection {
             // Yaw parameters (skew angle and distance from centerline)
             let theta_c0 = self.dm * (0.3 * yaw.to_radians() / crate::utilities::cosd(yaw));
             let theta_c0 = theta_c0 * (1.0 - sqrt_ct_yaw_tilt);
-            let delta0 = theta_c0.tan() * (x0 - x_src); // initial wake deflection
 
             // Start of the near wake (xR == x_i in this model)
             let xr = x_src;
@@ -167,6 +153,26 @@ impl DeflectionModel for GaussVelocityDeflection {
             for ti in 0..n_turbines {
                 for iy in 0..grid_y_dim {
                     for iz in 0..grid_z_dim {
+                        // Per-point TI (Python: turbulence_intensity_i is the
+                        // evolving 4D field slice (n_findex, 1, gy, gz),
+                        // broadcast over target turbines by index)
+                        let ti_pt = turbulence_intensity_i[[fi, 0, iy, iz]];
+
+                        // Length of near wake (Python x0 uses sqrt(1 - ct) in the
+                        // denominator and (1 + sqrt(1 - ct*cosd(yaw))) in the numerator)
+                        let x0 = rotor_diameter
+                            * (crate::utilities::cosd(yaw) * (1.0 + sqrt_ct_yaw_tilt))
+                            / (2.0_f64.sqrt()
+                                * (4.0 * self.alpha * ti_pt
+                                    + 2.0 * self.beta * (1.0 - (1.0 - ct).max(0.0).sqrt())))
+                            + x_src;
+
+                        // Wake expansion parameters (per point)
+                        let ky = self.ka * ti_pt + self.kb;
+                        let kz = self.ka * ti_pt + self.kb;
+
+                        let delta0 = theta_c0.tan() * (x0 - x_src); // initial wake deflection
+
                         let x = grid_x[[fi, ti, iy, iz]];
 
                         // Deflection in the near wake:
@@ -241,7 +247,7 @@ mod tests {
         let x_i = Array::from_shape_vec((1, 1), vec![0.0]).unwrap();
         let y_i = Array::from_shape_vec((1, 1), vec![0.0]).unwrap();
         let yaw = Array1::from_vec(vec![5.0]);
-        let ti = Array1::from_vec(vec![0.1]);
+        let ti = Array::from_shape_vec((1, 1, 1, 1), vec![0.1]).unwrap();
         let ct = Array1::from_vec(vec![0.78]);
         // Evaluation point 1 D downstream of the source
         let grid_x = Array::from_shape_vec((1, 1, 1, 1), vec![126.0]).unwrap();

@@ -150,7 +150,7 @@ impl VelocityModel for EmpiricalGaussVelocityDeficit {
         _axial_induction: Array2,
         deflection_field: Array4,
         yaw_angle: Array2,
-        _turbulence_intensity: Array2,
+        _turbulence_intensity: Array4,
         thrust_coefficient: Array2,
         hub_height: Float,
         rotor_diameter: Float,

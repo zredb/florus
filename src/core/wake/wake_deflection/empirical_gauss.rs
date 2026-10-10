@@ -80,7 +80,7 @@ impl DeflectionModel for EmpiricalGaussVelocityDeflection {
         x_i: &Array2,
         _y_i: &Array2,
         yaw_i: &Array1,
-        _turbulence_intensity_i: &Array1,
+        _turbulence_intensity_i: &Array4,
         thrust_coefficient_i: &Array1,
         rotor_diameter: Float,
         grid_x: &Array4,

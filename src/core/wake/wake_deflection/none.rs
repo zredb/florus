@@ -49,7 +49,7 @@ impl DeflectionModel for NoneVelocityDeflection {
         _x_i: &Array2,
         _y_i: &Array2,
         _yaw_i: &Array1,
-        _turbulence_intensity_i: &Array1,
+        _turbulence_intensity_i: &Array4,
         _thrust_coefficient_i: &Array1,
         _rotor_diameter: Float,
         grid_x: &Array4,

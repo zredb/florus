@@ -69,7 +69,7 @@ impl VelocityModel for GaussVelocity {
         _axial_induction: Array2,
         deflection_field: Array4,
         yaw_angle: Array2,
-        turbulence_intensity: Array2,
+        turbulence_intensity: Array4,
         thrust_coefficient: Array2,
         hub_height: Float,
         rotor_diameter: Float,
@@ -125,8 +125,6 @@ impl VelocityModel for GaussVelocity {
                 continue;
             }
 
-            let ti = turbulence_intensity[[fi, turbine_index]];
-
             let sqrt_one_minus_ct = (1.0 - ct).sqrt();
 
             // Calculate initial wake parameters
@@ -139,17 +137,6 @@ impl VelocityModel for GaussVelocity {
             let sigma_z0 = rotor_diameter * 0.5 * (uR / (u_initial + u0)).sqrt();
             let sigma_y0 = sigma_z0 * cosd(yaw) * cosd(wind_veer); // Apply wind veer correction
 
-            // Start of the far wake (x0), relative to the rotor plane.
-            // Matches Python: x0 = D * cosd(yaw) * (1 + sqrt(1-ct)) / (sqrt(2) * (4*alpha*TI + 2*beta*(1-sqrt(1-ct)))) + x_i
-            let x0 = rotor_diameter * cosd(yaw) * (1.0 + sqrt_one_minus_ct)
-                / (2.0_f64.sqrt()
-                    * (4.0 * self.alpha * ti + 2.0 * self.beta * (1.0 - sqrt_one_minus_ct)));
-            let x0 = x0 + x_i; // Add turbine location to x0
-
-            // Wake expansion rate
-            let ky = self.ka * ti + self.kb;
-            let kz = self.ka * ti + self.kb;
-
             for ti_grid in 0..n_turbines {
                 for iy in 0..n_y {
                     for iz in 0..n_z {
@@ -159,6 +146,24 @@ impl VelocityModel for GaussVelocity {
                         if x_point <= x_i + 0.1 {
                             continue;
                         }
+
+                        // Per-point TI: the source's slice of the evolving 4D
+                        // field at this grid index (Python passes
+                        // turbulence_intensity_i (n_findex, 1, gy, gz), which
+                        // broadcasts over target turbines by index).
+                        let ti = turbulence_intensity[[fi, turbine_index, iy, iz]];
+
+                        // Start of the far wake (x0), relative to the rotor plane.
+                        // Matches Python: x0 = D * cosd(yaw) * (1 + sqrt(1-ct)) / (sqrt(2) * (4*alpha*TI + 2*beta*(1-sqrt(1-ct)))) + x_i
+                        let x0 = rotor_diameter * cosd(yaw) * (1.0 + sqrt_one_minus_ct)
+                            / (2.0_f64.sqrt()
+                                * (4.0 * self.alpha * ti
+                                    + 2.0 * self.beta * (1.0 - sqrt_one_minus_ct)));
+                        let x0 = x0 + x_i; // Add turbine location to x0
+
+                        // Wake expansion rate (per point)
+                        let ky = self.ka * ti + self.kb;
+                        let kz = self.ka * ti + self.kb;
 
                         // Determine if in near wake or far wake
                         let (sigma_y, sigma_z) = if x_point < x0 {

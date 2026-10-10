@@ -116,12 +116,21 @@ pub fn sequential_solver(
         .combination_model
         .prepare_function(grid, flow_field)?;
 
-    // Per-turbine turbulence intensity (n_findex, n_turbines), broadcast from ambient TI.
-    // Mirrors Python turbine_turbulence_intensity; evolved downstream via GCH recovery.
-    let mut turbine_turbulence_intensity: Array2 = Array::zeros((n_findex, n_turbines));
+    // Evolving 4D TI field (n_findex, n_turbines, grid_y, grid_z), initialized
+    // to ambient. Mirrors Python's local `turbine_turbulence_intensity`, which
+    // starts as (n_findex, n_turbines, 1, 1) and broadcasts to the full grid
+    // shape on the first WAT `np.maximum` update; a full-shape constant field
+    // is semantically identical (every consumer broadcasts pointwise).
+    let mut turbine_turbulence_intensity: Array4 =
+        Array::from_elem((n_findex, n_turbines, grid_y_dim, grid_z_dim), 0.0);
     for fi in 0..n_findex {
         for ti in 0..n_turbines {
-            turbine_turbulence_intensity[[fi, ti]] = flow_field.turbulence_intensities[fi];
+            for iy in 0..grid_y_dim {
+                for iz in 0..grid_z_dim {
+                    turbine_turbulence_intensity[[fi, ti, iy, iz]] =
+                        flow_field.turbulence_intensities[fi];
+                }
+            }
         }
     }
 
@@ -238,9 +247,11 @@ pub fn sequential_solver(
 
         // Calculate the deflection field of source turbine i at every grid
         // point (Python: per-findex effective yaw/TI/Ct, full-field evaluation)
-        let ti_source: Array1 = (0..n_findex)
-            .map(|fi| turbine_turbulence_intensity[[fi, i]])
-            .collect();
+        // Source's per-point TI slice (Python: turbulence_intensity_i =
+        // turbine_turbulence_intensity[:, i:i+1], the evolving field slice)
+        let ti_source: Array4 = turbine_turbulence_intensity
+            .slice(s![.., i..i + 1, .., ..])
+            .to_owned();
         let deflection_field = model_manager.deflection_model.function(
             &x_2d,
             &y_2d,
@@ -278,9 +289,15 @@ pub fn sequential_solver(
         }
 
         if model_manager.enable_yaw_added_recovery {
+            // Python: yaw_added_turbulence_mixing takes I_i =
+            // turbulence_intensity_i[:, 0, 0, 0] — the first grid point of the
+            // source's TI field — and adds gch_gain * I_mixing (scalar per
+            // findex) to the whole source slice.
             let i_mixing = yaw_added_turbulence_mixing(
                 &u_i,
-                &turbine_turbulence_intensity.slice(s![.., i]).to_owned(),
+                &turbine_turbulence_intensity
+                    .slice(s![.., i, 0, 0])
+                    .to_owned(),
                 &v_i,
                 &w_i,
                 &v_wake.slice(s![.., i..i + 1, .., ..]).to_owned(),
@@ -288,19 +305,17 @@ pub fn sequential_solver(
             );
             let gch_gain = 2.0;
             for fi in 0..n_findex {
-                turbine_turbulence_intensity[[fi, i]] += gch_gain * i_mixing[fi];
-            }
-        }
-
-        // Build the per-turbine TI array (now evolved for turbine i) for the velocity model
-        let mut ti_array = Array::zeros((n_findex, n_turbines));
-        for fi in 0..n_findex {
-            for ti in 0..n_turbines {
-                ti_array[[fi, ti]] = turbine_turbulence_intensity[[fi, ti]];
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        turbine_turbulence_intensity[[fi, i, iy, iz]] += gch_gain * i_mixing[fi];
+                    }
+                }
             }
         }
 
         // Calculate velocity deficit at ALL grid points due to turbine i
+        // (Python passes the full evolving TI field; models read the source's
+        // slice via [[fi, turbine_index, iy, iz]])
         let velocity_deficit = model_manager.velocity_model.function(
             x_grid.clone(),
             y_grid.clone(),
@@ -308,7 +323,7 @@ pub fn sequential_solver(
             a_i.clone(),
             deflection_field,
             farm.yaw_angles_sorted.clone(),
-            ti_array,
+            turbine_turbulence_intensity.clone(),
             ct_i,
             hub_height_i,
             rotor_diameter_i,
@@ -337,9 +352,10 @@ pub fn sequential_solver(
             .function(&wake_field, &velocity_deficit_absolute)?;
 
         // --- Wake-Added Turbulence (WAT) clamp ---
-        // Mirrors FLORIS sequential_solver: compute the wake-added TI grid from the
-        // turbulence model, fold it into turbine_turbulence_intensity for every
-        // downstream turbine via an area-overlap + downstream-influence mask.
+        // Mirrors FLORIS sequential_solver: wake-added TI is evaluated per grid
+        // point (Python: ti_added = area_overlap * wake_added * pointwise masks
+        // on grid.x_sorted/grid.y_sorted vs the source's mean position), then
+        // folded into the evolving field with np.maximum(sqrt(ti_added^2 + amb^2)).
         let mut x_i_4d = Array4::zeros((n_findex, 1, 1, 1));
         let mut ai_4d = Array4::zeros((n_findex, 1, 1, 1));
         let mut ambient_ti_4d = Array4::zeros((n_findex, 1, 1, 1));
@@ -362,11 +378,12 @@ pub fn sequential_solver(
         // grid_y_dim * grid_z_dim == grid_resolution^2 (turbine grid): the number of
         // grid points per turbine, the normalization for area_overlap.
         let grid_res_sq = (grid_y_dim * grid_z_dim) as Float;
-        let iy_c = grid_y_dim / 2;
-        let iz_c = grid_z_dim / 2;
         let downstream_influence_length = 15.0 * rotor_diameter_i;
 
         for fi in 0..n_findex {
+            let x_src = x_mean[[fi, i]];
+            let y_src = y_mean[[fi, i]];
+            let ambient = flow_field.turbulence_intensities[fi];
             for j in 0..n_turbines {
                 // Fraction of turbine j's grid points with absolute deficit > 0.05 m/s
                 let mut overlap_count = 0.0_f64;
@@ -379,25 +396,25 @@ pub fn sequential_solver(
                 }
                 let area_overlap = overlap_count / grid_res_sq;
 
-                // Evaluate WAT at turbine j's center grid point (masks are ~1 downstream)
-                let wake_added_center = wake_added[[fi, j, iy_c, iz_c]];
-
-                // Downstream-influence mask (Python: x > x_i, |dy| < 2D, x <= 15D + x_i)
-                let dx = x_mean[[fi, j]] - x_mean[[fi, i]];
-                let dy = (y_mean[[fi, j]] - y_mean[[fi, i]]).abs();
-                let downstream_ok =
-                    dx > 0.0 && dx <= downstream_influence_length && dy < 2.0 * rotor_diameter_i;
-
-                let ti_added = if downstream_ok {
-                    area_overlap * wake_added_center
-                } else {
-                    0.0
-                };
-
-                let ambient = flow_field.turbulence_intensities[fi];
-                let new_ti = (ti_added * ti_added + ambient * ambient).sqrt();
-                if new_ti > turbine_turbulence_intensity[[fi, j]] {
-                    turbine_turbulence_intensity[[fi, j]] = new_ti;
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        // Pointwise downstream-influence masks (Python:
+                        // grid.x_sorted > x_i, |y_i - grid.y_sorted| < 2D,
+                        // grid.x_sorted <= 15D + x_i)
+                        let x_pt = x_grid[[fi, j, iy, iz]];
+                        let downstream = x_pt > x_src
+                            && (y_src - y_grid[[fi, j, iy, iz]]).abs() < 2.0 * rotor_diameter_i
+                            && x_pt <= downstream_influence_length + x_src;
+                        let ti_added = if downstream {
+                            area_overlap * wake_added[[fi, j, iy, iz]]
+                        } else {
+                            0.0
+                        };
+                        let new_ti = (ti_added * ti_added + ambient * ambient).sqrt();
+                        if new_ti > turbine_turbulence_intensity[[fi, j, iy, iz]] {
+                            turbine_turbulence_intensity[[fi, j, iy, iz]] = new_ti;
+                        }
+                    }
                 }
             }
         }
@@ -432,19 +449,19 @@ pub fn sequential_solver(
         }
     }
 
-    // Store the evolved turbine TI (constant per rotor block) so downstream
-    // consumers (e.g. full_flow_sequential_solver) can read the averaged TI.
-    flow_field.turbulence_intensity_field_sorted =
-        Array::zeros((n_findex, grid_second_dim, grid_y_dim, grid_z_dim));
-    for fi in 0..n_findex {
+    // Store the evolved per-point TI field (Python: flow_field.
+    // turbulence_intensity_field_sorted = turbine_turbulence_intensity)
+    if grid_second_dim == n_turbines {
+        flow_field.turbulence_intensity_field_sorted = turbine_turbulence_intensity;
+    } else {
+        // Planar grids may have a wider second dimension; copy per-turbine blocks.
+        let mut field_sorted = Array::zeros((n_findex, grid_second_dim, grid_y_dim, grid_z_dim));
         for ti in 0..n_turbines {
-            for iy in 0..grid_y_dim {
-                for iz in 0..grid_z_dim {
-                    flow_field.turbulence_intensity_field_sorted[[fi, ti, iy, iz]] =
-                        turbine_turbulence_intensity[[fi, ti]];
-                }
-            }
+            field_sorted
+                .slice_mut(s![.., ti..ti + 1, .., ..])
+                .assign(&turbine_turbulence_intensity.slice(s![.., ti..ti + 1, .., ..]));
         }
+        flow_field.turbulence_intensity_field_sorted = field_sorted;
     }
 
     Ok(())
@@ -487,11 +504,19 @@ pub fn turbopark_solver(
 
     let mut wake_field: Array4 = Array::zeros((n_findex, grid_second_dim, grid_y_dim, grid_z_dim));
 
-    // Per-turbine TI (n_findex, n_turbines), starting at ambient
-    let mut turbine_turbulence_intensity: Array2 = Array::zeros((n_findex, n_turbines));
+    // Evolving 4D TI field (n_findex, n_turbines, gy, gz), starting at ambient
+    // (mirrors Python turbine_turbulence_intensity; full-shape constant is
+    // equivalent to the (n_findex, n_turbines, 1, 1) start + broadcast)
+    let mut turbine_turbulence_intensity: Array4 =
+        Array::from_elem((n_findex, n_turbines, grid_y_dim, grid_z_dim), 0.0);
     for fi in 0..n_findex {
         for ti in 0..n_turbines {
-            turbine_turbulence_intensity[[fi, ti]] = flow_field.turbulence_intensities[fi];
+            for iy in 0..grid_y_dim {
+                for iz in 0..grid_z_dim {
+                    turbine_turbulence_intensity[[fi, ti, iy, iz]] =
+                        flow_field.turbulence_intensities[fi];
+                }
+            }
         }
     }
 
@@ -522,22 +547,25 @@ pub fn turbopark_solver(
                 let x_2d = mean_value_4d_slice(&x_ii)?;
                 let y_2d = mean_value_4d_slice(&y_ii)?;
 
-                // Per-findex yaw/TI/Ct of upstream source ii (Python turbopark_solver)
+                // Per-findex yaw/Ct of upstream source ii; TI is the source's
+                // per-point slice of the evolving field (Python:
+                // turbulence_intensity_ii = turbine_turbulence_intensity[:, ii:ii+1])
                 let mut yaw_ii_arr = Array1::zeros(n_findex);
-                let mut ti_ii_arr = Array1::zeros(n_findex);
                 let mut ct_ii_arr = Array1::zeros(n_findex);
                 for fi in 0..n_findex {
                     yaw_ii_arr[fi] = farm.yaw_angles_sorted[[fi, ii]];
-                    ti_ii_arr[fi] = turbine_turbulence_intensity[[fi, ii]];
                     ct_ii_arr[fi] = cts_all[[fi, ii]];
                 }
+                let ti_ii: Array4 = turbine_turbulence_intensity
+                    .slice(s![.., ii..ii + 1, .., ..])
+                    .to_owned();
                 let d_ii = farm.rotor_diameters_sorted[[0, ii]];
 
                 let field_ii = model_manager.deflection_model.function(
                     &x_2d,
                     &y_2d,
                     &yaw_ii_arr,
-                    &ti_ii_arr,
+                    &ti_ii,
                     &ct_ii_arr,
                     d_ii,
                     grid.x_sorted(),
@@ -556,9 +584,11 @@ pub fn turbopark_solver(
             }
         }
 
-        // Target-centric turbopark deficit at turbine i
+        // Target-centric turbopark deficit at turbine i. Python passes the
+        // evolved turbine_turbulence_intensity field (used pointwise by
+        // characteristic_wake_width for each source), not the ambient TI.
         let velocity_deficit = crate::core::wake_velocity::turbopark::turbopark_velocity_deficit(
-            &flow_field.turbulence_intensities,
+            &turbine_turbulence_intensity,
             &cts_all,
             &farm.rotor_diameters.clone(),
             grid.x_sorted(),
@@ -622,11 +652,12 @@ pub fn turbopark_solver(
         wake_added = wake_added.mapv(|v| if v.is_finite() { v } else { 0.0 });
 
         let grid_res_sq = (grid_y_dim * grid_z_dim) as Float;
-        let iy_c = grid_y_dim / 2;
-        let iz_c = grid_z_dim / 2;
         let downstream_influence_length = 15.0 * rotor_diameter_i;
 
         for fi in 0..n_findex {
+            let x_src = x_2d[[fi, 0]];
+            let y_src = y_mean[[fi, i]];
+            let ambient = flow_field.turbulence_intensities[fi];
             for j in 0..n_turbines {
                 let mut overlap_count = 0.0_f64;
                 for iy in 0..grid_y_dim {
@@ -637,23 +668,27 @@ pub fn turbopark_solver(
                     }
                 }
                 let area_overlap = overlap_count / grid_res_sq;
-                let wake_added_center = wake_added[[fi, j, iy_c, iz_c]];
 
-                let dx = x_mean[[fi, j]] - x_mean[[fi, i]];
-                let dy = (y_mean[[fi, j]] - y_mean[[fi, i]]).abs();
-                let downstream_ok =
-                    dx > 0.0 && dx <= downstream_influence_length && dy < 2.0 * rotor_diameter_i;
-
-                let ti_added = if downstream_ok {
-                    area_overlap * wake_added_center
-                } else {
-                    0.0
-                };
-
-                let ambient = flow_field.turbulence_intensities[fi];
-                let new_ti = (ti_added * ti_added + ambient * ambient).sqrt();
-                if new_ti > turbine_turbulence_intensity[[fi, j]] {
-                    turbine_turbulence_intensity[[fi, j]] = new_ti;
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        // Pointwise masks vs the outer source turbine's mean
+                        // position (Python: grid.x_sorted > x_i, |y_i -
+                        // grid.y_sorted| < 2D, grid.x_sorted <= 15D + x_i)
+                        let x_pt = grid.x_sorted()[[fi, j, iy, iz]];
+                        let downstream = x_pt > x_src
+                            && (y_src - grid.y_sorted()[[fi, j, iy, iz]]).abs()
+                                < 2.0 * rotor_diameter_i
+                            && x_pt <= downstream_influence_length + x_src;
+                        let ti_added = if downstream {
+                            area_overlap * wake_added[[fi, j, iy, iz]]
+                        } else {
+                            0.0
+                        };
+                        let new_ti = (ti_added * ti_added + ambient * ambient).sqrt();
+                        if new_ti > turbine_turbulence_intensity[[fi, j, iy, iz]] {
+                            turbine_turbulence_intensity[[fi, j, iy, iz]] = new_ti;
+                        }
+                    }
                 }
             }
         }
@@ -672,17 +707,18 @@ pub fn turbopark_solver(
         }
     }
 
-    flow_field.turbulence_intensity_field_sorted =
-        Array::zeros((n_findex, grid_second_dim, grid_y_dim, grid_z_dim));
-    for fi in 0..n_findex {
+    // Store the evolved per-point TI field (Python: flow_field.
+    // turbulence_intensity_field_sorted = turbine_turbulence_intensity)
+    if grid_second_dim == n_turbines {
+        flow_field.turbulence_intensity_field_sorted = turbine_turbulence_intensity;
+    } else {
+        let mut field_sorted = Array::zeros((n_findex, grid_second_dim, grid_y_dim, grid_z_dim));
         for ti in 0..n_turbines {
-            for iy in 0..grid_y_dim {
-                for iz in 0..grid_z_dim {
-                    flow_field.turbulence_intensity_field_sorted[[fi, ti, iy, iz]] =
-                        turbine_turbulence_intensity[[fi, ti]];
-                }
-            }
+            field_sorted
+                .slice_mut(s![.., ti..ti + 1, .., ..])
+                .assign(&turbine_turbulence_intensity.slice(s![.., ti..ti + 1, .., ..]));
         }
+        flow_field.turbulence_intensity_field_sorted = field_sorted;
     }
 
     Ok(())
@@ -931,12 +967,17 @@ pub fn full_flow_sequential_solver(
         }
 
         // Deflection field of source i evaluated at every point of the
-        // synthetic grid (Python: deflection on the full flow grid).
+        // synthetic grid (Python: deflection on the full flow grid with the
+        // rotor-averaged TI scalar (n_findex, 1, 1, 1)).
+        let ti_slice = ti_arr
+            .clone()
+            .into_shape_with_order((n_findex, 1, 1, 1))
+            .map_err(|e| anyhow::anyhow!("ti slice reshape failed: {}", e))?;
         let deflection_field = model_manager.deflection_model.function(
             &x_i,
             &y_i,
             &effective_yaw_arr,
-            &ti_arr,
+            &ti_slice,
             &ct_arr,
             rotor_diameter_i,
             &x_full,
@@ -944,15 +985,19 @@ pub fn full_flow_sequential_solver(
         )?;
 
         // Per-turbine broadcast arrays (only column `i` is read by the model).
+        // ti_bc is constant over every block, matching Python where the scalar
+        // rotor-averaged TI (n_findex, 1, 1, 1) broadcasts over the grid.
         let mut a_arr = Array::zeros((n_findex, total));
         let mut yaw_bc = Array::zeros((n_findex, total));
-        let mut ti_bc = Array::zeros((n_findex, total));
+        let mut ti_bc = Array::zeros((n_findex, total, 1, 1));
         let mut ct_bc = Array::zeros((n_findex, total));
         for fi in 0..n_findex {
             a_arr[[fi, i]] = a_i_scalar;
             yaw_bc[[fi, i]] = yaw_arr[fi];
-            ti_bc[[fi, i]] = ti_arr[fi];
             ct_bc[[fi, i]] = ct_arr[fi];
+            for b in 0..total {
+                ti_bc[[fi, b, 0, 0]] = ti_arr[fi];
+            }
         }
 
         let velocity_deficit = model_manager.velocity_model.function(
@@ -1098,15 +1143,19 @@ pub fn cc_solver(
     );
     let mut turb_inflow_field = flow_field.u_initial_sorted.clone();
 
-    let mut turbine_turbulence_intensity: Array2 = Array::zeros((n_findex, n_turbines));
+    // Evolving 4D TI field (n_findex, n_turbines, gy, gz), starting at ambient
+    let mut turbine_turbulence_intensity: Array4 =
+        Array::from_elem((n_findex, n_turbines, grid_y_dim, grid_z_dim), 0.0);
     for fi in 0..n_findex {
         for ti in 0..n_turbines {
-            turbine_turbulence_intensity[[fi, ti]] = flow_field.turbulence_intensities[fi];
+            for iy in 0..grid_y_dim {
+                for iz in 0..grid_z_dim {
+                    turbine_turbulence_intensity[[fi, ti, iy, iz]] =
+                        flow_field.turbulence_intensities[fi];
+                }
+            }
         }
     }
-
-    let x_mean_all = mean_value_4d_slice(&grid.x_sorted().clone())?;
-    let y_mean_all = mean_value_4d_slice(&grid.y_sorted().clone())?;
 
     for i in 0..n_turbines {
         let d_i = farm.rotor_diameters_sorted[[0, i]];
@@ -1243,9 +1292,13 @@ pub fn cc_solver(
                 .w_sorted
                 .slice(s![.., i..i + 1, .., ..])
                 .to_owned();
+            // Python: I_i = turbulence_intensity_i[:, 0, 0, 0] (first grid
+            // point of the source's field); gch_gain = 1.0 in cc_solver
             let i_mixing = yaw_added_turbulence_mixing(
                 &u_i,
-                &turbine_turbulence_intensity.slice(s![.., i]).to_owned(),
+                &turbine_turbulence_intensity
+                    .slice(s![.., i, 0, 0])
+                    .to_owned(),
                 &v_i,
                 &w_i,
                 &v_wake.slice(s![.., i..i + 1, .., ..]).to_owned(),
@@ -1253,7 +1306,11 @@ pub fn cc_solver(
             );
             let gch_gain = 1.0;
             for fi in 0..n_findex {
-                turbine_turbulence_intensity[[fi, i]] += gch_gain * i_mixing[fi];
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        turbine_turbulence_intensity[[fi, i, iy, iz]] += gch_gain * i_mixing[fi];
+                    }
+                }
             }
         }
 
@@ -1308,10 +1365,11 @@ pub fn cc_solver(
         }
 
         // The deflection field of source i at every grid point
-        // (Python cc: per-findex effective yaw/TI/Ct, full-field evaluation)
-        let ti_source: Array1 = (0..n_findex)
-            .map(|fi| turbine_turbulence_intensity[[fi, i]])
-            .collect();
+        // (Python cc: per-findex effective yaw/Ct, per-point TI slice,
+        // full-field evaluation)
+        let ti_source: Array4 = turbine_turbulence_intensity
+            .slice(s![.., i..i + 1, .., ..])
+            .to_owned();
         let ct_source: Array1 = (0..n_findex).map(|fi| turb_cts_2d[[fi, i]]).collect();
         let deflection_field = model_manager.deflection_model.function(
             &x_i_2d,
@@ -1365,11 +1423,12 @@ pub fn cc_solver(
         wake_added = wake_added.mapv(|v| if v.is_finite() { v } else { 0.0 });
 
         let grid_res_sq = (grid_y_dim * grid_z_dim) as Float;
-        let iy_c = grid_y_dim / 2;
-        let iz_c = grid_z_dim / 2;
         let downstream_influence_length = 15.0 * d_i;
 
         for fi in 0..n_findex {
+            let x_src = x_i_2d[[fi, 0]];
+            let y_src = y_i_2d[[fi, 0]];
+            let ambient = flow_field.turbulence_intensities[fi];
             for j in 0..n_turbines {
                 // area_overlap = 1 - fraction of turbine j's rotor with wake <= 0.05
                 let mut unwaked_count = 0.0_f64;
@@ -1381,22 +1440,26 @@ pub fn cc_solver(
                     }
                 }
                 let area_overlap = 1.0 - unwaked_count / grid_res_sq;
-                let wake_added_center = wake_added[[fi, j, iy_c, iz_c]];
 
-                let dx = x_mean_all[[fi, j]] - x_i_2d[[fi, 0]];
-                let dy = (y_i_2d[[fi, 0]] - y_mean_all[[fi, j]]).abs();
-                let downstream_ok = dx > 0.0 && dx <= downstream_influence_length && dy < 2.0 * d_i;
-
-                let ti_added = if downstream_ok {
-                    area_overlap * wake_added_center
-                } else {
-                    0.0
-                };
-
-                let ambient = flow_field.turbulence_intensities[fi];
-                let new_ti = (ti_added * ti_added + ambient * ambient).sqrt();
-                if new_ti > turbine_turbulence_intensity[[fi, j]] {
-                    turbine_turbulence_intensity[[fi, j]] = new_ti;
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        // Pointwise downstream-influence masks (Python:
+                        // grid.x_sorted > x_i, |y_i - grid.y_sorted| < 2D,
+                        // grid.x_sorted <= 15D + x_i)
+                        let x_pt = grid.x_sorted()[[fi, j, iy, iz]];
+                        let downstream = x_pt > x_src
+                            && (y_src - grid.y_sorted()[[fi, j, iy, iz]]).abs() < 2.0 * d_i
+                            && x_pt <= downstream_influence_length + x_src;
+                        let ti_added = if downstream {
+                            area_overlap * wake_added[[fi, j, iy, iz]]
+                        } else {
+                            0.0
+                        };
+                        let new_ti = (ti_added * ti_added + ambient * ambient).sqrt();
+                        if new_ti > turbine_turbulence_intensity[[fi, j, iy, iz]] {
+                            turbine_turbulence_intensity[[fi, j, iy, iz]] = new_ti;
+                        }
+                    }
                 }
             }
         }
@@ -1409,19 +1472,9 @@ pub fn cc_solver(
     // The final u_sorted is the inflow field (matching Python)
     flow_field.u_sorted = turb_inflow_field;
 
-    // Store the TI field (constant per rotor block)
-    flow_field.turbulence_intensity_field_sorted =
-        Array::zeros((n_findex, n_turbines, grid_y_dim, grid_z_dim));
-    for fi in 0..n_findex {
-        for ti in 0..n_turbines {
-            for iy in 0..grid_y_dim {
-                for iz in 0..grid_z_dim {
-                    flow_field.turbulence_intensity_field_sorted[[fi, ti, iy, iz]] =
-                        turbine_turbulence_intensity[[fi, ti]];
-                }
-            }
-        }
-    }
+    // Store the evolved per-point TI field (Python: flow_field.
+    // turbulence_intensity_field_sorted = turbine_turbulence_intensity)
+    flow_field.turbulence_intensity_field_sorted = turbine_turbulence_intensity;
 
     Ok(())
 }

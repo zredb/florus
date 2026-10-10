@@ -140,7 +140,7 @@ pub fn cc_velocity_deficit(
     u_initial: &Array4,
     deflection_field: &Array4,
     yaw_angle: &Array1,
-    turbulence_intensity: &Array2,
+    turbulence_intensity: &Array4,
     turb_cts: &Array2,
     rotor_diameters: &Array1,
     mut turb_u_wake: Array4,
@@ -196,7 +196,6 @@ pub fn cc_velocity_deficit(
 
     for fi in 0..n_findex {
         let ct_i = turb_cts[[fi, ii]];
-        let ti_i = turbulence_intensity[[fi, ii]];
         let yaw_i = yaw_angle[fi];
         let d_i = rotor_diameters[ii];
         let x_i_loc = x_mean[[fi, ii]];
@@ -207,7 +206,6 @@ pub fn cc_velocity_deficit(
         let mut sum_lbda = Array4::zeros((n_findex, n_turbines, n_y, n_z));
         for m in 0..ii.saturating_sub(1) {
             let ct_m = turb_cts[[fi, m]];
-            let ti_m = turbulence_intensity[[fi, m]];
             let d_m = rotor_diameters[m];
             let y_m_loc = y_mean[[fi, m]];
             let z_m_loc = z_mean[[fi, m]];
@@ -216,6 +214,11 @@ pub fn cc_velocity_deficit(
                 for iy in 0..n_y {
                     for iz in 0..n_z {
                         let x_t = grid_x[[fi, t, iy, iz]];
+                        // Per-point TI: source slices of the evolving 4D field
+                        // (Python: turbine_ti[:, ii:ii+1] / [:, m:m+1],
+                        // (n_findex, 1, gy, gz), broadcast over targets)
+                        let ti_i = turbulence_intensity[[fi, ii, iy, iz]];
+                        let ti_m = turbulence_intensity[[fi, m, iy, iz]];
                         let sigma_n = wake_expansion(x_t - x_i_loc, ct_i, ti_i, d_i);
                         let sigma_i = wake_expansion(x_t - x_mean[[fi, m]], ct_m, ti_m, d_m);
 
@@ -249,6 +252,7 @@ pub fn cc_velocity_deficit(
                     let r_tilde =
                         ((y_pt - y_i_loc - defl).powi(2) + (z_pt - z_i_loc).powi(2)).sqrt() / d_i;
 
+                    let ti_i = turbulence_intensity[[fi, ii, iy, iz]];
                     let sigma_n = wake_expansion(delta_x, ct_i, ti_i, d_i);
 
                     let n_exp = params.a_f * (params.b_f * x_tilde).exp() + params.c_f;
@@ -340,7 +344,7 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
         _axial_induction: Array2,
         deflection_field: Array4,
         _yaw_angle: Array2,
-        turbulence_intensity: Array2,
+        turbulence_intensity: Array4,
         thrust_coefficient: Array2,
         hub_height: Float,
         rotor_diameter: Float,
@@ -376,7 +380,6 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
 
             // Convert yaw angle to radians
             let yaw_rad = _yaw_angle[[fi, turbine_index]].to_radians();
-            let ti_i = turbulence_intensity[[fi, turbine_index]];
             let ct_i = thrust_coefficient[[fi, turbine_index]];
 
             for ti in 0..n_turbines {
@@ -398,6 +401,9 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
 
                         // Radial distance from wake center
                         let r = (dy.powi(2) + dz.powi(2)).sqrt();
+
+                        // Per-point TI (source's slice of the evolving 4D field)
+                        let ti_i = turbulence_intensity[[fi, turbine_index, iy, iz]];
 
                         // Wake expansion in D-units, converted to meters
                         let downstream_x = x_point - x_wake_source;

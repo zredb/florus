@@ -1,0 +1,33 @@
+{
+  "turbine_powers": [
+    [
+      1741508.6722008248,
+      1753954.4590097512,
+      1219408.2374294922
+    ],
+    [
+      3395681.003299221,
+      3417797.00480716,
+      2391744.1777112735
+    ]
+  ],
+  "farm_power": [
+    4714871.368640068,
+    9205222.185817655
+  ],
+  "n_findex": 2,
+  "n_turbines": 3,
+  "velocities_shape": [
+    2,
+    3,
+    3,
+    3
+  ],
+  "config": {
+    "velocity_model": "gauss",
+    "deflection_model": "gauss",
+    "combination_model": "sosfs",
+    "turbulence_model": "crespo_hernandez",
+    "yawed": true
+  }
+}

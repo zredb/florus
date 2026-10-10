@@ -95,7 +95,7 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
         _axial_induction: Array2,
         _deflection_field: Array4,
         _yaw_angle: Array2,
-        turbulence_intensity: Array2,
+        turbulence_intensity: Array4,
         thrust_coefficient: Array2,
         _hub_height: Float,
         rotor_diameter: Float,
@@ -111,7 +111,6 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
         for fi in 0..n_findex {
-            let ti_i = turbulence_intensity[[fi, turbine_index]];
             let ct_i = thrust_coefficient[[fi, turbine_index]];
 
             // Compute mean position of the source turbine (matches Python solver.py
@@ -146,6 +145,8 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
 
                         let x_dist = dx / rotor_diameter;
 
+                        // Per-point TI (source's slice of the evolving 4D field)
+                        let ti_i = turbulence_intensity[[fi, turbine_index, iy, iz]];
                         let dw = turboparkgauss_wake_width(x_dist, ti_i, ct_i, self.a);
                         let epsilon = calculate_epsilon(ct_i);
                         let sigma = (epsilon + dw).max(1e-10);
