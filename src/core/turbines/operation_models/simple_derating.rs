@@ -1,7 +1,8 @@
 //! Simple derating turbine operation model
 //!
 //! Power setpoint control that limits turbine power output
-//! When derated, thrust coefficient scales with power^(2/3)
+//! Thrust coefficient scales linearly with the power fraction,
+//! capped at the base Ct (Python operation_models.py:358-360)
 
 use super::SimpleTurbine;
 use crate::{
@@ -57,10 +58,14 @@ impl OperationModel for SimpleDeratingTurbine {
             for i in 0..result.nrows() {
                 for j in 0..result.ncols() {
                     if power_setpoints[[i, j]] < POWER_SETPOINT_DEFAULT {
-                        // Scale Ct by power^(2/3): P ∝ v³, T ∝ v²
-                        // So if power reduces to X% of baseline, Ct reduces to (X%)^(2/3)
-                        let power_ratio = power_setpoints[[i, j]] / base_power[[i, j]];
-                        result[[i, j]] = base_ct[[i, j]] * power_ratio.powf(2.0 / 3.0);
+                        // Python scales thrust linearly with the power fraction
+                        // and caps it at the base Ct
+                        // (operation_models.py:358-360); the previous
+                        // power_ratio^(2/3) heuristic overestimated derated Ct
+                        // (Bug #29).
+                        let power_fraction = power_setpoints[[i, j]] / base_power[[i, j]];
+                        let scaled = power_fraction * base_ct[[i, j]];
+                        result[[i, j]] = base_ct[[i, j]].min(scaled);
                     }
                 }
             }

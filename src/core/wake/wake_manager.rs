@@ -165,6 +165,12 @@ impl WakeModelManager {
                     )
                 ))
             }
+            VelocityModelConfig::None => {
+                // Python MODEL_MAP supports `velocity_model: none` (Bug #33)
+                Ok(Box::new(
+                    crate::core::wake_velocity::none::NoneVelocity::new(),
+                ))
+            }
             VelocityModelConfig::EmpiricalGauss {
                 wake_expansion_rates,
                 breakpoints_d,

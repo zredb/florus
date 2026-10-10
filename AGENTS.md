@@ -67,7 +67,7 @@ src/
 - `set_operation_model(name)` MUST be called **AFTER** `set_layout()` — `set_layout()` recreates the Farm and overwrites the operation model.
 - Supported: `"simple"`, `"cosine-loss"`, `"simple-derating"`, `"peak-shaving"`, `"mixed"`, `"awc"`, `"unified-momentum"`, `"controller-dependent"`.
 - Power setpoints: Use `POWER_SETPOINT_DEFAULT` (1e12, from `operation_models`) as sentinel for "no limit". **Zero means disabled, not unlimited.**
-- `farm.rs` has its own `RATED_POWER_DEFAULT = 5000.0` — do NOT confuse with `POWER_SETPOINT_DEFAULT`.
+- `farm.rs` previously carried a bogus `RATED_POWER_DEFAULT = 5000.0` used to seed power setpoints; it was removed in Bug #30 — `set_power_setpoints_to_ref_power` now uses `POWER_SETPOINT_DEFAULT` (1e12), matching Python.
 
 ## Wake Model Traits
 

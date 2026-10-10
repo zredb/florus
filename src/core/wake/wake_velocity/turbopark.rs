@@ -192,13 +192,17 @@ fn bessel_i0(x: Float) -> Float {
 
 #[inline]
 fn calculate_epsilon(ct: Float) -> Float {
+    // Python (turbopark.py:106-108): 0.25 * sqrt(0.5*(1+sqrt(1-Ct))/sqrt(1-Ct))
+    // with NO scalar cap — the np.min(..., 3, keepdims=True) reduces over a
+    // length-1 axis (the solver passes Cts as (n_findex, n_turbines, 1, 1)),
+    // so it is a no-op (Bug #32). Ct >= 1 degenerates to epsilon -> inf, which
+    // then yields C -> 0 downstream, matching Python.
     let sqrt_one_minus_ct = (1.0 - ct).max(0.0).sqrt();
     if sqrt_one_minus_ct < 1e-10 {
-        return 0.25 * (3.0_f64.sqrt() as Float);
+        return Float::INFINITY;
     }
     let ratio = 0.5 * (1.0 + sqrt_one_minus_ct) / sqrt_one_minus_ct;
-    let epsilon_base = 0.25 * ratio.sqrt();
-    epsilon_base.min(0.25 * (3.0_f64.sqrt() as Float))
+    0.25 * ratio.sqrt()
 }
 
 fn characteristic_wake_width(x_dist: Float, ti: Float, ct: Float, a: Float) -> Float {
@@ -258,7 +262,8 @@ pub fn turbopark_velocity_deficit(
     let mut sum_sq = Array4::zeros((n_findex, n_turbines, n_y, n_z));
     let interp = OverlapInterpolator::new();
 
-    const NUM_EPS: Float = 1e-6;
+    // Python base.py NUM_EPS = 0.001 (Bug #32)
+    const NUM_EPS: Float = 0.001;
 
     for fi in 0..n_findex {
         // Target turbine's mean positions (x is constant per turbine)

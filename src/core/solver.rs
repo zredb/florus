@@ -111,6 +111,16 @@ pub fn sequential_solver(
     // Use grid_second_dim instead of n_turbines to support FlowFieldPlanarGrid
     let mut wake_field: Array4 = Array::zeros((n_findex, grid_second_dim, grid_y_dim, grid_z_dim));
 
+    // Prepare model-specific function arguments (Bug #23): Python passes
+    // prepare_function() results to the velocity/deflection models; the gauss
+    // models read wind_veer from them.
+    let velocity_model_args = model_manager
+        .velocity_model
+        .prepare_function(grid, flow_field)?;
+    let deflection_model_args = model_manager
+        .deflection_model
+        .prepare_function(grid, flow_field)?;
+
     // Prepare combination model function arguments
     let _combination_model_args = model_manager
         .combination_model
@@ -260,7 +270,7 @@ pub fn sequential_solver(
             &ct_arr,
             rotor_diameter_i,
             &x_grid,
-            &std::collections::HashMap::new(),
+            &deflection_model_args,
         )?;
 
         // --- GCH: transverse velocities (v/w) and yaw-added turbulence recovery ---
@@ -328,7 +338,7 @@ pub fn sequential_solver(
             hub_height_i,
             rotor_diameter_i,
             i, // turbine_index
-            &std::collections::HashMap::new(),
+            &velocity_model_args,
         )?;
 
         // Convert relative deficit to absolute velocity deficit
@@ -427,7 +437,7 @@ pub fn sequential_solver(
                     for iz in 0..grid_z_dim {
                         let wake_deficit = wake_field[[fi, ti, iy, iz]];
                         let u_initial = flow_field.u_initial_sorted[[fi, ti, iy, iz]];
-                        flow_field.u_sorted[[fi, ti, iy, iz]] = (u_initial - wake_deficit).max(0.0);
+                        flow_field.u_sorted[[fi, ti, iy, iz]] = u_initial - wake_deficit;
                     }
                 }
             }
@@ -520,6 +530,12 @@ pub fn turbopark_solver(
         }
     }
 
+    // Model-specific deflection arguments (e.g. wind_veer for gauss), matching
+    // Python's prepare_function (Bug #23).
+    let deflection_model_args = model_manager
+        .deflection_model
+        .prepare_function(grid, flow_field)?;
+
     for i in 0..n_turbines {
         // All turbines' thrust coefficients from the current u_sorted (matching
         // Python: recomputed each iteration as the wakes evolve)
@@ -569,7 +585,7 @@ pub fn turbopark_solver(
                     &ct_ii_arr,
                     d_ii,
                     grid.x_sorted(),
-                    &std::collections::HashMap::new(),
+                    &deflection_model_args,
                 )?;
 
                 // Python: deflection_field[:, ii] = deflection_field_ii[:, i]
@@ -783,6 +799,12 @@ pub fn full_flow_sequential_solver(
         .velocity_model
         .prepare_function(grid, flow_field)?;
 
+    // Deflection model arguments (e.g. wind_veer for gauss), matching Python's
+    // prepare_function (Bug #23).
+    let deflection_model_args = model_manager
+        .deflection_model
+        .prepare_function(grid, flow_field)?;
+
     // Wake and transverse velocity fields over the full grid.
     let mut wake_field: Array4 = Array::zeros((n_findex, n_points, grid_y_dim, grid_z_dim));
     let mut v_wake: Array4 = Array::zeros((n_findex, n_points, grid_y_dim, grid_z_dim));
@@ -824,9 +846,9 @@ pub fn full_flow_sequential_solver(
             turbine_grid.average_method(),
         )?;
 
-        let a_i_scalar = a_all[[0, i]];
-
         // Per-findex scalars for the current turbine.
+        // (Python: ct_i/axial_induction_i are per-findex arrays
+        // (n_findex, 1, 1, 1), solver.py:349-371 — Bug #20.)
         let mut yaw_arr = Array1::zeros(n_findex);
         let mut ct_arr = Array1::zeros(n_findex);
         let mut tsr_arr = Array1::zeros(n_findex);
@@ -935,12 +957,16 @@ pub fn full_flow_sequential_solver(
                 flow_field.wind_shear,
                 1.0,
             );
+            // Python reassigns v_wake/w_wake each iteration (solver.py:411) so
+            // that the per-iteration `v_sorted += v_wake` adds only source i's
+            // contribution; accumulating here would double-count earlier
+            // sources (Bug #19).
             for fi in 0..n_findex {
                 for p in 0..n_points {
                     for iy in 0..grid_y_dim {
                         for iz in 0..grid_z_dim {
-                            v_wake[[fi, p, iy, iz]] += vw[[fi, p, iy, iz]];
-                            w_wake[[fi, p, iy, iz]] += ww[[fi, p, iy, iz]];
+                            v_wake[[fi, p, iy, iz]] = vw[[fi, p, iy, iz]];
+                            w_wake[[fi, p, iy, iz]] = ww[[fi, p, iy, iz]];
                         }
                     }
                 }
@@ -981,7 +1007,7 @@ pub fn full_flow_sequential_solver(
             &ct_arr,
             rotor_diameter_i,
             &x_full,
-            &std::collections::HashMap::new(),
+            &deflection_model_args,
         )?;
 
         // Per-turbine broadcast arrays (only column `i` is read by the model).
@@ -992,7 +1018,7 @@ pub fn full_flow_sequential_solver(
         let mut ti_bc = Array::zeros((n_findex, total, 1, 1));
         let mut ct_bc = Array::zeros((n_findex, total));
         for fi in 0..n_findex {
-            a_arr[[fi, i]] = a_i_scalar;
+            a_arr[[fi, i]] = a_all[[fi, i]];
             yaw_bc[[fi, i]] = yaw_arr[fi];
             ct_bc[[fi, i]] = ct_arr[fi];
             for b in 0..total {
@@ -1039,7 +1065,7 @@ pub fn full_flow_sequential_solver(
         let mut ai_4d = Array4::zeros((n_findex, 1, 1, 1));
         for fi in 0..n_findex {
             x_i_4d[[fi, 0, 0, 0]] = x_i[[fi, 0]];
-            ai_4d[[fi, 0, 0, 0]] = a_i_scalar;
+            ai_4d[[fi, 0, 0, 0]] = a_all[[fi, i]];
         }
         let mut wake_added_ti = model_manager.turbulence_model.function(
             &ambient_turbulence_intensities,
@@ -1085,10 +1111,9 @@ pub fn full_flow_sequential_solver(
             for p in 0..n_points {
                 for iy in 0..grid_y_dim {
                     for iz in 0..grid_z_dim {
-                        flow_field.u_sorted[[fi, p, iy, iz]] = (flow_field.u_initial_sorted
+                        flow_field.u_sorted[[fi, p, iy, iz]] = flow_field.u_initial_sorted
                             [[fi, p, iy, iz]]
-                            - wake_field[[fi, p, iy, iz]])
-                        .max(0.0);
+                            - wake_field[[fi, p, iy, iz]];
                     }
                 }
             }
@@ -1156,6 +1181,26 @@ pub fn cc_solver(
             }
         }
     }
+
+    // Python computes the axial induction used by the transverse velocities and
+    // secondary steering from flow_field.u_sorted (solver.py:576-596), which is
+    // never updated inside the cc loop (only after it, solver.py:712) — i.e. the
+    // freestream AI. Rust previously used the wake-inflow AI (turb_ais_2d),
+    // which differs for waked turbines (Bug #21).
+    let ai_freestream = Farm::axial_induction(
+        &flow_field.u_initial_sorted,
+        flow_field.air_density,
+        &farm.turbines,
+        Some(&farm.yaw_angles_sorted),
+        Some(&farm.tilt_angles_sorted),
+        grid.average_method(),
+    )?;
+
+    // Model-specific deflection arguments (e.g. wind_veer for gauss), matching
+    // Python's prepare_function (Bug #23).
+    let deflection_model_args = model_manager
+        .deflection_model
+        .prepare_function(grid, flow_field)?;
 
     for i in 0..n_turbines {
         let d_i = farm.rotor_diameters_sorted[[0, i]];
@@ -1241,8 +1286,18 @@ pub fn cc_solver(
             yaw_arr[fi] = farm.yaw_angles_sorted[[fi, i]];
             ct_arr[fi] = turb_cts_2d[[fi, i]];
             tsr_arr[fi] = tsr_i;
-            ai_arr[fi] = turb_ais_2d[[fi, i]];
+            // Transverse velocities use the freestream AI (Bug #21).
+            ai_arr[fi] = ai_freestream[[fi, i]];
         }
+
+        // Snapshot the source's TI slice BEFORE the GCH update (Bug #22):
+        // Python's deflection call (solver.py:625) reads `turbulence_intensity_i`,
+        // a view taken at solver.py:598 before the GCH write at 653-663, so the
+        // deflection model sees the pre-GCH TI while the velocity model (665)
+        // sees the post-GCH field.
+        let ti_source: Array4 = turbine_turbulence_intensity
+            .slice(s![.., i..i + 1, .., ..])
+            .to_owned();
 
         // GCH: transverse velocities (v/w) for the source turbine (Python cc: scale=2.0)
         let mut v_wake = Array::zeros((n_findex, n_turbines, grid_y_dim, grid_z_dim));
@@ -1332,7 +1387,8 @@ pub fn cc_solver(
             for fi in 0..n_findex {
                 ct_4d[[fi, 0, 0, 0]] = turb_cts_2d[[fi, i]];
                 tsr_4d[[fi, 0, 0, 0]] = tsr_i;
-                ai_4d[[fi, 0, 0, 0]] = turb_ais_2d[[fi, i]];
+                // Secondary steering uses the freestream AI (Bug #21).
+                ai_4d[[fi, 0, 0, 0]] = ai_freestream[[fi, i]];
             }
 
             let mut y_i_4d = Array4::zeros((n_findex, 1, grid_y_dim, grid_z_dim));
@@ -1366,10 +1422,7 @@ pub fn cc_solver(
 
         // The deflection field of source i at every grid point
         // (Python cc: per-findex effective yaw/Ct, per-point TI slice,
-        // full-field evaluation)
-        let ti_source: Array4 = turbine_turbulence_intensity
-            .slice(s![.., i..i + 1, .., ..])
-            .to_owned();
+        // full-field evaluation; `ti_source` was snapshotted pre-GCH above)
         let ct_source: Array1 = (0..n_findex).map(|fi| turb_cts_2d[[fi, i]]).collect();
         let deflection_field = model_manager.deflection_model.function(
             &x_i_2d,
@@ -1379,7 +1432,7 @@ pub fn cc_solver(
             &ct_source,
             d_i,
             grid.x_sorted(),
-            &std::collections::HashMap::new(),
+            &deflection_model_args,
         )?;
 
         // The cumulative CC model call
@@ -1599,6 +1652,31 @@ pub fn empirical_gauss_solver(
             a_arr[fi] = a_all[[fi, i]];
         }
 
+        // Influence of yawing on the turbine's OWN wake (Python solver.py:1321-1329:
+        // mixing_factor[:, i, i] += yaw_added_wake_mixing(ai, yaw, 1, gain) with
+        // downstream_distance=1, applied BEFORE the RSS so it enters mixing_i —
+        // Bug #25; previously missing entirely).
+        if model_manager.enable_yaw_added_recovery {
+            for fi in 0..n_findex {
+                let yaw_self =
+                    a_arr[fi] * defl_eg.yaw_added_mixing_gain * (1.0 - cosd(yaw_arr[fi]));
+                mixing_factor[[fi, i, i]] += yaw_self / 1.0;
+            }
+        }
+
+        // Influence of awc on the turbine's OWN wake (Python solver.py:1331-1340,
+        // also applied before the RSS — Bug #25; previously added too late to
+        // ever enter any mixing_i).
+        if model_manager.enable_active_wake_mixing {
+            for fi in 0..n_findex {
+                if farm.awc_modes_sorted[[fi, i]] == "helix" {
+                    let amp = farm.awc_amplitudes_sorted[[fi, i]];
+                    mixing_factor[[fi, i, i]] +=
+                        amp.powf(eg.awc_wake_exp) / eg.awc_wake_denominator;
+                }
+            }
+        }
+
         // Total wake-induced mixing for turbine i: RSS over all contributions
         let mut mixing_i = Array1::zeros(n_findex);
         for fi in 0..n_findex {
@@ -1708,17 +1786,6 @@ pub fn empirical_gauss_solver(
             }
         }
 
-        // Influence of awc on the turbine's own wake (awc_added_wake_mixing)
-        if model_manager.enable_active_wake_mixing {
-            for fi in 0..n_findex {
-                if farm.awc_modes_sorted[[fi, i]] == "helix" {
-                    let amp = farm.awc_amplitudes_sorted[[fi, i]];
-                    mixing_factor[[fi, i, i]] +=
-                        amp.powf(eg.awc_wake_exp) / eg.awc_wake_denominator;
-                }
-            }
-        }
-
         // Update u_sorted after each turbine's wake is added
         // (Python: flow_field.u_sorted = flow_field.u_initial_sorted - wake_field)
         for fi in 0..n_findex {
@@ -1727,7 +1794,7 @@ pub fn empirical_gauss_solver(
                     for iz in 0..grid_z_dim {
                         let wake_deficit = wake_field[[fi, ti, iy, iz]];
                         let u_initial = flow_field.u_initial_sorted[[fi, ti, iy, iz]];
-                        flow_field.u_sorted[[fi, ti, iy, iz]] = (u_initial - wake_deficit).max(0.0);
+                        flow_field.u_sorted[[fi, ti, iy, iz]] = u_initial - wake_deficit;
                     }
                 }
             }

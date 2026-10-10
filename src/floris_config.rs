@@ -413,14 +413,18 @@ pub enum VelocityModelConfig {
         awc_wake_exp: Float,
         awc_wake_denominator: Float,
     },
+    /// No wake velocity deficit (Python `velocity_model: none`); the
+    /// implementation existed but was unreachable from configuration (Bug #33).
+    None,
 }
 
 impl Default for VelocityModelConfig {
     fn default() -> Self {
-        // 返回枚举名::变体名
+        // Python defaults (gauss.py:25-26): alpha=0.58, beta=0.077; ka/kb
+        // defaults 0.38/0.004 (Bug #33 — previously alpha/beta reused them).
         VelocityModelConfig::Gauss {
-            alpha: 0.38,
-            beta: 0.004,
+            alpha: 0.58,
+            beta: 0.077,
             ka: 0.38,
             kb: 0.004,
         }
@@ -437,6 +441,7 @@ impl VelocityModelConfig {
             VelocityModelConfig::CC { .. } => "cc".to_string(),
             VelocityModelConfig::CumulativeGaussCurl { .. } => "cumulative_gauss_curl".to_string(),
             VelocityModelConfig::EmpiricalGauss { .. } => "empirical_gauss".to_string(),
+            VelocityModelConfig::None => "none".to_string(),
         }
     }
 }
@@ -570,14 +575,25 @@ fn parse_velocity_model(
     }
 
     let model_key = model_name.to_lowercase();
+
+    // `none` has no parameters (Python's NoneVelocity); handled before the
+    // parameter lookup so `wake_velocity_parameters` need not contain an
+    // entry (Bug #33).
+    if model_key == "none" {
+        return Ok(VelocityModelConfig::None);
+    }
+
     let params = params_map
         .get(&model_key)
         .ok_or_else(|| format!("Missing parameters for velocity model: {}", model_name))?;
 
     match model_key.as_str() {
         "gauss" => {
-            let alpha = get_f64(params, "alpha").unwrap_or(0.38);
-            let beta = get_f64(params, "beta").unwrap_or(0.004);
+            // Python defaults: alpha=0.58, beta=0.077 (gauss.py:25-26); the
+            // previous 0.38/0.004 fallbacks erroneously reused the ka/kb
+            // values (Bug #33).
+            let alpha = get_f64(params, "alpha").unwrap_or(0.58);
+            let beta = get_f64(params, "beta").unwrap_or(0.077);
             let ka = get_f64(params, "ka").unwrap_or(0.38);
             let kb = get_f64(params, "kb").unwrap_or(0.004);
             Ok(VelocityModelConfig::Gauss {
@@ -592,20 +608,36 @@ fn parse_velocity_model(
             Ok(VelocityModelConfig::Jensen { we })
         }
         "turbopark" => {
-            let kstar = get_f64(params, "kstar").unwrap_or(0.05);
-            let cstar = get_f64(params, "cstar").unwrap_or(1.5);
+            // Python keys are A / sigma_max_rel with defaults 0.04 / 4.0
+            // (turbopark.py:36-37); kstar/cstar kept as aliases. The previous
+            // defaults (0.05 / 1.5) silently mismatched Python YAMLs (Bug #33).
+            let kstar = get_f64(params, "A")
+                .or_else(|| get_f64(params, "kstar"))
+                .unwrap_or(0.04);
+            let cstar = get_f64(params, "sigma_max_rel")
+                .or_else(|| get_f64(params, "cstar"))
+                .unwrap_or(4.0);
             Ok(VelocityModelConfig::Turbopark { kstar, cstar })
         }
-        "turbopark_gauss" => {
-            let kstar = get_f64(params, "kstar").unwrap_or(0.05);
-            let cstar = get_f64(params, "cstar").unwrap_or(1.5);
+        "turbopark_gauss" | "turboparkgauss" => {
+            // Python model name is `turboparkgauss` with the single parameter A
+            // (default 0.04, turboparkgauss.py:33); kstar kept as an alias and
+            // cstar accepted but unused (Bug #33).
+            let kstar = get_f64(params, "A")
+                .or_else(|| get_f64(params, "kstar"))
+                .unwrap_or(0.04);
+            let cstar = get_f64(params, "sigma_max_rel")
+                .or_else(|| get_f64(params, "cstar"))
+                .unwrap_or(4.0);
             Ok(VelocityModelConfig::TurboparkGauss { kstar, cstar })
         }
         "cc" | "cumulative_gauss_curl" => {
-            let a_s = get_f64(params, "a_s").unwrap_or(0.179);
-            let b_s = get_f64(params, "b_s").unwrap_or(0.012);
-            let c_s1 = get_f64(params, "c_s1").unwrap_or(0.056);
-            let c_s2 = get_f64(params, "c_s2").unwrap_or(0.133);
+            // Python attrs defaults at full precision
+            // (cumulative_gauss_curl.py:36-43, Bug #33).
+            let a_s = get_f64(params, "a_s").unwrap_or(0.179367259);
+            let b_s = get_f64(params, "b_s").unwrap_or(0.0118889215);
+            let c_s1 = get_f64(params, "c_s1").unwrap_or(0.0563691592);
+            let c_s2 = get_f64(params, "c_s2").unwrap_or(0.13290157);
             let a_f = get_f64(params, "a_f").unwrap_or(3.11);
             let b_f = get_f64(params, "b_f").unwrap_or(-0.68);
             let c_f = get_f64(params, "c_f").unwrap_or(2.41);
@@ -729,10 +761,13 @@ fn parse_turbulence_model(
 
     match model_key.as_str() {
         "crespo_hernandez" => {
-            let initial = get_f64(params, "initial").unwrap_or(0.0);
-            let constant = get_f64(params, "constant").unwrap_or(0.0);
-            let ai = get_f64(params, "ai").unwrap_or(0.0);
-            let downstream = get_f64(params, "downstream").unwrap_or(0.0);
+            // Python attrs defaults (crespo_hernandez.py:65-68); previously
+            // 0.0, which silently disabled WAT for YAML files omitting the
+            // parameters (Bug #33).
+            let initial = get_f64(params, "initial").unwrap_or(0.1);
+            let constant = get_f64(params, "constant").unwrap_or(0.9);
+            let ai = get_f64(params, "ai").unwrap_or(0.8);
+            let downstream = get_f64(params, "downstream").unwrap_or(-0.32);
             Ok(TurbulenceModelConfig::CrespoHernandez {
                 initial,
                 constant,
@@ -928,8 +963,9 @@ wake:
         assert_eq!(
             config.model_strings.velocity_model,
             VelocityModelConfig::Gauss {
-                alpha: 0.38,
-                beta: 0.004,
+                // Python defaults (gauss.py:25-26, Bug #33)
+                alpha: 0.58,
+                beta: 0.077,
                 ka: 0.38,
                 kb: 0.004,
             }

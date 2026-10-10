@@ -116,6 +116,10 @@ pub const POWER_SETPOINT_DISABLED: Float = 0.001;
 pub struct LookupTable {
     pub keys: Array1,
     pub values: Array1,
+    /// Value returned outside the table's wind-speed range, matching Python's
+    /// `interp1d(..., fill_value=..., bounds_error=False)` (Bug #28):
+    /// 0.0 for power tables, 0.0001 for thrust tables.
+    pub fill_value: Float,
 }
 
 pub type PowerTable = LookupTable;
@@ -131,11 +135,11 @@ impl LookupTable {
         }
 
         if wind_speed <= ws[0] {
-            return self.values[0];
+            return self.fill_value;
         }
 
         if wind_speed >= ws[n - 1] {
-            return self.values[n - 1];
+            return self.fill_value;
         }
 
         // 二分查找插值区间 [lo, hi]，满足 ws[lo] <= wind_speed <= ws[hi]

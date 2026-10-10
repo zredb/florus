@@ -65,11 +65,13 @@ impl Turbine {
         let power_table = crate::core::turbines::operation_models::LookupTable {
             keys: ndarray::Array1::from_vec(wind_speeds.to_vec()),
             values: cp_values.clone(),
+            fill_value: 0.0,
         };
 
         let thrust_table = crate::core::turbines::operation_models::LookupTable {
             keys: ndarray::Array1::from_vec(wind_speeds.to_vec()),
             values: ct_values.clone(),
+            fill_value: 0.0001,
         };
 
         // Get ref_tilt value
@@ -163,11 +165,13 @@ impl Turbine {
         let power_table = crate::core::turbines::operation_models::LookupTable {
             keys: ndarray::Array1::from_vec(wind_speeds.to_vec()),
             values: cp_values.clone(),
+            fill_value: 0.0,
         };
 
         let thrust_table = crate::core::turbines::operation_models::LookupTable {
             keys: ndarray::Array1::from_vec(wind_speeds.to_vec()),
             values: ct_values.clone(),
+            fill_value: 0.0001,
         };
 
         // Get ref_tilt value
@@ -265,11 +269,13 @@ impl Turbine {
         let power_table = crate::core::turbines::operation_models::LookupTable {
             keys: ndarray::Array1::from_vec(wind_speeds.to_vec()),
             values: cp_values.clone(),
+            fill_value: 0.0,
         };
 
         let thrust_table = crate::core::turbines::operation_models::LookupTable {
             keys: ndarray::Array1::from_vec(wind_speeds.to_vec()),
             values: ct_values.clone(),
+            fill_value: 0.0001,
         };
 
         // Get ref_tilt value

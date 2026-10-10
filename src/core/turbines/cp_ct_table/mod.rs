@@ -207,7 +207,9 @@ impl OneDimTable {
             .cp_values
             .as_slice()
             .ok_or_else(|| CpCtError::ValidationFailed("无法获取cp_values的切片".to_string()))?;
-        let cp = self.interpolate(slice, wind_speed)?;
+        // Python: power interpolator fill_value=0.0 outside the table
+        // (operation_models.py:87, Bug #28)
+        let cp = self.interpolate(slice, wind_speed, 0.0)?;
         Ok(cp)
     }
 
@@ -216,18 +218,25 @@ impl OneDimTable {
             .ct_values
             .as_slice()
             .ok_or_else(|| CpCtError::ValidationFailed("无法获取ct_values的切片".to_string()))?;
-        let ct = self.interpolate(slice, wind_speed)?;
+        // Python: thrust interpolator fill_value=0.0001 outside the table
+        // (operation_models.py:120, Bug #28)
+        let ct = self.interpolate(slice, wind_speed, 0.0001)?;
         Ok(ct)
     }
 
-    fn interpolate(&self, values: &[f64], wind_speed: f64) -> Result<f64, CpCtError> {
+    fn interpolate(
+        &self,
+        values: &[f64],
+        wind_speed: f64,
+        fill_value: f64,
+    ) -> Result<f64, CpCtError> {
         // 边界检查
         if wind_speed <= self.wind_speeds[0] {
-            return Ok(values[0]);
+            return Ok(fill_value);
         }
 
         if wind_speed >= self.wind_speeds[self.wind_speeds.len() - 1] {
-            return Ok(values[values.len() - 1]);
+            return Ok(fill_value);
         }
 
         // 查找插值区间

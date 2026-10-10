@@ -189,8 +189,11 @@ impl FlowField {
                         } else {
                             0.0
                         };
-                        self.dudz_initial_sorted[[fi, ti, iy, iz]] =
-                            self.u_initial_sorted[[fi, ti, iy, iz]] * dwind;
+                        // Python flow_field.py:217: dudz = wind_speeds * alpha *
+                        // h^(-alpha) * z^(alpha-1) — WITHOUT the (z/h)^alpha
+                        // shear factor (Bug #26); multiplying by u_initial
+                        // (which contains it) only agrees at z = h_ref.
+                        self.dudz_initial_sorted[[fi, ti, iy, iz]] = self.wind_speeds[fi] * dwind;
                     }
                 }
             }
@@ -200,8 +203,23 @@ impl FlowField {
         self.v_sorted = self.v_initial_sorted.clone();
         self.w_sorted = self.w_initial_sorted.clone();
 
-        // Initialize turbulence intensity field
+        // Initialize turbulence intensity field to the ambient TI. Python
+        // (flow_field.py:232-239) broadcasts the per-findex ambient TI over the
+        // turbine dimension as (n_findex, n_turbines, 1, 1); a full-shape
+        // constant field is the equivalent Rust convention (Bug #18) and is
+        // read pointwise by consumers. Previously zero-initialized, which fed
+        // 0 to any pre-solve reader (Bug #27).
         self.turbulence_intensity_field = Array::zeros((n_findex, n_turbines, n_y, n_z));
+        for fi in 0..n_findex {
+            let ti_ambient = self.turbulence_intensities[fi];
+            for ti in 0..n_turbines {
+                for iy in 0..n_y {
+                    for iz in 0..n_z {
+                        self.turbulence_intensity_field[[fi, ti, iy, iz]] = ti_ambient;
+                    }
+                }
+            }
+        }
         self.turbulence_intensity_field_sorted = self.turbulence_intensity_field.clone();
     }
 

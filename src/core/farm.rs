@@ -1,3 +1,4 @@
+use crate::core::turbines::operation_models::POWER_SETPOINT_DEFAULT;
 use crate::core::turbines::turbine_type::TurbineType;
 use crate::core::{AveragingMethod, State, Turbine, TurbineGrid};
 use crate::types::{Array1, Array2, Float, NumericDict};
@@ -9,10 +10,6 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
-
-use crate::core::turbines::operation_models::POWER_SETPOINT_DEFAULT;
-
-const RATED_POWER_DEFAULT: Float = 5000.0;
 
 #[derive(Clone)]
 pub struct Farm {
@@ -470,11 +467,15 @@ impl Farm {
     }
 
     pub fn set_power_setpoints_to_ref_power(&mut self, n_findex: usize) {
+        // Python's identically-named method uses POWER_SETPOINT_DEFAULT (1e12)
+        // as the "no limit" sentinel (farm.py:396-399), NOT the rated power —
+        // a 5000 W default silently clamped get_turbine_powers output
+        // (Bug #30).
         let n_turbines = self.n_turbines();
-        let power_setpoints = Array2::from_elem((n_findex, n_turbines), RATED_POWER_DEFAULT);
+        let power_setpoints = Array2::from_elem((n_findex, n_turbines), POWER_SETPOINT_DEFAULT);
         self.set_power_setpoints(power_setpoints);
         self.power_setpoints_sorted =
-            Array2::from_elem((n_findex, n_turbines), RATED_POWER_DEFAULT);
+            Array2::from_elem((n_findex, n_turbines), POWER_SETPOINT_DEFAULT);
     }
 
     pub fn set_awc_modes(&mut self, awc_modes: NdArray2<String>) {
@@ -685,7 +686,9 @@ impl Farm {
                 )?;
 
                 for fi in 0..n_findex {
-                    power_output[[fi, ti]] = turbine_power[[fi, 0]];
+                    // Column ti of turbine ti's computation (Bug #1 analog —
+                    // previously [[fi, 0]], Bug #31).
+                    power_output[[fi, ti]] = turbine_power[[fi, ti]];
                 }
             }
         }
