@@ -27,7 +27,7 @@ impl CombinationModel for FLS {
     fn function(&self, wake_field: &Array4, velocity_field: &Array4) -> anyhow::Result<Array4> {
         // Linear superposition: wake + velocity
         // This is the standard approach for combining wake deficits
-        Ok(wake_field.clone() + velocity_field.clone())
+        Ok(wake_field + velocity_field)
     }
 }
 

@@ -148,7 +148,7 @@ impl VelocityModel for EmpiricalGaussVelocityDeficit {
         y: Array4,
         z: Array4,
         _axial_induction: Array2,
-        deflection_field: Array2,
+        deflection_field: Array4,
         yaw_angle: Array2,
         _turbulence_intensity: Array2,
         thrust_coefficient: Array2,
@@ -161,7 +161,6 @@ impl VelocityModel for EmpiricalGaussVelocityDeficit {
         // deflection through this interface (the dedicated empirical_gauss_solver
         // supplies all three, matching Python's 2-arg mixing term).
         let n_findex = x.shape()[0];
-        let n_turbines = x.shape()[1];
         let mut yaw_arr = Array1::zeros(n_findex);
         let mut ct_arr = Array1::zeros(n_findex);
         for fi in 0..n_findex {
@@ -170,7 +169,7 @@ impl VelocityModel for EmpiricalGaussVelocityDeficit {
         }
         let tilt_arr = Array1::zeros(n_findex);
         let mixing_i = Array1::zeros(n_findex);
-        let deflection_z = Array2::zeros((n_findex, n_turbines));
+        let deflection_z = Array4::zeros(x.raw_dim());
         Ok(self.velocity_deficit_emgauss(
             &x,
             &y,
@@ -194,7 +193,8 @@ impl EmpiricalGaussVelocityDeficit {
     ///
     /// Port of Python EmpiricalGaussVelocityDeficit.function as called from
     /// empirical_gauss_solver. `deflection_field_y/z` hold the wake deflection
-    /// at each receiving turbine from the source (m); `mixing_i` is the
+    /// at every grid point (shape (n_findex, n_turbines, grid_y, grid_z));
+    /// `mixing_i` is the
     /// wake-induced mixing term of the source turbine; per-findex source
     /// quantities (`yaw_angle`, `tilt_angle`, `thrust_coefficient`) mirror the
     /// Python (n_findex, 1, 1, 1) broadcasts.
@@ -204,8 +204,8 @@ impl EmpiricalGaussVelocityDeficit {
         x: &Array4,
         y: &Array4,
         z: &Array4,
-        deflection_field_y: &Array2,
-        deflection_field_z: &Array2,
+        deflection_field_y: &Array4,
+        deflection_field_z: &Array4,
         yaw_angle: &Array1,
         tilt_angle: &Array1,
         thrust_coefficient: &Array1,
@@ -257,11 +257,11 @@ impl EmpiricalGaussVelocityDeficit {
             let mixing_final = self.mixing_gain_velocity * mixing_i[fi];
 
             for ti in 0..n_turbines {
-                let deflection_y_j = deflection_field_y[[fi, ti]];
-                let deflection_z_j = deflection_field_z[[fi, ti]];
-
                 for iy in 0..n_y {
                     for iz in 0..n_z {
+                        // Per-point deflection (Python: delta_y/delta_z fields)
+                        let deflection_y_j = deflection_field_y[[fi, ti, iy, iz]];
+                        let deflection_z_j = deflection_field_z[[fi, ti, iy, iz]];
                         let x_point = x[[fi, ti, iy, iz]];
 
                         // Downstream mask (Python: x > x_i + 0.1)
@@ -362,7 +362,10 @@ mod tests {
     fn test_empirical_gauss_default() {
         let gauss = EmpiricalGaussVelocityDeficit::default();
         assert_eq!(gauss.wake_expansion_rates.len(), 2);
-        assert_eq!(gauss.breakpoints_d.len(), gauss.wake_expansion_rates.len() - 1);
+        assert_eq!(
+            gauss.breakpoints_d.len(),
+            gauss.wake_expansion_rates.len() - 1
+        );
     }
 
     #[test]
@@ -380,7 +383,14 @@ mod tests {
     #[test]
     fn test_empirical_gauss_wake_width_no_mixing() {
         // sigma = rate0 * x + sigma_0 for x below the breakpoint smoothing zone
-        let sigma = empirical_gauss_wake_width(5.0, &[0.023, 0.008], &[10.0 * 126.0], 0.28 * 126.0, 2.0 * 126.0, 0.0);
+        let sigma = empirical_gauss_wake_width(
+            5.0,
+            &[0.023, 0.008],
+            &[10.0 * 126.0],
+            0.28 * 126.0,
+            2.0 * 126.0,
+            0.0,
+        );
         let expected = 0.023 * 5.0 + 0.28 * 126.0;
         assert_relative_eq!(sigma, expected, epsilon = 1e-9);
     }

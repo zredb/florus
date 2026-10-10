@@ -51,7 +51,7 @@ impl VelocityModel for NoneVelocity {
         _y: Array4,
         _z: Array4,
         _axial_induction: Array2,
-        _deflection_field: Array2,
+        _deflection_field: Array4,
         _yaw_angle: Array2,
         _turbulence_intensity: Array2,
         _thrust_coefficient: Array2,

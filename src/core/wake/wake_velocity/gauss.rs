@@ -67,7 +67,7 @@ impl VelocityModel for GaussVelocity {
         y: Array4,
         z: Array4,
         _axial_induction: Array2,
-        deflection_field: Array2,
+        deflection_field: Array4,
         yaw_angle: Array2,
         turbulence_intensity: Array2,
         thrust_coefficient: Array2,
@@ -150,8 +150,6 @@ impl VelocityModel for GaussVelocity {
             let ky = self.ka * ti + self.kb;
             let kz = self.ka * ti + self.kb;
 
-            let deflection_at_source = deflection_field[[fi, turbine_index]];
-
             for ti_grid in 0..n_turbines {
                 for iy in 0..n_y {
                     for iz in 0..n_z {
@@ -185,11 +183,12 @@ impl VelocityModel for GaussVelocity {
                         let y_point = y[[fi, ti_grid, iy, iz]];
                         let z_point = z[[fi, ti_grid, iy, iz]];
 
-                        // Wake center at this x position (with deflection)
-                        let wake_center_y = y_i + deflection_at_source;
+                        // Wake center at this x position: deflection evaluated
+                        // at this grid point (Python: y - y_i - delta)
+                        let delta = deflection_field[[fi, ti_grid, iy, iz]];
 
                         // Calculate Gaussian wake profile
-                        let dy = y_point - wake_center_y;
+                        let dy = y_point - y_i - delta;
                         let dz = z_point - hub_height;
 
                         // Elliptic Gaussian profile with wind veer consideration

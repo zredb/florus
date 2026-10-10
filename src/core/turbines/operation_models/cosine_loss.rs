@@ -45,18 +45,21 @@ impl OperationModel for CosineLossTurbine {
 
                 // Apply yaw cosine correction
                 let yaw = yaw_angles[[i, j]];
-                let pw = params.cosine_loss_exponent_yaw / 3.0;
-                effective_vel *= crate::utilities::cosd(yaw).powf(pw);
+                let pw_yaw = params.cosine_loss_exponent_yaw / 3.0;
+                effective_vel *= crate::utilities::cosd(yaw).powf(pw_yaw);
+
+                // Apply tilt cosine correction (Python
+                // rotor_velocity_tilt_cosine_correction, applied BEFORE the
+                // power table lookup)
+                if let Some(tilt_angles) = ctx.tilt_angles {
+                    let tilt = tilt_angles[[i, j]];
+                    let pw_tilt = params.cosine_loss_exponent_tilt / 3.0;
+                    effective_vel *= (crate::utilities::cosd(tilt)
+                        / crate::utilities::cosd(params.ref_tilt))
+                    .powf(pw_tilt);
+                }
 
                 power[[i, j]] = params.power_table.interpolate(effective_vel) * 1000.0;
-
-                // Apply tilt correction if available
-                if let Some(tilt_angles) = ctx.tilt_angles {
-                    let ref_tilt_rad = params.ref_tilt.to_radians();
-                    let tilt = tilt_angles[[i, j]].to_radians();
-                    effective_vel *= crate::utilities::cosd(tilt).powf(pw)
-                        / crate::utilities::cosd(ref_tilt_rad);
-                }
 
                 // Apply power setpoints if available
                 if let Some(power_setpoints) = ctx.power_setpoints {
@@ -106,15 +109,14 @@ impl OperationModel for CosineLossTurbine {
                 let ct = params.thrust_table.interpolate(effective_vel);
                 thrust_coeff[[i, j]] = ct.clamp(0.0001, 0.9999);
 
-                // Apply yaw correction (cos²(yaw) per FLORIS issue #132)
+                // Apply yaw/tilt corrections (Python CosineLossTurbine.
+                // thrust_coefficient): ct * cosd(yaw) * cosd(tilt) / cosd(ref_tilt)
                 let yaw = yaw_angles[[i, j]];
-                thrust_coeff[[i, j]] *= crate::utilities::cosd(yaw).powi(2);
+                thrust_coeff[[i, j]] *= crate::utilities::cosd(yaw);
 
-                // Apply tilt correction if available
-                let tilt = tilt_angles[[i, j]].to_radians();
-                let ref_tilt_rad = params.ref_tilt.to_radians();
+                let tilt = tilt_angles[[i, j]];
                 thrust_coeff[[i, j]] *=
-                    crate::utilities::cosd(tilt) / crate::utilities::cosd(ref_tilt_rad);
+                    crate::utilities::cosd(tilt) / crate::utilities::cosd(params.ref_tilt);
             }
         }
 
@@ -126,9 +128,10 @@ impl OperationModel for CosineLossTurbine {
         params: &TurbineParameters,
         ctx: &TurbineContext,
     ) -> crate::Result<Array2> {
-        // Use base Ct (without yaw/tilt corrections) for axial induction calculation
-        // The Ct returned by thrust_coefficient already has cos²(yaw) and tilt corrections applied,
-        // which is correct for thrust but would cause double-counting in axial induction formula
+        // Python CosineLossTurbine.axial_induction (operation_models.py):
+        //   misalignment_loss = cosd(yaw) * cosd(tilt) / cosd(ref_tilt)
+        //   ct = base_ct * misalignment_loss   (== thrust_coefficient)
+        //   ai = 0.5 / misalignment_loss * (1 - sqrt(1 - ct * misalignment_loss))
 
         let n_findex = ctx.air_density.len();
         let n_turbines = ctx.n_turbines();
@@ -159,8 +162,25 @@ impl OperationModel for CosineLossTurbine {
             }
         }
 
-        // Compute axial induction from base Ct using classical momentum theory
-        Ok(crate::core::turbines::operation_models::helpers::axial_induction_from_ct(&base_ct))
+        // Python defaults: yaw = 0, tilt = ref_tilt (farm.set_tilt_to_ref_tilt)
+        let zero_yaw = Array2::zeros((n_findex, n_turbines));
+        let ref_tilt_arr = Array2::from_elem((n_findex, n_turbines), params.ref_tilt);
+        let yaw_angles = ctx.yaw_angles.unwrap_or(&zero_yaw);
+        let tilt_angles = ctx.tilt_angles.unwrap_or(&ref_tilt_arr);
+
+        let mut axial_induction = ndarray::Array::zeros((n_findex, n_turbines));
+        for i in 0..n_findex {
+            for j in 0..n_turbines {
+                let misalignment_loss = crate::utilities::cosd(yaw_angles[[i, j]])
+                    * crate::utilities::cosd(tilt_angles[[i, j]])
+                    / crate::utilities::cosd(params.ref_tilt);
+                let ct = base_ct[[i, j]] * misalignment_loss;
+                axial_induction[[i, j]] =
+                    0.5 / misalignment_loss * (1.0 - (1.0 - ct * misalignment_loss).sqrt());
+            }
+        }
+
+        Ok(axial_induction)
     }
 
     fn clone_box(&self) -> Box<dyn OperationModel> {

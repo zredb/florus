@@ -4,6 +4,7 @@ use crate::core::{FlowField, Grid};
 ///
 /// Square root of sum of squares of wake field and velocity field
 use crate::types::Array4;
+use ndarray::Zip;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy)]
@@ -23,20 +24,9 @@ impl CombinationModel for SOSFSCopied {
     }
 
     fn function(&self, wake_field: &Array4, velocity_field: &Array4) -> anyhow::Result<Array4> {
-        let shape = wake_field.shape();
-        let mut result = Array4::zeros((shape[0], shape[1], shape[2], shape[3]));
-
-        for f in 0..shape[0] {
-            for t in 0..shape[1] {
-                for y in 0..shape[2] {
-                    for z in 0..shape[3] {
-                        let deficit = wake_field[[f, t, y, z]];
-                        let velocity_deficit = velocity_field[[f, t, y, z]];
-                        result[[f, t, y, z]] = (deficit.powi(2) + velocity_deficit.powi(2)).sqrt();
-                    }
-                }
-            }
-        }
+        let result = Zip::from(wake_field)
+            .and(velocity_field)
+            .map_collect(|&a, &b| (a * a + b * b).sqrt());
         Ok(result)
     }
 }

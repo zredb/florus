@@ -198,21 +198,23 @@ impl WakeModelManager {
                 alpha,
                 beta,
                 ad,
-                bd: _,
+                bd,
                 dm,
                 ka,
-                kb: _,
+                kb,
             } => {
-                // Gauss deflection uses kd for wake expansion
-                // Use ka as default kd if not specified separately
+                // Python GaussVelocityDeflection has no `kd`; expansion uses
+                // its own ka/kb. Keep kd in the parameter map for compat.
                 let kd = *ka;
                 Ok(Box::new(
-                    crate::core::wake_deflection::gauss::GaussVelocityDeflection::new(kd, *ad, *alpha, *beta, *dm)
+                    crate::core::wake_deflection::gauss::GaussVelocityDeflection::new(
+                        kd, *ad, *bd, *alpha, *beta, *ka, *kb, *dm,
+                    ),
                 ))
             }
-            DeflectionModelConfig::Jimenez { ad, bd: _, kd } => {
+            DeflectionModelConfig::Jimenez { ad, bd, kd } => {
                 Ok(Box::new(
-                    crate::core::wake_deflection::jimenez::JimenezVelocityDeflection::new(*kd, *ad)
+                    crate::core::wake_deflection::jimenez::JimenezVelocityDeflection::new(*kd, *ad, *bd)
                 ))
             }
             DeflectionModelConfig::EmpiricalGauss {

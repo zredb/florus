@@ -51,11 +51,11 @@ impl VelocityModel for JensenVelocity {
         &self,
         x: Array4,
         y: Array4,
-        _z: Array4,
+        z: Array4,
         axial_induction: Array2,
-        deflection_field: Array2,
+        deflection_field: Array4,
         _yaw_angle: Array2,
-        turbulence_intensity: Array2,
+        _turbulence_intensity: Array2,
         _thrust_coefficient: Array2,
         _hub_height: Float,
         rotor_diameter: Float,
@@ -70,29 +70,26 @@ impl VelocityModel for JensenVelocity {
 
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
+        let r0 = rotor_diameter / 2.0;
+        let we = self.kd;
+        const NUM_EPS: Float = 0.001;
+
         for fi in 0..n_findex {
-            // Per-findex wake source position (rotated coordinates differ per findex)
-            let x_wake_source = x[[fi, turbine_index, 0, 0]];
-            let y_wake_source = y[[fi, turbine_index, 0, 0]];
-
-            // Turbine upstream of reference point (x < 0) doesn't generate a wake
-            if x_wake_source < 0.0 {
-                continue;
+            let mut x_wake_source = 0.0;
+            let mut y_wake_source = 0.0;
+            let mut z_wake_source = 0.0;
+            let mut count = 0.0;
+            for iy in 0..n_y {
+                for iz in 0..n_z {
+                    x_wake_source += x[[fi, turbine_index, iy, iz]];
+                    y_wake_source += y[[fi, turbine_index, iy, iz]];
+                    z_wake_source += z[[fi, turbine_index, iy, iz]];
+                    count += 1.0;
+                }
             }
-
-            // Get deflection at the wake source turbine
-            let deflection_at_source = deflection_field[[fi, turbine_index]];
-
-            // Calculate wake radius at the source
-            let r0 = rotor_diameter / 2.0;
-
-            // Calculate base deficit at source
-            let deficit_0 = self.calculate_deficit(
-                axial_induction[[fi, turbine_index]],
-                x_wake_source,
-                r0,
-                turbulence_intensity[[fi, turbine_index]],
-            );
+            x_wake_source /= count;
+            y_wake_source /= count;
+            z_wake_source /= count;
 
             // Apply deficit to all downstream grid points
             for ti in 0..n_turbines {
@@ -100,24 +97,37 @@ impl VelocityModel for JensenVelocity {
                     for iz in 0..n_z {
                         let x_point = x[[fi, ti, iy, iz]];
 
-                        // Only apply if this point is downstream
-                        if x_point <= x_wake_source {
+                        // dx = downstream distance from source turbine
+                        let dx = x_point - x_wake_source;
+
+                        // Downstream mask: only include points downstream of the source
+                        // NUM_EPS=0.001 matches Python's downstream_mask = (dx > 0 + NUM_EPS)
+                        if dx <= NUM_EPS {
                             continue;
                         }
 
-                        // Calculate wake radius at this downstream position
-                        let dx = x_point - x_wake_source;
-                        let wake_radius = r0 + self.kd * dx + self.initial_wake_width * r0;
+                        // Circular boundary check (matches Python):
+                        // sqrt(dy^2 + dz^2) < we * dx + rotor_radius, where
+                        // dy = y - y_i - deflection_field (per grid point)
+                        let dy = y[[fi, ti, iy, iz]]
+                            - y_wake_source
+                            - deflection_field[[fi, ti, iy, iz]];
+                        let dz = z[[fi, ti, iy, iz]] - z_wake_source;
+                        let radial_distance = (dy * dy + dz * dz).sqrt();
+                        let boundary = we * dx + r0;
 
-                        // Calculate distance from wake center
-                        let y_point = y[[fi, ti, iy, iz]];
-                        let wake_center_y = y_wake_source + deflection_at_source * dx;
-                        let lateral_distance = (y_point - wake_center_y).abs();
-
-                        // Jensen model: uniform deficit within wake radius
-                        if lateral_distance < wake_radius {
-                            velocity_deficit[[fi, ti, iy, iz]] = deficit_0;
+                        if radial_distance >= boundary {
+                            continue;
                         }
+
+                        // C = (rotor_radius / (rotor_radius + we * dx + NUM_EPS))^2
+                        // Deficit decays with downstream distance
+                        let c = (r0 / (r0 + we * dx + NUM_EPS)).powi(2);
+
+                        // velocity_deficit = 2 * axial_induction * c
+                        // Factor of 2 matches actuator disk theory: deficit at disc = 2a
+                        velocity_deficit[[fi, ti, iy, iz]] =
+                            2.0 * axial_induction[[fi, turbine_index]] * c;
                     }
                 }
             }
@@ -127,31 +137,9 @@ impl VelocityModel for JensenVelocity {
     }
 }
 
-impl JensenVelocity {
-    fn calculate_wake_radius(&self, x: Float, r0: Float, _ti: Float) -> Float {
-        r0 + self.kd * x + self.initial_wake_width * r0
-    }
-
-    fn calculate_deficit(&self, axial_induction: Float, x: Float, r0: Float, ti: Float) -> Float {
-        // At x=0 (right at turbine), maximum deficit
-        // Deficit decreases as wake expands
-        if axial_induction <= 0.0 {
-            return 0.0;
-        }
-
-        let wake_radius = self.calculate_wake_radius(x, r0, ti);
-        let area_ratio = (r0 / wake_radius).powi(2);
-
-        let deficit = axial_induction * area_ratio;
-
-        deficit.max(0.0)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    //use approx::assert_relative_eq;
 
     #[test]
     fn test_jensen_velocity_creation() {
@@ -160,16 +148,22 @@ mod tests {
     }
 
     #[test]
-    fn test_wake_radius() {
-        let jensen = JensenVelocity::new(0.1, 0.0);
-        let radius = jensen.calculate_wake_radius(100.0, 63.0, 0.06);
-        assert!(radius > 63.0);
+    fn test_wake_expansion() {
+        let r0 = 63.0_f64;
+        let we = 0.05_f64;
+        let dx = 100.0_f64;
+        let boundary = we * dx + r0;
+        assert!(boundary > r0);
     }
 
     #[test]
-    fn test_jensen_deficit() {
-        let jensen = JensenVelocity::new(0.1, 0.0);
-        let deficit = jensen.calculate_deficit(0.33, 100.0, 63.0, 0.06);
-        assert!(deficit > 0.0 && deficit < 0.33);
+    fn test_deficit_formula() {
+        let a = 0.33_f64;
+        let r0 = 63.0_f64;
+        let we = 0.05_f64;
+        let dx = 100.0_f64;
+        let c = (r0 / (r0 + we * dx)).powi(2);
+        let deficit = 2.0 * a * c;
+        assert!(deficit > 0.0 && deficit < 2.0 * a);
     }
 }

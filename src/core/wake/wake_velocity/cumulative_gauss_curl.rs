@@ -220,7 +220,7 @@ pub fn cc_velocity_deficit(
                         let sigma_i = wake_expansion(x_t - x_mean[[fi, m]], ct_m, ti_m, d_m);
 
                         let s_i = sigma_n * sigma_n + sigma_i * sigma_i;
-                        let defl = deflection_field[[fi, t, 0, 0]];
+                        let defl = deflection_field[[fi, t, iy, iz]];
                         let y_diff = y_i_loc - y_m_loc - defl;
                         let z_diff = z_i_loc - z_m_loc;
                         let lbda = params.wec_factor * sigma_i * sigma_i / s_i
@@ -245,7 +245,7 @@ pub fn cc_velocity_deficit(
 
                     let delta_x = x_pt - x_i_loc;
                     let x_tilde = delta_x.abs() / d_i;
-                    let defl = deflection_field[[fi, t, 0, 0]];
+                    let defl = deflection_field[[fi, t, iy, iz]];
                     let r_tilde =
                         ((y_pt - y_i_loc - defl).powi(2) + (z_pt - z_i_loc).powi(2)).sqrt() / d_i;
 
@@ -271,7 +271,6 @@ pub fn cc_velocity_deficit(
                     let c_val = (a1 - tmp.sqrt()) * (1.0 - slb);
                     ctmp[[ii, fi, t, iy, iz]] = c_val;
 
-                    // Yawed rotor-plane mask
                     let y_r = y_pt - y_i_loc;
                     let x_r = y_r * yaw_i.to_radians().tan() + x_i_loc;
 
@@ -292,14 +291,14 @@ pub fn cc_velocity_deficit(
 fn gamma_fn(x: Float) -> Float {
     const G: Float = 7.0;
     const COEF: [Float; 9] = [
-        0.99999999999980993,
+        0.9999999999998099,
         676.5203681218851,
         -1259.1392167224028,
-        771.32342877765313,
-        -176.61502916214059,
+        771.3234287776531,
+        -176.6150291621406,
         12.507343278686905,
         -0.13857109526572012,
-        9.9843695780195716e-6,
+        9.984369578019572e-6,
         1.5056327351493116e-7,
     ];
     if x < 0.5 {
@@ -339,7 +338,7 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
         y: Array4,
         z: Array4,
         _axial_induction: Array2,
-        deflection_field: Array2,
+        deflection_field: Array4,
         _yaw_angle: Array2,
         turbulence_intensity: Array2,
         thrust_coefficient: Array2,
@@ -357,17 +356,23 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
         for fi in 0..n_findex {
-            // Per-findex wake source position (rotated coordinates differ per findex)
-            let x_wake_source = x[[fi, turbine_index, 0, 0]];
-            let y_wake_source = y[[fi, turbine_index, 0, 0]];
+            let mut x_wake_source = 0.0;
+            let mut y_wake_source = 0.0;
+            let mut count = 0.0;
+            for iy in 0..n_y {
+                for iz in 0..n_z {
+                    x_wake_source += x[[fi, turbine_index, iy, iz]];
+                    y_wake_source += y[[fi, turbine_index, iy, iz]];
+                    count += 1.0;
+                }
+            }
+            x_wake_source /= count;
+            y_wake_source /= count;
 
             // Turbine upstream of reference point (x < 0) doesn't generate a wake
             if x_wake_source < 0.0 {
                 continue;
             }
-
-            // Get deflection at the wake source turbine
-            let deflection_at_source = deflection_field[[fi, turbine_index]];
 
             // Convert yaw angle to radians
             let yaw_rad = _yaw_angle[[fi, turbine_index]].to_radians();
@@ -386,9 +391,8 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
                         let y_point = y[[fi, ti, iy, iz]];
                         let z_point = z[[fi, ti, iy, iz]];
 
-                        // Wake center with deflection
-                        let wake_center_y =
-                            y_wake_source + deflection_at_source * (x_point - x_wake_source);
+                        // Wake center with deflection evaluated at this point
+                        let wake_center_y = y_wake_source + deflection_field[[fi, ti, iy, iz]];
                         let dy = y_point - wake_center_y;
                         let dz = z_point - hub_height;
 

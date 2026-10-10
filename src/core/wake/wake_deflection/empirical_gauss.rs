@@ -3,7 +3,7 @@ use crate::core::{FlowField, Grid};
 /// Empirical Gauss wake deflection model
 ///
 /// Extended Gauss model with empirical corrections for different conditions
-use crate::types::{Array1, Array2, Float};
+use crate::types::{Array1, Array2, Array4, Float};
 use ndarray::Array;
 use std::collections::HashMap;
 
@@ -77,29 +77,50 @@ impl DeflectionModel for EmpiricalGaussVelocityDeflection {
 
     fn function(
         &self,
-        x: Array2,
-        _y: Array2,
-        yaw_angle: Float,
-        _turbulence_intensity: Float,
-        thrust_coefficient: Float,
+        x_i: &Array2,
+        _y_i: &Array2,
+        yaw_i: &Array1,
+        _turbulence_intensity_i: &Array1,
+        thrust_coefficient_i: &Array1,
         rotor_diameter: Float,
+        grid_x: &Array4,
         _model_args: &HashMap<String, Array1>,
-    ) -> anyhow::Result<Array2> {
+    ) -> anyhow::Result<Array4> {
         // Generic-solver path: no tilt, no wake-induced mixing through this
         // interface (the dedicated empirical_gauss_solver supplies both).
-        let n_findex = x.shape()[0];
-        let yaw_arr = Array1::from_elem(n_findex, yaw_angle);
+        let shape = grid_x.shape();
+        let n_findex = shape[0];
+        let n_turbines = shape[1];
+        let grid_y_dim = shape[2];
+        let grid_z_dim = shape[3];
+
+        // Deflection is evaluated at every grid point from its streamwise
+        // distance to the source (Python: x_normalized = (x - x_i) * mask / D)
+        let n_pts = n_turbines * grid_y_dim * grid_z_dim;
+        let mut x_downstream = Array2::zeros((n_findex, n_pts));
+        for fi in 0..n_findex {
+            let mut idx = 0;
+            for _ti in 0..n_turbines {
+                for _iy in 0..grid_y_dim {
+                    for _iz in 0..grid_z_dim {
+                        x_downstream[[fi, idx]] = grid_x[[fi, _ti, _iy, _iz]] - x_i[[fi, 0]];
+                        idx += 1;
+                    }
+                }
+            }
+        }
         let tilt_arr = Array1::zeros(n_findex);
         let mixing_arr = Array1::zeros(n_findex);
-        let ct_arr = Array1::from_elem(n_findex, thrust_coefficient);
         let (deflection_y, _deflection_z) = self.deflection_yz(
-            &x,
-            &yaw_arr,
+            &x_downstream,
+            yaw_i,
             &tilt_arr,
             &mixing_arr,
-            &ct_arr,
+            thrust_coefficient_i,
             rotor_diameter,
         );
+        let deflection_y =
+            deflection_y.into_shape_with_order((n_findex, n_turbines, grid_y_dim, grid_z_dim))?;
         Ok(deflection_y)
     }
 }
@@ -189,8 +210,7 @@ mod tests {
         let mixing = Array1::zeros(1);
         let ct = Array1::from_vec(vec![0.76]);
 
-        let (defl_y, defl_z) =
-            empirical.deflection_yz(&x_dist, &yaw, &tilt, &mixing, &ct, 126.0);
+        let (defl_y, defl_z) = empirical.deflection_yz(&x_dist, &yaw, &tilt, &mixing, &ct, 126.0);
 
         assert_relative_eq!(defl_y[[0, 0]], 0.0, epsilon = 1e-12);
         // tilt_r = 5 deg in rad; log_term at 5D = ln((5-22)/(5+22) + 2)

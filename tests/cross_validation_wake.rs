@@ -46,7 +46,10 @@ fn create_floris_config(
         description: Some("Cross-validation test config".to_string()),
         floris_version: "v4".to_string(),
         logging: LoggingConfig::default(),
-        solver: SolverConfig::default(),
+        solver: SolverConfig {
+            turbine_grid_points: 2,
+            ..SolverConfig::default()
+        },
         farm: FarmConfig {
             layout_x: X_COORDS.to_vec(),
             layout_y: Y_COORDS.to_vec(),
@@ -241,13 +244,8 @@ fn cosd(degrees: f64) -> f64 {
     (degrees.to_radians()).cos()
 }
 
-/// Baseline: 12% relative tolerance or 100000W absolute, whichever is larger.
-///
-/// After the Ct/AI column-index fix (`[[fi,0]]` → `[[fi,ti]]`), downstream
-/// turbine errors dropped from ~30-65% to ~11%. Tightened to 12% to catch
-/// regressions while allowing solver-implementation differences.
 fn power_close(test: f64, golden: f64) -> bool {
-    power_close_tol(test, golden, 0.12, 100000.0)
+    power_close_tol(test, golden, 0.0, 0.0)
 }
 
 fn power_close_tol(test: f64, golden: f64, tol_rel: f64, tol_abs: f64) -> bool {
@@ -261,16 +259,17 @@ fn power_close_tol(test: f64, golden: f64, tol_rel: f64, tol_abs: f64) -> bool {
 }
 
 fn assert_powers_close(test: &[Vec<f64>], golden: &[Vec<f64>], name: &str) {
-    assert_powers_close_tol(test, golden, name, 0.12, 100000.0);
+    assert_powers_close_tol(test, golden, name, 0.0, 0.0);
 }
 
-/// Per-model tolerances calibrated from diagnostic errors after the Ct/AI
-/// column-index fix (`[[fi,0]]` → `[[fi,ti]]`):
-/// - jensen/gauss: ~12% (downstream wake model implementation differences)
-/// - turbopark: ~12% (source-centric reinterpretation vs Python target-centric)
-/// - turboparkgauss: ~22% (CrespoHernandez TI evolution amplifies differences)
-/// - cc: ~13% (cumulative curl accumulation order differs)
-/// - empirical_gauss: 1% with matching 2×2 grid (full solver ported)
+/// Per-model tolerances calibrated from diagnostic errors.
+/// Each tolerance is set tight to the observed max error with ~1.5x margin.
+/// - Jensen: 0.005% (f64 precision in power chain after NUM_EPS fix)
+/// - Gauss: 0.1% (deflection model small difference at turbine[2])
+/// - TurbOPark: 0.3% (source-centric vs target-centric reimaging)
+/// - TurbOParkGauss: 0.001% (near-exact port, residual is f64 precision)
+/// - CC: 0.15% (cumulative curl accumulation order)
+/// - EmpiricalGauss: exact (full solver ported with target-centric approach)
 fn assert_powers_close_tol(
     test: &[Vec<f64>],
     golden: &[Vec<f64>],
@@ -290,7 +289,7 @@ fn assert_powers_close_tol(
         for (ti, (t_val, g_val)) in t_row.iter().zip(g_row.iter()).enumerate() {
             assert!(
                 power_close_tol(*t_val, *g_val, tol_rel, tol_abs),
-                "{}[{}][{}]: power mismatch: got {:.2}, expected {:.2}, diff {:.2} ({:.4}%)",
+                "{}[{}][{}]: power mismatch: got {}, expected {}, diff {} ({}%)",
                 name,
                 fi,
                 ti,
@@ -329,7 +328,13 @@ fn test_jensen_regression() {
 
     let powers = compute_powers_manual(&config, None);
     let golden = common::load_wake_golden("jensen_regression");
-    assert_powers_close(&powers, &golden.turbine_powers, "jensen_regression");
+    assert_powers_close_tol(
+        &powers,
+        &golden.turbine_powers,
+        "jensen_regression",
+        5e-5,
+        50.0,
+    );
 }
 
 #[test]
@@ -352,7 +357,7 @@ fn test_jensen_yawed() {
 
     let powers = compute_powers_manual(&config, Some(&yaw));
     let golden = common::load_wake_golden("jensen_yawed");
-    assert_powers_close(&powers, &golden.turbine_powers, "jensen_yawed");
+    assert_powers_close_tol(&powers, &golden.turbine_powers, "jensen_yawed", 1e-2, 1e4);
 }
 
 // ============================================================
@@ -397,8 +402,8 @@ fn test_gauss_regression() {
         &powers,
         &golden.turbine_powers,
         "gauss_regression",
-        0.12,
-        100000.0,
+        1e-3,
+        500.0,
     );
 }
 
@@ -437,13 +442,7 @@ fn test_gauss_yawed() {
 
     let powers = compute_powers_manual(&config, Some(&yaw));
     let golden = common::load_wake_golden("gauss_yawed");
-    assert_powers_close_tol(
-        &powers,
-        &golden.turbine_powers,
-        "gauss_yawed",
-        0.12,
-        100000.0,
-    );
+    assert_powers_close_tol(&powers, &golden.turbine_powers, "gauss_yawed", 1e-2, 1e4);
 }
 
 // ============================================================
@@ -479,8 +478,8 @@ fn test_turbopark_regression() {
         &powers,
         &golden.turbine_powers,
         "turbopark_regression",
-        0.13,
-        120000.0,
+        3e-3,
+        6000.0,
     );
 }
 
@@ -515,8 +514,8 @@ fn test_turbopark_yawed() {
         &powers,
         &golden.turbine_powers,
         "turbopark_yawed",
-        0.13,
-        120000.0,
+        1e-2,
+        1e4,
     );
 }
 
@@ -558,8 +557,8 @@ fn test_turboparkgauss_regression() {
         &powers,
         &golden.turbine_powers,
         "turboparkgauss_regression",
-        0.25,
-        250000.0,
+        1e-5,
+        5.0,
     );
 }
 
@@ -607,8 +606,8 @@ fn test_cc_regression() {
         &powers,
         &golden.turbine_powers,
         "cc_regression",
-        0.15,
-        130000.0,
+        1.5e-3,
+        1500.0,
     );
 }
 
@@ -665,17 +664,15 @@ fn test_emgauss_regression() {
         false,
         false,
     );
-    // The golden values were generated with a 2x2 turbine grid
-    config.solver.turbine_grid_points = 2;
-
+    config.wake.enable_wake_mixing = false;
     let powers = compute_powers_emgauss(&config, None);
     let golden = common::load_wake_golden("empirical_gauss_regression");
     assert_powers_close_tol(
         &powers,
         &golden.turbine_powers,
         "emgauss_regression",
-        0.01,
-        20000.0,
+        0.0,
+        1e-6,
     );
 }
 
@@ -683,30 +680,19 @@ fn test_emgauss_regression() {
 // Diagnostics: actual error magnitudes per solver
 // ============================================================
 
-fn max_rel_error(
-    test: &[Vec<f64>],
-    golden: &[Vec<f64>],
-) -> (usize, usize, f64, f64, f64) {
-    let mut max_rel = 0.0_f64;
-    let mut max_fi = 0;
-    let mut max_ti = 0;
-    let mut max_test_val = 0.0;
-    let mut max_golden_val = 0.0;
+fn print_all_errors(test: &[Vec<f64>], golden: &[Vec<f64>], name: &str) {
     for (fi, (t_row, g_row)) in test.iter().zip(golden.iter()).enumerate() {
         for (ti, (t_val, g_val)) in t_row.iter().zip(g_row.iter()).enumerate() {
             if g_val.abs() > 1e-10 {
-                let rel = (t_val - g_val).abs() / g_val.abs();
-                if rel > max_rel {
-                    max_rel = rel;
-                    max_fi = fi;
-                    max_ti = ti;
-                    max_test_val = *t_val;
-                    max_golden_val = *g_val;
-                }
+                let abs_diff = (t_val - g_val).abs();
+                let rel = abs_diff / g_val.abs() * 100.0;
+                eprintln!(
+                    "  {}[{}][{}]: got={:.15} expected={:.15} abs_diff={:.2e} rel={:.6e}%",
+                    name, fi, ti, t_val, g_val, abs_diff, rel
+                );
             }
         }
     }
-    (max_fi, max_ti, max_rel, max_test_val, max_golden_val)
 }
 
 #[test]
@@ -727,15 +713,8 @@ fn test_power_accuracy_diagnostics() {
     );
     let p = compute_powers_manual(&cfg, None);
     let g = common::load_wake_golden("jensen_regression");
-    let (fi, ti, rel, got, exp) = max_rel_error(&p, &g.turbine_powers);
-    eprintln!(
-        "[jensen]            max_rel={:.4}% at [{}][{}] got={:.0} expected={:.0}",
-        rel * 100.0,
-        fi,
-        ti,
-        got,
-        exp
-    );
+    eprintln!("[jensen] ALL ERRORS:");
+    print_all_errors(&p, &g.turbine_powers, "jensen");
 
     // Gauss
     let cfg = create_floris_config(
@@ -767,15 +746,8 @@ fn test_power_accuracy_diagnostics() {
     );
     let p = compute_powers_manual(&cfg, None);
     let g = common::load_wake_golden("gauss_regression");
-    let (fi, ti, rel, got, exp) = max_rel_error(&p, &g.turbine_powers);
-    eprintln!(
-        "[gauss]             max_rel={:.4}% at [{}][{}] got={:.0} expected={:.0}",
-        rel * 100.0,
-        fi,
-        ti,
-        got,
-        exp
-    );
+    eprintln!("[gauss] ALL ERRORS:");
+    print_all_errors(&p, &g.turbine_powers, "gauss");
 
     // Turbopark
     let cfg = create_floris_config(
@@ -800,15 +772,8 @@ fn test_power_accuracy_diagnostics() {
     );
     let p = compute_powers_turbopark(&cfg, None);
     let g = common::load_wake_golden("turbopark_regression");
-    let (fi, ti, rel, got, exp) = max_rel_error(&p, &g.turbine_powers);
-    eprintln!(
-        "[turbopark]         max_rel={:.4}% at [{}][{}] got={:.0} expected={:.0}",
-        rel * 100.0,
-        fi,
-        ti,
-        got,
-        exp
-    );
+    eprintln!("[turbopark] ALL ERRORS:");
+    print_all_errors(&p, &g.turbine_powers, "turbopark");
 
     // TurboparkGauss
     let cfg = create_floris_config(
@@ -838,15 +803,8 @@ fn test_power_accuracy_diagnostics() {
     );
     let p = compute_powers_manual(&cfg, None);
     let g = common::load_wake_golden("turboparkgauss_regression");
-    let (fi, ti, rel, got, exp) = max_rel_error(&p, &g.turbine_powers);
-    eprintln!(
-        "[turboparkgauss]    max_rel={:.4}% at [{}][{}] got={:.0} expected={:.0}",
-        rel * 100.0,
-        fi,
-        ti,
-        got,
-        exp
-    );
+    eprintln!("[turboparkgauss] ALL ERRORS:");
+    print_all_errors(&p, &g.turbine_powers, "turboparkgauss");
 
     // CC
     let cfg = create_floris_config(
@@ -882,15 +840,8 @@ fn test_power_accuracy_diagnostics() {
     );
     let p = compute_powers_cc(&cfg, None);
     let g = common::load_wake_golden("cc_regression");
-    let (fi, ti, rel, got, exp) = max_rel_error(&p, &g.turbine_powers);
-    eprintln!(
-        "[cc]                max_rel={:.4}% at [{}][{}] got={:.0} expected={:.0}",
-        rel * 100.0,
-        fi,
-        ti,
-        got,
-        exp
-    );
+    eprintln!("[cc] ALL ERRORS:");
+    print_all_errors(&p, &g.turbine_powers, "cc");
 
     // Empirical Gauss
     let mut cfg = create_floris_config(
@@ -922,13 +873,87 @@ fn test_power_accuracy_diagnostics() {
     cfg.wake.enable_wake_mixing = false;
     let p = compute_powers_emgauss(&cfg, None);
     let g = common::load_wake_golden("empirical_gauss_regression");
-    let (fi, ti, rel, got, exp) = max_rel_error(&p, &g.turbine_powers);
-    eprintln!(
-        "[emgauss]           max_rel={:.4}% at [{}][{}] got={:.0} expected={:.0}",
-        rel * 100.0,
-        fi,
-        ti,
-        got,
-        exp
+    eprintln!("[emgauss] ALL ERRORS:");
+    print_all_errors(&p, &g.turbine_powers, "emgauss");
+
+    // Jensen yawed
+    let cfg = create_floris_config(
+        VelocityModelConfig::Jensen { we: 0.05 },
+        DeflectionModelConfig::Jimenez {
+            ad: 0.0,
+            bd: 0.0,
+            kd: 0.05,
+        },
+        CombinationModelConfig::SOSFS,
+        TurbulenceModelConfig::None,
+        true,
+        true,
+        true,
     );
+    let yaw = Array2::from_shape_fn((16, 3), |(fi, ti)| if ti == 0 { 5.0 } else { 0.0 });
+    let p = compute_powers_manual(&cfg, Some(&yaw));
+    let g = common::load_wake_golden("jensen_yawed");
+    eprintln!("[jensen_yawed] ALL ERRORS:");
+    print_all_errors(&p, &g.turbine_powers, "jensen_yawed");
+
+    // Gauss yawed
+    let cfg = create_floris_config(
+        VelocityModelConfig::Gauss {
+            alpha: 0.58,
+            beta: 0.077,
+            ka: 0.38,
+            kb: 0.004,
+        },
+        DeflectionModelConfig::Gauss {
+            alpha: 0.58,
+            beta: 0.077,
+            ad: 0.0,
+            bd: 0.0,
+            dm: 1.0,
+            ka: 0.38,
+            kb: 0.004,
+        },
+        CombinationModelConfig::SOSFS,
+        TurbulenceModelConfig::CrespoHernandez {
+            initial: 0.1,
+            constant: 0.5,
+            ai: 0.8,
+            downstream: -0.32,
+        },
+        true,
+        true,
+        true,
+    );
+    let yaw = Array2::from_shape_fn((16, 3), |(fi, ti)| if ti == 0 { 5.0 } else { 0.0 });
+    let p = compute_powers_manual(&cfg, Some(&yaw));
+    let g = common::load_wake_golden("gauss_yawed");
+    eprintln!("[gauss_yawed] ALL ERRORS:");
+    print_all_errors(&p, &g.turbine_powers, "gauss_yawed");
+
+    // Turbopark yawed
+    let cfg = create_floris_config(
+        VelocityModelConfig::Turbopark {
+            kstar: 0.04,
+            cstar: 4.0,
+        },
+        DeflectionModelConfig::Gauss {
+            alpha: 0.58,
+            beta: 0.077,
+            ad: 0.0,
+            bd: 0.0,
+            dm: 1.0,
+            ka: 0.38,
+            kb: 0.004,
+        },
+        CombinationModelConfig::FLS,
+        TurbulenceModelConfig::None,
+        false,
+        false,
+        false,
+    );
+    let yaw = Array2::from_shape_fn((16, 3), |(fi, ti)| if ti == 0 { 5.0 } else { 0.0 });
+    let p = compute_powers_turbopark(&cfg, Some(&yaw));
+    let g = common::load_wake_golden("turbopark_yawed");
+    eprintln!("[turbopark_yawed] ALL ERRORS:");
+    print_all_errors(&p, &g.turbine_powers, "turbopark_yawed");
 }

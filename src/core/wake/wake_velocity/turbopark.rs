@@ -49,17 +49,13 @@ impl Default for TurbOParkVelocityDeficit {
 pub struct OverlapInterpolator {
     dist: Vec<Float>,
     radius_down: Vec<Float>,
-    overlap_gauss: Array2,
 }
 
 impl OverlapInterpolator {
     fn new() -> Self {
-        // Compute lookup table at runtime
-        let (dist, radius_down, overlap_gauss) = create_overlap_lookup_table();
         Self {
-            dist,
-            radius_down,
-            overlap_gauss,
+            dist: super::turbopark_lookup_matlab::dist().to_vec(),
+            radius_down: super::turbopark_lookup_matlab::radius_down().to_vec(),
         }
     }
 
@@ -92,15 +88,15 @@ impl OverlapInterpolator {
             (j.saturating_sub(1), j, 0.0)
         };
 
-        let i0 = i0.min(self.overlap_gauss.shape()[0] - 1);
-        let i1 = i1.min(self.overlap_gauss.shape()[0] - 1);
-        let j0 = j0.min(self.overlap_gauss.shape()[1] - 1);
-        let j1 = j1.min(self.overlap_gauss.shape()[1] - 1);
+        let i0 = i0.min(super::turbopark_lookup_matlab::DIST_N - 1);
+        let i1 = i1.min(super::turbopark_lookup_matlab::DIST_N - 1);
+        let j0 = j0.min(super::turbopark_lookup_matlab::RADIUS_DOWN_N - 1);
+        let j1 = j1.min(super::turbopark_lookup_matlab::RADIUS_DOWN_N - 1);
 
-        let v00 = self.overlap_gauss[[i0, j0]];
-        let v01 = self.overlap_gauss[[i0, j1]];
-        let v10 = self.overlap_gauss[[i1, j0]];
-        let v11 = self.overlap_gauss[[i1, j1]];
+        let v00 = super::turbopark_lookup_matlab::overlap_at(i0, j0);
+        let v01 = super::turbopark_lookup_matlab::overlap_at(i0, j1);
+        let v10 = super::turbopark_lookup_matlab::overlap_at(i1, j0);
+        let v11 = super::turbopark_lookup_matlab::overlap_at(i1, j1);
 
         let v0 = v00 * (1.0 - f_rd) + v01 * f_rd;
         let v1 = v10 * (1.0 - f_rd) + v11 * f_rd;
@@ -357,7 +353,7 @@ impl VelocityModel for TurbOParkVelocityDeficit {
         y: Array4,
         z: Array4,
         _axial_induction: Array2,
-        deflection_field: Array2,
+        deflection_field: Array4,
         _yaw_angle: Array2,
         turbulence_intensity: Array2,
         thrust_coefficient: Array2,
@@ -376,17 +372,23 @@ impl VelocityModel for TurbOParkVelocityDeficit {
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
         for fi in 0..n_findex {
-            // Per-findex wake source position (rotated coordinates differ per findex)
-            let x_wake_source = x[[fi, turbine_index, 0, 0]];
-            let y_wake_source = y[[fi, turbine_index, 0, 0]];
+            let mut x_wake_source = 0.0;
+            let mut y_wake_source = 0.0;
+            let mut count = 0.0;
+            for iy in 0..n_y {
+                for iz in 0..n_z {
+                    x_wake_source += x[[fi, turbine_index, iy, iz]];
+                    y_wake_source += y[[fi, turbine_index, iy, iz]];
+                    count += 1.0;
+                }
+            }
+            x_wake_source /= count;
+            y_wake_source /= count;
 
             // Turbine upstream of reference point (x < 0) doesn't generate a wake
             if x_wake_source < 0.0 {
                 continue;
             }
-
-            // Get deflection at the wake source turbine
-            let deflection_at_source = deflection_field[[fi, turbine_index]];
 
             let epsilon = calculate_epsilon(thrust_coefficient[[fi, turbine_index]]);
             let c = calculate_peak_deficit(
@@ -406,8 +408,9 @@ impl VelocityModel for TurbOParkVelocityDeficit {
                         let y_point = y[[fi, ti, iy, iz]];
                         let z_point = z[[fi, ti, iy, iz]];
 
-                        let wake_center_y =
-                            y_wake_source + deflection_at_source * (x_point - x_wake_source);
+                        // Wake center with deflection evaluated at this point
+                        // (Python: y_i - (y + deflection_field))
+                        let wake_center_y = y_wake_source + deflection_field[[fi, ti, iy, iz]];
                         let dy = y_point - wake_center_y;
                         let dz = z_point - hub_height;
                         let r = (dy.powi(2) + dz.powi(2)).sqrt();

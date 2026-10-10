@@ -2,17 +2,15 @@ use crate::core::grid::{TurbineCubatureGrid, TurbineGrid};
 /// Wake solver algorithms
 ///
 /// Corresponds to core/solver.py in Python implementation
-use std::collections::HashMap;
-
 use crate::core::wake::yaw_added_recovery::{
     calculate_transverse_velocity, wake_added_yaw, yaw_added_turbulence_mixing,
 };
 use crate::core::wake::WakeModelManager;
 use crate::core::{Farm, FlowField, Grid};
 use crate::types::{Array1, Array2, Array3, Array4, ArrayD, Float};
+use crate::utilities::cosd;
 use anyhow::Result;
 use ndarray::{s, Array};
-use crate::utilities::cosd;
 
 /// Solver type enum for selecting the appropriate solver algorithm
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,9 +102,6 @@ pub fn sequential_solver(
     let y_grid = grid.y_sorted().clone();
     let z_grid = grid.z_sorted().clone();
 
-    let x_mean = mean_value_4d_slice(&x_grid)?;
-    let y_mean = mean_value_4d_slice(&y_grid)?;
-
     // Per-turbine mean grid positions (used by the WAT downstream-influence mask).
     let x_mean = mean_value_4d_slice(&x_grid)?;
     let y_mean = mean_value_4d_slice(&y_grid)?;
@@ -153,9 +148,6 @@ pub fn sequential_solver(
             grid.average_method(),
         )?;
 
-        // Use yaw_angles_sorted with sorted index i
-        let yaw_angle_i = farm.yaw_angles_sorted[[0, i]];
-
         // Use rotor_diameters_sorted with sorted index i
         let rotor_diameter_i = farm.rotor_diameters_sorted[[0, i]];
 
@@ -195,6 +187,41 @@ pub fn sequential_solver(
             ai_arr[fi] = a_i[[fi, i]];
         }
 
+        // Effective yaw per findex including secondary steering
+        // (Python: effective_yaw_i += added_yaw, per findex)
+        let mut effective_yaw_arr = yaw_arr.clone();
+        if model_manager.enable_secondary_steering {
+            let z_i_block = z_grid.slice(s![.., i..i + 1, .., ..]).to_owned();
+            let mut delta_y_ss = Array::zeros((n_findex, 1, grid_y_dim, grid_z_dim));
+            for fi in 0..n_findex {
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        delta_y_ss[[fi, 0, iy, iz]] = y_grid[[fi, i, iy, iz]] - y_2d[[fi, 0]];
+                    }
+                }
+            }
+            let ct_4d = ct_arr.clone().into_shape_with_order((n_findex, 1, 1, 1))?;
+            let tsr_4d = tsr_arr.clone().into_shape_with_order((n_findex, 1, 1, 1))?;
+            let ai_4d = ai_arr.clone().into_shape_with_order((n_findex, 1, 1, 1))?;
+            let added_yaw = wake_added_yaw(
+                &u_i,
+                &v_i,
+                &flow_field.u_initial_sorted,
+                &delta_y_ss,
+                &z_i_block,
+                rotor_diameter_i,
+                hub_height_i,
+                &ct_4d,
+                &tsr_4d,
+                &ai_4d,
+                flow_field.wind_shear,
+                1.0,
+            );
+            for fi in 0..n_findex {
+                effective_yaw_arr[fi] += added_yaw[fi];
+            }
+        }
+
         // Distance from each grid point to turbine i's mean position
         let mut delta_x = Array::zeros((n_findex, grid_second_dim, grid_y_dim, grid_z_dim));
         let mut delta_y = Array::zeros((n_findex, grid_second_dim, grid_y_dim, grid_z_dim));
@@ -209,24 +236,21 @@ pub fn sequential_solver(
             }
         }
 
-        // Calculate wake deflection field (uses ambient/raw TI, matching Python)
+        // Calculate the deflection field of source turbine i at every grid
+        // point (Python: per-findex effective yaw/TI/Ct, full-field evaluation)
+        let ti_source: Array1 = (0..n_findex)
+            .map(|fi| turbine_turbulence_intensity[[fi, i]])
+            .collect();
         let deflection_field = model_manager.deflection_model.function(
-            x_2d.clone(),
-            y_2d.clone(),
-            yaw_angle_i,
-            flow_field.turbulence_intensities[0],
-            ct_i[[0, i]],
+            &x_2d,
+            &y_2d,
+            &effective_yaw_arr,
+            &ti_source,
+            &ct_arr,
             rotor_diameter_i,
+            &x_grid,
             &std::collections::HashMap::new(),
         )?;
-
-        // Broadcast deflection from wake source turbine i to all turbines
-        let mut deflection_broadcast = Array::zeros((n_findex, n_turbines));
-        for ti in 0..n_turbines {
-            for fi in 0..n_findex {
-                deflection_broadcast[[fi, ti]] = deflection_field[[fi, 0]];
-            }
-        }
 
         // --- GCH: transverse velocities (v/w) and yaw-added turbulence recovery ---
         let mut v_wake = Array::zeros((n_findex, grid_second_dim, grid_y_dim, grid_z_dim));
@@ -282,7 +306,7 @@ pub fn sequential_solver(
             y_grid.clone(),
             z_grid.clone(),
             a_i.clone(),
-            deflection_broadcast,
+            deflection_field,
             farm.yaw_angles_sorted.clone(),
             ti_array,
             ct_i,
@@ -498,28 +522,34 @@ pub fn turbopark_solver(
                 let x_2d = mean_value_4d_slice(&x_ii)?;
                 let y_2d = mean_value_4d_slice(&y_ii)?;
 
-                let yaw_ii = farm.yaw_angles_sorted[[0, ii]];
-                let ti_ii = turbine_turbulence_intensity[[0, ii]];
-                let ct_ii = cts_all[[0, ii]];
+                // Per-findex yaw/TI/Ct of upstream source ii (Python turbopark_solver)
+                let mut yaw_ii_arr = Array1::zeros(n_findex);
+                let mut ti_ii_arr = Array1::zeros(n_findex);
+                let mut ct_ii_arr = Array1::zeros(n_findex);
+                for fi in 0..n_findex {
+                    yaw_ii_arr[fi] = farm.yaw_angles_sorted[[fi, ii]];
+                    ti_ii_arr[fi] = turbine_turbulence_intensity[[fi, ii]];
+                    ct_ii_arr[fi] = cts_all[[fi, ii]];
+                }
                 let d_ii = farm.rotor_diameters_sorted[[0, ii]];
 
-                let defl_ii = model_manager.deflection_model.function(
-                    x_2d,
-                    y_2d,
-                    yaw_ii,
-                    ti_ii,
-                    ct_ii,
+                let field_ii = model_manager.deflection_model.function(
+                    &x_2d,
+                    &y_2d,
+                    &yaw_ii_arr,
+                    &ti_ii_arr,
+                    &ct_ii_arr,
                     d_ii,
+                    grid.x_sorted(),
                     &std::collections::HashMap::new(),
                 )?;
 
-                // Deflection at TARGET i from source ii, stored across row ii
-                let target_col = i.min(defl_ii.shape()[1] - 1);
+                // Python: deflection_field[:, ii] = deflection_field_ii[:, i]
+                // — source ii's deflection evaluated at TARGET i's grid points
                 for fi in 0..n_findex {
-                    let defl_at_i = defl_ii[[fi, target_col]];
                     for iy in 0..grid_y_dim {
                         for iz in 0..grid_z_dim {
-                            deflection_field[[fi, ii, iy, iz]] = defl_at_i;
+                            deflection_field[[fi, ii, iy, iz]] = field_ii[[fi, i, iy, iz]];
                         }
                     }
                 }
@@ -758,7 +788,6 @@ pub fn full_flow_sequential_solver(
             turbine_grid.average_method(),
         )?;
 
-        let ct_i_scalar = ct_all[[0, i]];
         let a_i_scalar = a_all[[0, i]];
 
         // Per-findex scalars for the current turbine.
@@ -780,7 +809,6 @@ pub fn full_flow_sequential_solver(
                 .slice(s![.., i..i + 1, .., ..])
                 .to_owned(),
         )?;
-        let ti_i_scalar = ti_avg[[0, 0]];
         let mut ti_arr = Array1::zeros(n_findex);
         for fi in 0..n_findex {
             ti_arr[fi] = ti_avg[[fi, 0]];
@@ -789,8 +817,8 @@ pub fn full_flow_sequential_solver(
         let rotor_diameter_i = turbine_grid_farm.rotor_diameters_sorted[[0, i]];
         let hub_height_i = turbine_grid_farm.hub_heights_sorted[[0, i]];
 
-        // Effective yaw including secondary steering.
-        let mut effective_yaw_i = yaw_arr[0];
+        // Effective yaw per findex including secondary steering.
+        let mut effective_yaw_arr = yaw_arr.clone();
         if model_manager.enable_secondary_steering {
             let u_i = turbine_grid_flow_field
                 .u_sorted
@@ -809,9 +837,9 @@ pub fn full_flow_sequential_solver(
                 .z_sorted()
                 .slice(s![.., i..i + 1, .., ..])
                 .to_owned();
-            let ct_4d = ct_arr.clone().into_shape((n_findex, 1, 1, 1))?;
-            let tsr_4d = tsr_arr.clone().into_shape((n_findex, 1, 1, 1))?;
-            let ai_4d = ai_arr.clone().into_shape((n_findex, 1, 1, 1))?;
+            let ct_4d = ct_arr.clone().into_shape_with_order((n_findex, 1, 1, 1))?;
+            let tsr_4d = tsr_arr.clone().into_shape_with_order((n_findex, 1, 1, 1))?;
+            let ai_4d = ai_arr.clone().into_shape_with_order((n_findex, 1, 1, 1))?;
             let added_yaw = wake_added_yaw(
                 &u_i,
                 &v_i,
@@ -826,25 +854,14 @@ pub fn full_flow_sequential_solver(
                 flow_field.wind_shear,
                 1.0,
             );
-            effective_yaw_i += added_yaw[0];
+            for fi in 0..n_findex {
+                effective_yaw_arr[fi] += added_yaw[fi];
+            }
         }
 
         // Source position for this turbine.
         let x_i = source_x.slice(s![.., i..i + 1]).to_owned(); // (n_findex, 1)
         let y_i = source_y.slice(s![.., i..i + 1]).to_owned();
-        let z_i = source_z.slice(s![.., i..i + 1]).to_owned();
-
-        // Deflection field at the source turbine.
-        let deflection_field = model_manager.deflection_model.function(
-            x_i.clone(),
-            y_i.clone(),
-            effective_yaw_i,
-            ti_i_scalar,
-            ct_i_scalar,
-            rotor_diameter_i,
-            &std::collections::HashMap::new(),
-        )?;
-        let deflection_value = deflection_field[[0, 0]];
 
         // Distance from the source turbine to every full-grid point.
         let mut delta_x = Array::zeros((n_findex, n_points, grid_y_dim, grid_z_dim));
@@ -913,15 +930,26 @@ pub fn full_flow_sequential_solver(
             }
         }
 
+        // Deflection field of source i evaluated at every point of the
+        // synthetic grid (Python: deflection on the full flow grid).
+        let deflection_field = model_manager.deflection_model.function(
+            &x_i,
+            &y_i,
+            &effective_yaw_arr,
+            &ti_arr,
+            &ct_arr,
+            rotor_diameter_i,
+            &x_full,
+            &std::collections::HashMap::new(),
+        )?;
+
         // Per-turbine broadcast arrays (only column `i` is read by the model).
         let mut a_arr = Array::zeros((n_findex, total));
-        let mut defl_arr = Array::zeros((n_findex, total));
         let mut yaw_bc = Array::zeros((n_findex, total));
         let mut ti_bc = Array::zeros((n_findex, total));
         let mut ct_bc = Array::zeros((n_findex, total));
         for fi in 0..n_findex {
             a_arr[[fi, i]] = a_i_scalar;
-            defl_arr[[fi, i]] = deflection_value;
             yaw_bc[[fi, i]] = yaw_arr[fi];
             ti_bc[[fi, i]] = ti_arr[fi];
             ct_bc[[fi, i]] = ct_arr[fi];
@@ -932,7 +960,7 @@ pub fn full_flow_sequential_solver(
             y_full,
             z_full,
             a_arr,
-            defl_arr,
+            deflection_field,
             yaw_bc,
             ti_bc,
             ct_bc,
@@ -1107,17 +1135,18 @@ pub fn cc_solver(
             }
         }
 
-        // Per-turbine average inflow velocity
+        // Per-turbine average inflow velocity (cubic-mean, matching Python average_velocity)
         let mut turb_avg_vels = Array2::zeros((n_findex, n_turbines));
         for fi in 0..n_findex {
             for t in 0..n_turbines {
-                let mut sum = 0.0;
+                let mut v_cubed_sum = 0.0;
                 for iy in 0..grid_y_dim {
                     for iz in 0..grid_z_dim {
-                        sum += turb_inflow_field[[fi, t, iy, iz]];
+                        v_cubed_sum += turb_inflow_field[[fi, t, iy, iz]].powi(3);
                     }
                 }
-                turb_avg_vels[[fi, t]] = sum / (grid_y_dim * grid_z_dim) as f64;
+                turb_avg_vels[[fi, t]] =
+                    (v_cubed_sum / (grid_y_dim * grid_z_dim) as f64).powf(1.0 / 3.0);
             }
         }
 
@@ -1152,8 +1181,84 @@ pub fn cc_solver(
             yaw_i_arr[fi] = farm.yaw_angles_sorted[[fi, i]];
         }
 
-        // Effective yaw including secondary steering (Python cc: scale=2.0)
-        let mut effective_yaw = yaw_i_arr[0];
+        // Per-findex scalar arrays for the source turbine (ct, tsr, ai, yaw)
+        let hub_height_i = farm.hub_heights_sorted[[0, i]];
+        let tsr_i = farm.tsrs_sorted[[0, i]];
+        let mut yaw_arr = Array1::zeros(n_findex);
+        let mut ct_arr = Array1::zeros(n_findex);
+        let mut tsr_arr = Array1::zeros(n_findex);
+        let mut ai_arr = Array1::zeros(n_findex);
+        for fi in 0..n_findex {
+            yaw_arr[fi] = farm.yaw_angles_sorted[[fi, i]];
+            ct_arr[fi] = turb_cts_2d[[fi, i]];
+            tsr_arr[fi] = tsr_i;
+            ai_arr[fi] = turb_ais_2d[[fi, i]];
+        }
+
+        // GCH: transverse velocities (v/w) for the source turbine (Python cc: scale=2.0)
+        let mut v_wake = Array::zeros((n_findex, n_turbines, grid_y_dim, grid_z_dim));
+        let mut w_wake = Array::zeros((n_findex, n_turbines, grid_y_dim, grid_z_dim));
+        if model_manager.enable_transverse_velocities {
+            let mut delta_x = Array::zeros((n_findex, n_turbines, grid_y_dim, grid_z_dim));
+            let mut delta_y = Array::zeros((n_findex, n_turbines, grid_y_dim, grid_z_dim));
+            for fi in 0..n_findex {
+                for ti in 0..n_turbines {
+                    for iy in 0..grid_y_dim {
+                        for iz in 0..grid_z_dim {
+                            delta_x[[fi, ti, iy, iz]] =
+                                grid.x_sorted()[[fi, ti, iy, iz]] - x_i_2d[[fi, 0]];
+                            delta_y[[fi, ti, iy, iz]] =
+                                grid.y_sorted()[[fi, ti, iy, iz]] - y_i_2d[[fi, 0]];
+                        }
+                    }
+                }
+            }
+            let (vw, ww) = calculate_transverse_velocity(
+                &u_i,
+                &flow_field.u_initial_sorted,
+                &flow_field.dudz_initial_sorted,
+                &delta_x,
+                &delta_y,
+                &grid.z_sorted().clone(),
+                d_i,
+                hub_height_i,
+                &yaw_arr,
+                &ct_arr,
+                &tsr_arr,
+                &ai_arr,
+                flow_field.wind_shear,
+                2.0,
+            );
+            v_wake = vw;
+            w_wake = ww;
+        }
+
+        // GCH: yaw-added recovery (Python cc: gch_gain=1.0)
+        if model_manager.enable_yaw_added_recovery {
+            let v_i = flow_field
+                .v_sorted
+                .slice(s![.., i..i + 1, .., ..])
+                .to_owned();
+            let w_i = flow_field
+                .w_sorted
+                .slice(s![.., i..i + 1, .., ..])
+                .to_owned();
+            let i_mixing = yaw_added_turbulence_mixing(
+                &u_i,
+                &turbine_turbulence_intensity.slice(s![.., i]).to_owned(),
+                &v_i,
+                &w_i,
+                &v_wake.slice(s![.., i..i + 1, .., ..]).to_owned(),
+                &w_wake.slice(s![.., i..i + 1, .., ..]).to_owned(),
+            );
+            let gch_gain = 1.0;
+            for fi in 0..n_findex {
+                turbine_turbulence_intensity[[fi, i]] += gch_gain * i_mixing[fi];
+            }
+        }
+
+        // Effective yaw per findex including secondary steering (Python cc: scale=2.0)
+        let mut effective_yaw_arr = yaw_i_arr.clone();
         if model_manager.enable_secondary_steering {
             let v_i = flow_field
                 .v_sorted
@@ -1197,27 +1302,27 @@ pub fn cc_solver(
                 flow_field.wind_shear,
                 2.0,
             );
-            effective_yaw += added_yaw[0];
-        }
-
-        // The deflection at each turbine from the source
-        let deflection_field = model_manager.deflection_model.function(
-            x_i_2d.clone(),
-            y_i_2d.clone(),
-            effective_yaw,
-            flow_field.turbulence_intensities[0],
-            turb_cts_2d[[0, i]],
-            d_i,
-            &std::collections::HashMap::new(),
-        )?;
-        // The deflection at the source, broadcast constant (matching the
-        // sequential solver's pattern; ≈0 for the unyawed case)
-        let mut defl_4d = Array::zeros((n_findex, n_turbines, 1, 1));
-        for fi in 0..n_findex {
-            for t in 0..n_turbines {
-                defl_4d[[fi, t, 0, 0]] = deflection_field[[fi, 0]];
+            for fi in 0..n_findex {
+                effective_yaw_arr[fi] += added_yaw[fi];
             }
         }
+
+        // The deflection field of source i at every grid point
+        // (Python cc: per-findex effective yaw/TI/Ct, full-field evaluation)
+        let ti_source: Array1 = (0..n_findex)
+            .map(|fi| turbine_turbulence_intensity[[fi, i]])
+            .collect();
+        let ct_source: Array1 = (0..n_findex).map(|fi| turb_cts_2d[[fi, i]]).collect();
+        let deflection_field = model_manager.deflection_model.function(
+            &x_i_2d,
+            &y_i_2d,
+            &effective_yaw_arr,
+            &ti_source,
+            &ct_source,
+            d_i,
+            grid.x_sorted(),
+            &std::collections::HashMap::new(),
+        )?;
 
         // The cumulative CC model call
         let (new_turb_u_wake, new_ctmp) =
@@ -1229,7 +1334,7 @@ pub fn cc_solver(
                 grid.z_sorted(),
                 &u_i,
                 &flow_field.u_initial_sorted,
-                &defl_4d,
+                &deflection_field,
                 &yaw_i_arr,
                 &turbine_turbulence_intensity,
                 &turb_cts_2d,
@@ -1295,6 +1400,10 @@ pub fn cc_solver(
                 }
             }
         }
+
+        // Add transverse velocities to the flow field (Python cc: v_sorted += v_wake)
+        flow_field.v_sorted += &v_wake;
+        flow_field.w_sorted += &w_wake;
     }
 
     // The final u_sorted is the inflow field (matching Python)
@@ -1447,23 +1556,29 @@ pub fn empirical_gauss_solver(
             mixing_i[fi] = sum_sq.sqrt();
         }
 
-        // Deflection field due to turbine i at each receiving turbine
+        // Deflection field due to turbine i at every grid point
+        // (Python: x_normalized = (x - x_i) evaluated on the full grid)
         let d_i = farm.rotor_diameters_sorted[[0, i]];
-        let mut deflection_y = Array2::zeros((n_findex, n_turbines));
-        let mut deflection_z = Array2::zeros((n_findex, n_turbines));
-        for j in 0..n_turbines {
-            let mut x_dist = Array2::zeros((n_findex, 1));
-            for fi in 0..n_findex {
-                x_dist[[fi, 0]] = x_mean_all[[fi, j]] - x_mean_all[[fi, i]];
-            }
-            let (dy_j, dz_j) = defl_eg.deflection_yz(
-                &x_dist, &yaw_arr, &tilt_arr, &mixing_i, &ct_arr, d_i,
-            );
-            for fi in 0..n_findex {
-                deflection_y[[fi, j]] = dy_j[[fi, 0]];
-                deflection_z[[fi, j]] = dz_j[[fi, 0]];
+        let n_pts = n_turbines * grid_y_dim * grid_z_dim;
+        let mut x_downstream = Array2::zeros((n_findex, n_pts));
+        for fi in 0..n_findex {
+            let mut idx = 0;
+            for ti in 0..n_turbines {
+                for iy in 0..grid_y_dim {
+                    for iz in 0..grid_z_dim {
+                        x_downstream[[fi, idx]] =
+                            grid.x_sorted()[[fi, ti, iy, iz]] - x_mean_all[[fi, i]];
+                        idx += 1;
+                    }
+                }
             }
         }
+        let (dy_flat, dz_flat) =
+            defl_eg.deflection_yz(&x_downstream, &yaw_arr, &tilt_arr, &mixing_i, &ct_arr, d_i);
+        let deflection_y =
+            dy_flat.into_shape_with_order((n_findex, n_turbines, grid_y_dim, grid_z_dim))?;
+        let deflection_z =
+            dz_flat.into_shape_with_order((n_findex, n_turbines, grid_y_dim, grid_z_dim))?;
 
         // Velocity deficit at all grid points due to turbine i (with mixing)
         let velocity_deficit = eg.velocity_deficit_emgauss(
@@ -1532,10 +1647,9 @@ pub fn empirical_gauss_solver(
                 for j in 0..n_turbines {
                     let dist_sq =
                         downstream_distance_d[[fi, j, i]] * downstream_distance_d[[fi, j, i]];
-                    let yaw_term = a_arr[fi]
-                        * defl_eg.yaw_added_mixing_gain
-                        * (1.0 - cosd(yaw_arr[fi]))
-                        / dist_sq;
+                    let yaw_term =
+                        a_arr[fi] * defl_eg.yaw_added_mixing_gain * (1.0 - cosd(yaw_arr[fi]))
+                            / dist_sq;
                     mixing_factor[[fi, j, i]] += area_overlap[[fi, j]] * yaw_term;
                 }
             }

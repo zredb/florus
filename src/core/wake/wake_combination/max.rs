@@ -4,6 +4,7 @@ use crate::core::{FlowField, Grid};
 ///
 /// Takes maximum wake velocity deficit to add to base flow field
 use crate::types::Array4;
+use ndarray::Zip;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy)]
@@ -23,21 +24,9 @@ impl CombinationModel for MAX {
     }
 
     fn function(&self, wake_field: &Array4, velocity_field: &Array4) -> anyhow::Result<Array4> {
-        // Take maximum of wake_field and velocity_field element-wise
-        let shape = wake_field.shape();
-        let mut result = Array4::zeros((shape[0], shape[1], shape[2], shape[3]));
-
-        for f in 0..shape[0] {
-            for t in 0..shape[1] {
-                for y in 0..shape[2] {
-                    for z in 0..shape[3] {
-                        let w_val = wake_field[[f, t, y, z]];
-                        let v_val = velocity_field[[f, t, y, z]];
-                        result[[f, t, y, z]] = w_val.max(v_val);
-                    }
-                }
-            }
-        }
+        let result = Zip::from(wake_field)
+            .and(velocity_field)
+            .map_collect(|&w, &v| w.max(v));
         Ok(result)
     }
 }

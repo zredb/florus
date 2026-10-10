@@ -41,13 +41,17 @@ pub trait VelocityModel {
     /// axial_induction, yaw_angle, turbulence_intensity, thrust_coefficient are
     /// per-findex arrays of shape (n_findex, n_turbines), matching the Python
     /// implementation which broadcasts these as (n_findex, 1, 1, 1).
+    /// deflection_field is the wake-source deflection evaluated at every grid
+    /// point, shape (n_findex, n_turbines, grid_y, grid_z) — matching the
+    /// Python `deflection_field_i` argument.
+    #[allow(clippy::too_many_arguments)]
     fn function(
         &self,
         x: Array4,
         y: Array4,
         z: Array4,
         axial_induction: Array2,
-        deflection_field: Array2,
+        deflection_field: Array4,
         yaw_angle: Array2,
         turbulence_intensity: Array2,
         thrust_coefficient: Array2,
@@ -74,16 +78,31 @@ pub trait DeflectionModel {
     ) -> anyhow::Result<HashMap<String, Array1>>;
 
     /// Main deflection function
+    ///
+    /// Computes the deflection of wake source turbine i at every grid point
+    /// of the flow domain, mirroring the Python call
+    /// `deflection_model.function(x_i, y_i, yaw_i, ti_i, ct_i, D, x=grid.x_sorted, ...)`.
+    ///
+    /// * `x_i`, `y_i`: source turbine mean position, shape `[n_findex, 1]`
+    /// * `yaw_i`: per-findex effective yaw [deg], shape `[n_findex]`
+    /// * `turbulence_intensity_i`: per-findex TI at the source, shape `[n_findex]`
+    /// * `thrust_coefficient_i`: per-findex Ct of the source, shape `[n_findex]`
+    /// * `rotor_diameter`: source rotor diameter (scalar)
+    /// * `grid_x`: full grid x-coordinates, shape `[n_findex, n_turbines, grid_y, grid_z]`
+    ///
+    /// Returns: deflection field, shape `[n_findex, n_turbines, grid_y, grid_z]`
+    #[allow(clippy::too_many_arguments)]
     fn function(
         &self,
-        x: Array2,
-        y: Array2,
-        yaw_angle: Float,
-        turbulence_intensity: Float,
-        thrust_coefficient: Float,
+        x_i: &Array2,
+        y_i: &Array2,
+        yaw_i: &Array1,
+        turbulence_intensity_i: &Array1,
+        thrust_coefficient_i: &Array1,
         rotor_diameter: Float,
+        grid_x: &Array4,
         model_args: &HashMap<String, Array1>,
-    ) -> anyhow::Result<Array2>;
+    ) -> anyhow::Result<Array4>;
 
     /// Clone into a boxed trait object
     fn clone_box(&self) -> Box<dyn DeflectionModel>;

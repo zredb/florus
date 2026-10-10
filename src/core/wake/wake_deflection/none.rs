@@ -3,7 +3,7 @@ use crate::core::{FlowField, Grid};
 /// None wake deflection model
 ///
 /// No wake deflection - wakes propagate straight downstream
-use crate::types::{Array1, Array2, Float};
+use crate::types::{Array1, Array2, Array4, Float};
 use ndarray::Array;
 use std::collections::HashMap;
 
@@ -46,16 +46,17 @@ impl DeflectionModel for NoneVelocityDeflection {
 
     fn function(
         &self,
-        x: Array2,
-        _y: Array2,
-        _yaw_angle: Float,
-        _turbulence_intensity: Float,
-        _thrust_coefficient: Float,
+        _x_i: &Array2,
+        _y_i: &Array2,
+        _yaw_i: &Array1,
+        _turbulence_intensity_i: &Array1,
+        _thrust_coefficient_i: &Array1,
         _rotor_diameter: Float,
+        grid_x: &Array4,
         _model_args: &HashMap<String, Array1>,
-    ) -> anyhow::Result<Array2> {
-        // Return zeros with same shape as x
-        let shape = x.shape();
-        Ok(Array::zeros((shape[0], shape[1])))
+    ) -> anyhow::Result<Array4> {
+        // Return zeros with same shape as the grid
+        let shape = grid_x.shape();
+        Ok(Array::zeros((shape[0], shape[1], shape[2], shape[3])))
     }
 }

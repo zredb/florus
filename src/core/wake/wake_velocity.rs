@@ -9,6 +9,7 @@ pub mod gauss_legacy;
 pub mod jensen;
 pub mod none;
 pub mod turbopark;
+pub mod turbopark_lookup_matlab;
 pub mod turboparkgauss;
 
 pub use cumulative_gauss_curl::CumulativeCurlVelocityDeficit;

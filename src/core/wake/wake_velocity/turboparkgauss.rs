@@ -92,12 +92,12 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
         x: Array4,
         y: Array4,
         z: Array4,
-        axial_induction: Array2,
-        deflection_field: Array2,
+        _axial_induction: Array2,
+        _deflection_field: Array4,
         _yaw_angle: Array2,
         turbulence_intensity: Array2,
         thrust_coefficient: Array2,
-        hub_height: Float,
+        _hub_height: Float,
         rotor_diameter: Float,
         turbine_index: usize,
         _model_args: &HashMap<String, Array4>,
@@ -111,63 +111,75 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
         for fi in 0..n_findex {
-            // Per-findex wake source position (rotated coordinates differ per findex)
-            let x_wake_source = x[[fi, turbine_index, 0, 0]];
-            let y_wake_source = y[[fi, turbine_index, 0, 0]];
-
-            // Turbine upstream of reference point (x < 0) doesn't generate a wake
-            if x_wake_source < 0.0 {
-                continue;
-            }
-
-            // Get deflection at the wake source turbine
-            let deflection_at_source = deflection_field[[fi, turbine_index]];
-
-            let epsilon = calculate_epsilon(thrust_coefficient[[fi, turbine_index]]);
-            let a_i = axial_induction[[fi, turbine_index]];
             let ti_i = turbulence_intensity[[fi, turbine_index]];
             let ct_i = thrust_coefficient[[fi, turbine_index]];
+
+            // Compute mean position of the source turbine (matches Python solver.py
+            // x_i = np.mean(grid.x_sorted[:, i:i+1], axis=(2, 3), keepdims=True))
+            let mut x_source_sum = 0.0;
+            let mut y_source_sum = 0.0;
+            let mut z_source_sum = 0.0;
+            let grid_points = (n_y * n_z) as Float;
+            for iy in 0..n_y {
+                for iz in 0..n_z {
+                    x_source_sum += x[[fi, turbine_index, iy, iz]];
+                    y_source_sum += y[[fi, turbine_index, iy, iz]];
+                    z_source_sum += z[[fi, turbine_index, iy, iz]];
+                }
+            }
+            let x_source_mean = x_source_sum / grid_points;
+            let y_source_mean = y_source_sum / grid_points;
+            let z_source_mean = z_source_sum / grid_points;
 
             for ti in 0..n_turbines {
                 for iy in 0..n_y {
                     for iz in 0..n_z {
                         let x_point = x[[fi, ti, iy, iz]];
+                        let dx = x_point - x_source_mean;
 
-                        if x_point <= x_wake_source {
+                        if dx <= 0.0 {
                             continue;
                         }
 
                         let y_point = y[[fi, ti, iy, iz]];
                         let z_point = z[[fi, ti, iy, iz]];
 
-                        let wake_center_y =
-                            y_wake_source + deflection_at_source * (x_point - x_wake_source);
-                        let dy = (y_point - wake_center_y).abs();
-                        let dz = z_point - hub_height;
-                        let r = (dy.powi(2) + dz.powi(2)).sqrt();
+                        let x_dist = dx / rotor_diameter;
 
-                        let x_dist = (x_point - x_wake_source) / rotor_diameter;
                         let dw = turboparkgauss_wake_width(x_dist, ti_i, ct_i, self.a);
-                        let sigma = (self.a * ti_i + epsilon + dw).max(epsilon);
+                        let epsilon = calculate_epsilon(ct_i);
+                        let sigma = (epsilon + dw).max(1e-10);
                         let wake_width = sigma * rotor_diameter;
 
-                        if wake_width > 0.0 {
-                            let exponent = -r.powi(2) / (2.0 * wake_width.powi(2));
-                            let profile = exponent.exp();
+                        if wake_width <= 0.0 {
+                            continue;
+                        }
 
-                            let deficit_max = 2.0 * a_i / (1.0 + a_i);
-                            velocity_deficit[[fi, ti, iy, iz]] = deficit_max * profile;
+                        let ct_clipped = ct_i.clamp(0.0001, 0.9999);
+                        let c_val =
+                            1.0 - (1.0 - ct_clipped / (8.0 * sigma * sigma)).max(0.0).sqrt();
 
-                            if self.include_mirror_wake {
-                                let z_ground = -hub_height;
-                                let dz_mirror = z_point - z_ground;
-                                let r_mirror = (dy.powi(2) + dz_mirror.powi(2)).sqrt();
-                                let exponent_mirror =
-                                    -r_mirror.powi(2) / (2.0 * wake_width.powi(2));
-                                let profile_mirror = exponent_mirror.exp();
-                                velocity_deficit[[fi, ti, iy, iz]] +=
-                                    deficit_max * 0.5 * profile_mirror;
-                            }
+                        let dy = y_point - y_source_mean;
+                        let dz = z_point - z_source_mean;
+                        let r_real_sq = dy * dy + dz * dz;
+                        let delta_real = if x_dist > 0.0 {
+                            c_val * (-r_real_sq / (2.0 * wake_width * wake_width)).exp()
+                        } else {
+                            0.0
+                        };
+
+                        if self.include_mirror_wake {
+                            let dz_mirror = z_point - 3.0 * z_source_mean;
+                            let r_image_sq = dy * dy + dz_mirror * dz_mirror;
+                            let delta_image = if x_dist > 0.0 {
+                                c_val * (-r_image_sq / (2.0 * wake_width * wake_width)).exp()
+                            } else {
+                                0.0
+                            };
+                            velocity_deficit[[fi, ti, iy, iz]] =
+                                (delta_real * delta_real + delta_image * delta_image).sqrt();
+                        } else {
+                            velocity_deficit[[fi, ti, iy, iz]] = delta_real;
                         }
                     }
                 }

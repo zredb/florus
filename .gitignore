@@ -3,6 +3,7 @@
 /floris-4.6.4
 /floris/
 /.omo/
+__pycache__/
 /examples/outputs/*
 output/*.png
 /*.png
