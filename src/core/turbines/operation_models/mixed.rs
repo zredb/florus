@@ -1,19 +1,104 @@
 //! Mixed operation turbine model
 //!
-//! Combines yaw derating and power setpoints for mixed control
-//! If yaw angle is non-zero, use yaw control (CosineLossTurbine)
-//! If power setpoint is set, use derating control (SimpleDeratingTurbine)
-//! Otherwise use simple control (SimpleTurbine)
+//! Port of Python MixedOperationTurbine (operation_models.py:383-507):
+//! dispatches per (findex, turbine) between yaw control (CosineLossTurbine),
+//! power-setpoint control (SimpleDeratingTurbine) and plain SimpleTurbine.
+//! Disabled turbines (setpoint <= POWER_SETPOINT_DISABLED) get their yaw
+//! zeroed; a turbine with BOTH a nonzero yaw and an active setpoint raises.
 
+use crate::core::turbines::operation_models::cosine_loss::CosineLossTurbine;
 use crate::core::turbines::operation_models::simple::SimpleTurbine;
 use crate::core::turbines::operation_models::simple_derating::SimpleDeratingTurbine;
 use crate::core::turbines::operation_models::OperationModel;
-use crate::core::turbines::POWER_SETPOINT_DEFAULT;
+use crate::core::turbines::{POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED};
 use crate::core::{TurbineContext, TurbineParameters};
 use crate::types::Array2;
 
 #[derive(Debug, Clone, Default)]
 pub struct MixedOperationTurbine;
+
+/// Masks returned by `handle_mixed_operation_setpoints` (Python
+/// `_handle_mixed_operation_setpoints`, operation_models.py:482-507).
+struct MixedMasks {
+    yaw_mask: ndarray::Array2<bool>,
+    setpoint_mask: ndarray::Array2<bool>,
+    neither_mask: ndarray::Array2<bool>,
+}
+
+/// Zero the yaw of disabled turbines, build the dispatch masks, and raise on
+/// incompatible yaw + setpoint combinations (Python raises ValueError).
+fn handle_mixed_operation_setpoints(
+    yaw_angles: &Array2,
+    power_setpoints: &Array2,
+) -> crate::Result<(Array2, MixedMasks)> {
+    let mut yaw = yaw_angles.clone();
+    let (n_findex, n_turbines) = yaw.dim();
+
+    // Disabled turbines operate with zero yaw
+    for fi in 0..n_findex {
+        for ti in 0..n_turbines {
+            if power_setpoints[[fi, ti]] <= POWER_SETPOINT_DISABLED {
+                yaw[[fi, ti]] = 0.0;
+            }
+        }
+    }
+
+    let mut yaw_mask = ndarray::Array2::<bool>::from_elem((n_findex, n_turbines), false);
+    let mut setpoint_mask = ndarray::Array2::<bool>::from_elem((n_findex, n_turbines), false);
+    let mut neither_mask = ndarray::Array2::<bool>::from_elem((n_findex, n_turbines), false);
+
+    for fi in 0..n_findex {
+        for ti in 0..n_turbines {
+            let is_yaw = yaw[[fi, ti]] != 0.0;
+            let is_setpoint = power_setpoints[[fi, ti]] < POWER_SETPOINT_DEFAULT;
+            if is_yaw && is_setpoint {
+                anyhow::bail!(
+                    "Power setpoints and yaw angles are incompatible. If yaw_angles entry \
+                     is nonzero, power_setpoints must be greater than or equal to {}.",
+                    POWER_SETPOINT_DEFAULT
+                );
+            }
+            yaw_mask[[fi, ti]] = is_yaw;
+            setpoint_mask[[fi, ti]] = is_setpoint;
+            neither_mask[[fi, ti]] = !is_yaw && !is_setpoint;
+        }
+    }
+
+    Ok((
+        yaw,
+        MixedMasks {
+            yaw_mask,
+            setpoint_mask,
+            neither_mask,
+        },
+    ))
+}
+
+impl MixedOperationTurbine {
+    /// Dispatch a sub-model over the given mask: run it on the full context
+    /// and scatter its values into the masked positions (Python builds the
+    /// sub-model's full array and indexes it with the mask).
+    fn dispatch(
+        masks: &MixedMasks,
+        call: impl Fn() -> crate::Result<Array2>,
+        mask_of: fn(&MixedMasks) -> &ndarray::Array2<bool>,
+    ) -> crate::Result<Array2> {
+        let mask = mask_of(masks);
+        let (n_findex, n_turbines) = mask.dim();
+        let mut result = ndarray::Array::zeros((n_findex, n_turbines));
+        if mask.iter().any(|x| *x) {
+            let sub = call()?;
+            for fi in 0..n_findex {
+                for ti in 0..n_turbines {
+                    if mask[[fi, ti]] {
+                        result[[fi, ti]] = sub[[fi, ti]];
+                    }
+                }
+            }
+        }
+        Ok(result)
+    }
+}
 
 impl OperationModel for MixedOperationTurbine {
     fn model_name(&self) -> &'static str {
@@ -27,91 +112,45 @@ impl OperationModel for MixedOperationTurbine {
         let power_setpoints = ctx
             .power_setpoints
             .ok_or_else(|| anyhow::anyhow!("Power setpoints required for MixedOperationTurbine"))?;
+        let (yaw, masks) = handle_mixed_operation_setpoints(yaw_angles, power_setpoints)?;
 
-        let n_findex = ctx.air_density.len();
-        let n_turbines = ctx.n_turbines();
+        // Yaw-controlled: CosineLossTurbine.power with the (zeroed) yaw
+        let yaw_result = Self::dispatch(
+            &masks,
+            || {
+                let mut sub_ctx = ctx.clone();
+                sub_ctx.yaw_angles = Some(&yaw);
+                sub_ctx.power_setpoints = None;
+                CosineLossTurbine.power(params, &sub_ctx)
+            },
+            |m| &m.yaw_mask,
+        )?;
 
-        // Create masks
-        let mut yaw_mask = ndarray::Array::from_elem((n_findex, n_turbines), false);
-        let mut derating_mask = ndarray::Array::from_elem((n_findex, n_turbines), false);
-        let mut simple_mask = ndarray::Array::from_elem((n_findex, n_turbines), true);
+        // Setpoint-controlled: SimpleDeratingTurbine.power
+        let derating_result = Self::dispatch(
+            &masks,
+            || {
+                let mut sub_ctx = ctx.clone();
+                sub_ctx.yaw_angles = Some(&yaw);
+                sub_ctx.power_setpoints = Some(power_setpoints);
+                SimpleDeratingTurbine.power(params, &sub_ctx)
+            },
+            |m| &m.setpoint_mask,
+        )?;
 
-        for i in 0..n_findex {
-            for j in 0..n_turbines {
-                // Check if yaw angle is non-zero (use yaw control)
-                if yaw_angles[[i, j]] != 0.0 {
-                    yaw_mask[[i, j]] = true;
-                    derating_mask[[i, j]] = false;
-                    simple_mask[[i, j]] = false;
-                } else {
-                    simple_mask[[i, j]] = true;
-                    derating_mask[[i, j]] = false;
-                    yaw_mask[[i, j]] = false;
-                }
+        // Neither: SimpleTurbine.power
+        let simple_result = Self::dispatch(
+            &masks,
+            || {
+                let mut sub_ctx = ctx.clone();
+                sub_ctx.yaw_angles = Some(&yaw);
+                sub_ctx.power_setpoints = None;
+                SimpleTurbine.power(params, &sub_ctx)
+            },
+            |m| &m.neither_mask,
+        )?;
 
-                // Check if power setpoint is set (use derating control)
-                if power_setpoints[[i, j]] < POWER_SETPOINT_DEFAULT {
-                    yaw_mask[[i, j]] = false;
-                    derating_mask[[i, j]] = true;
-                    simple_mask[[i, j]] = false;
-                }
-            }
-        }
-
-        // Initialize result array
-        let mut result = ndarray::Array::zeros((n_findex, n_turbines));
-
-        // Get yaw-controlled power
-        if yaw_mask.iter().any(|x| *x) {
-            let mut yaw_ctx = ctx.clone();
-            yaw_ctx.yaw_angles = Some(yaw_angles);
-            yaw_ctx.power_setpoints = None;
-            let cosine = crate::core::turbines::operation_models::cosine_loss::CosineLossTurbine;
-            let yaw_power = cosine.power(&params, &yaw_ctx)?;
-
-            for i in 0..n_findex {
-                for j in 0..n_turbines {
-                    if yaw_mask[[i, j]] {
-                        result[[i, j]] = yaw_power[[i, j]];
-                    }
-                }
-            }
-        }
-
-        // Get derating-controlled power
-        if derating_mask.iter().any(|x| *x) {
-            let mut derating_ctx = ctx.clone();
-            derating_ctx.power_setpoints = Some(power_setpoints);
-            let zero_yaw = ndarray::Array::zeros((n_findex, n_turbines));
-            derating_ctx.yaw_angles = Some(&zero_yaw);
-            let simple_derating =
-                crate::core::turbines::operation_models::simple_derating::SimpleDeratingTurbine;
-            let derating_power = simple_derating.power(&params, &derating_ctx)?;
-
-            for i in 0..n_findex {
-                for j in 0..n_turbines {
-                    if derating_mask[[i, j]] {
-                        result[[i, j]] = derating_power[[i, j]];
-                    }
-                }
-            }
-        }
-
-        // Get simple power (no yaw, no derating)
-        if simple_mask.iter().any(|x| *x) {
-            let simple = crate::core::turbines::operation_models::simple::SimpleTurbine;
-            let simple_power = simple.power(&params, ctx)?;
-
-            for i in 0..n_findex {
-                for j in 0..n_turbines {
-                    if simple_mask[[i, j]] {
-                        result[[i, j]] = simple_power[[i, j]];
-                    }
-                }
-            }
-        }
-
-        Ok(result)
+        Ok(yaw_result + derating_result + simple_result)
     }
 
     fn thrust_coefficient(
@@ -125,52 +164,48 @@ impl OperationModel for MixedOperationTurbine {
         let power_setpoints = ctx
             .power_setpoints
             .ok_or_else(|| anyhow::anyhow!("Power setpoints required for MixedOperationTurbine"))?;
+        let (yaw, masks) = handle_mixed_operation_setpoints(yaw_angles, power_setpoints)?;
 
-        let n_findex = ctx.air_density.len();
-        let n_turbines = ctx.n_turbines();
+        // Yaw-controlled: CosineLossTurbine.thrust_coefficient (applies the
+        // cosd(yaw)*cosd(tilt)/cosd(ref_tilt) correction — previously the
+        // mixed model gave yaw-controlled turbines the plain Simple Ct, Bug #36)
+        let yaw_result = Self::dispatch(
+            &masks,
+            || {
+                let mut sub_ctx = ctx.clone();
+                sub_ctx.yaw_angles = Some(&yaw);
+                sub_ctx.power_setpoints = None;
+                CosineLossTurbine.thrust_coefficient(params, &sub_ctx)
+            },
+            |m| &m.yaw_mask,
+        )?;
 
-        // Create masks
-        let mut yaw_mask = ndarray::Array::from_elem((n_findex, n_turbines), false);
-        let mut derating_mask = ndarray::Array::from_elem((n_findex, n_turbines), false);
+        // Setpoint-controlled: SimpleDeratingTurbine.thrust_coefficient
+        // (linear power-fraction scaling with a base-Ct cap, Bug #29)
+        let derating_result = Self::dispatch(
+            &masks,
+            || {
+                let mut sub_ctx = ctx.clone();
+                sub_ctx.yaw_angles = Some(&yaw);
+                sub_ctx.power_setpoints = Some(power_setpoints);
+                SimpleDeratingTurbine.thrust_coefficient(params, &sub_ctx)
+            },
+            |m| &m.setpoint_mask,
+        )?;
 
-        for i in 0..n_findex {
-            for j in 0..n_turbines {
-                // Check if yaw angle is non-zero
-                if yaw_angles[[i, j]] != 0.0 {
-                    yaw_mask[[i, j]] = true;
-                    derating_mask[[i, j]] = false;
-                }
-            }
+        // Neither: SimpleTurbine.thrust_coefficient
+        let simple_result = Self::dispatch(
+            &masks,
+            || {
+                let mut sub_ctx = ctx.clone();
+                sub_ctx.yaw_angles = Some(&yaw);
+                sub_ctx.power_setpoints = None;
+                SimpleTurbine.thrust_coefficient(params, &sub_ctx)
+            },
+            |m| &m.neither_mask,
+        )?;
 
-            // Check if power setpoint is set
-            for j in 0..n_turbines {
-                if power_setpoints[[i, j]] < POWER_SETPOINT_DEFAULT {
-                    derating_mask[[i, j]] = true;
-                }
-            }
-        }
-
-        // Get base thrust coefficient from SimpleTurbine
-        let simple = crate::core::turbines::operation_models::simple::SimpleTurbine;
-        let base_ct = simple.thrust_coefficient(params, ctx)?;
-
-        // Apply derating effect if needed
-        let mut result = base_ct.clone();
-        if derating_mask.iter().any(|x| *x) {
-            let base_powers = simple.power(params, ctx)?;
-
-            for i in 0..n_findex {
-                for j in 0..n_turbines {
-                    if derating_mask[[i, j]] {
-                        // Scale Ct by power^(2/3) as in simple derating model
-                        let power_ratio = power_setpoints[[i, j]] / base_powers[[i, j]];
-                        result[[i, j]] = base_ct[[i, j]] * power_ratio.powf(2.0 / 3.0);
-                    }
-                }
-            }
-        }
-
-        Ok(result)
+        Ok(yaw_result + derating_result + simple_result)
     }
 
     fn axial_induction(
@@ -178,8 +213,48 @@ impl OperationModel for MixedOperationTurbine {
         params: &TurbineParameters,
         ctx: &TurbineContext,
     ) -> crate::Result<Array2> {
-        let ct = self.thrust_coefficient(params, ctx)?;
-        Ok(crate::core::turbines::operation_models::helpers::axial_induction_from_ct(&ct))
+        let yaw_angles = ctx
+            .yaw_angles
+            .ok_or_else(|| anyhow::anyhow!("Yaw angles required for MixedOperationTurbine"))?;
+        let power_setpoints = ctx
+            .power_setpoints
+            .ok_or_else(|| anyhow::anyhow!("Power setpoints required for MixedOperationTurbine"))?;
+        let (yaw, masks) = handle_mixed_operation_setpoints(yaw_angles, power_setpoints)?;
+
+        let yaw_result = Self::dispatch(
+            &masks,
+            || {
+                let mut sub_ctx = ctx.clone();
+                sub_ctx.yaw_angles = Some(&yaw);
+                sub_ctx.power_setpoints = None;
+                CosineLossTurbine.axial_induction(params, &sub_ctx)
+            },
+            |m| &m.yaw_mask,
+        )?;
+
+        let derating_result = Self::dispatch(
+            &masks,
+            || {
+                let mut sub_ctx = ctx.clone();
+                sub_ctx.yaw_angles = Some(&yaw);
+                sub_ctx.power_setpoints = Some(power_setpoints);
+                SimpleDeratingTurbine.axial_induction(params, &sub_ctx)
+            },
+            |m| &m.setpoint_mask,
+        )?;
+
+        let simple_result = Self::dispatch(
+            &masks,
+            || {
+                let mut sub_ctx = ctx.clone();
+                sub_ctx.yaw_angles = Some(&yaw);
+                sub_ctx.power_setpoints = None;
+                SimpleTurbine.axial_induction(params, &sub_ctx)
+            },
+            |m| &m.neither_mask,
+        )?;
+
+        Ok(yaw_result + derating_result + simple_result)
     }
 
     fn clone_box(&self) -> Box<dyn OperationModel> {

@@ -445,25 +445,35 @@ Rust 原以 2D 标量近似:中心点 wake_added + 均值掩码,且湍流场不�
 
 ---
 
-## Bug #35: peak-shaving 操作模型损坏 ⏸
+## Bug #35: peak-shaving 操作模型损坏 + TI/setpoint 接线全缺 + 操作模型测试基建无效 ✅
 
-**File**: `src/core/turbines/operation_models/peak_shaving.rs`
-**Symptom**: ① `peak_shaving_ai = base_ais`(89 行)→ power_fraction 恒 1,削峰永不生效;② 依赖 `ctx.turbulence_intensities` 但全库无一处 `Some` → 求解器路径直接报错;③ Python 用逐点 WAT 掩码 TI(operation_models.py:708-717),Rust 用网格均值。
-**计划**: 需按 Python 626-740 重写,并打通 TI → TurbineContext 的接线(连带 Farm 方法签名)。
+**Files**: `src/core/turbines/operation_models/peak_shaving.rs`(重写)、`simple.rs`/`cosine_loss.rs`(Ct 密度修正移除)、`mixed.rs`(见 #36)、`src/core/turbines/turbine.rs`、`src/core/farm.rs`、`src/core/solver.rs`(接线)、`tests/cross_validation_operation.rs`(测试重写)、`tests/generate_golden_values.py`(高 TI 黄金值)
+**Symptom**: ① `peak_shaving_ai = base_ais` 使功率折减恒为 1(削峰永不生效);② `ctx.turbulence_intensities` 全库无一处 `Some` → 求解器路径调用 peak-shaving 直接报错;③ **8 个操作模型测试全部无效**——`create_operation_config(name)` 从未使用模型名(全跑 nrel YAML 默认模型)、功率走内联 Cp 查表绕过操作模型、25%/50kW 超松容差——损坏的 peak-shaving 照样"通过";④ 测试配置 shear=0/ref_height=138.6 与生成器(shear=0.12/ref_height=90/网格2)不匹配。
+**Root cause(Python 基准)**: PeakShavingTurbine(operation_models.py:626-740):ct = min(base_ct, (1−fraction)·max(ws²·Ct)/v²),TI 掩码 `mean(TI,axis=(2,3)) >= peak_shaving_TI_threshold`;power = base_power·(ps_ct·(1−ps_ai))/(base_ct·(1−base_ai));且 SimpleTurbine/CosineLoss 的 **Ct 查表无密度修正**(Python TODO 处,仅 power 有 (1/3) 修正)——Rust 多加了 (1/2) 修正。
+**Fix**:
+- peak_shaving 按公式重写(转子平均 TI、min、TI 掩码、ps_ct/ps_ai 功率分数,无密度修正)。
+- **接线**:Turbine/Farm 的 power/thrust_coefficient/axial_induction 增加 `turbulence_intensities: Option<&Array4>` 与 `power_setpoints: Option<&Array2>` 参数,ctx 从 None 改为透传;5 个求解器 11 处调用传 `Some(&flow_field.turbulence_intensity_field_sorted)` / `Some(&farm.power_setpoints_sorted)`——同时修复"setpoint 不进求解器 Ct"(禁用/derating 风机现在影响尾流,Python 语义)与"mixed 模型求解器路径缺 setpoints 即报错"。
+- simple/cosine_loss 的 Ct 移除 `(ρ/ρ_ref)^(1/2)` 修正(默认 ρ 下无测试影响)。
+- **测试重写**:`compute_powers_model` 真正调用 `set_operation_model` + 功率经 `Farm::power` 走操作模型;配置对齐生成器;simple/cosine-loss/peak-shaving/mixed/derating 全部收紧到 **1e-5**;新增判别用例 `peak_shaving_high_ti`(TI=0.15 > nrel 阈值 0.1,削峰实际触发,~12% 功率折减)与 `derating_3MW`(3MW setpoint,验证 #29 线性公式);cosine-loss 补 yaw=10°(对齐生成器)。
+**Validation**: 操作模型测试 11 过 + 1 ignore;`peak_shaving_high_ti` 与 `derating_3MW` 与 Python 逐位一致(1e-5 内);既有 12 项 wake 交叉验证残差逐位不变(gauss 族 ~1e-13%);337 lib 全绿;clippy 基线 20→**19**(peak_shaving 自赋值 lint 随重写消失);fmt 干净。
+**影响**: unified-momentum 测试激活占位实现后如实失败(72% 偏差),已 `#[ignore]` 标注待 #37 移植;AGENTS.md 的"禁用涡轮不影响尾流"限制随 setpoint 接线消除(默认 setpoint=1e12 时无行为变化)。
 
 ---
 
-## Bug #36: mixed 操作模型三处偏差 ⏸
+## Bug #36: mixed 操作模型三处偏差 ✅
 
-**File**: `src/core/turbines/operation_models/mixed.rs`
-**Symptom**: ① yaw 与 setpoint 并存时 Python 报错(operation_models.py:499-504),Rust 静默取 derating 优先;② yaw 控制涡轮的 thrust_coefficient 缺余弦修正(Python 分 mask 调 CosineLoss);③ 缺 `POWER_SETPOINT_DISABLED` 置零 yaw 逻辑(Py 491)。
+**File**: `src/core/turbines/operation_models/mixed.rs`(重写)
+**Root cause(Python 基准)**: Python MixedOperationTurbine(operation_models.py:383-507)按掩码分发:禁用(setpoint ≤ 0.001)先置零 yaw;yaw≠0 → CosineLoss(含余弦修正);setpoint < 1e12 → SimpleDerating(线性 Ct + min);两者皆有 → **报错**;都无 → Simple。Rust 旧实现:① 不报冲突错误(静默取 derating);② thrust_coefficient 的 yaw 掩码涡轮**缺余弦修正**(直接用 Simple ct);③ derating 用内联 `ratio^(2/3)` 旧公式(未随 #29 修复);④ 缺禁用置零逻辑。
+**Fix**: 按 Python 重写:共享 `handle_mixed_operation_setpoints`(置零 + 三掩码 + 冲突 bail),power/thrust_coefficient/axial_induction 均经掩码分发到对应子模型;依赖 #35 的 setpoint 接线(求解器路径现可运行 mixed)。
+**Validation**: mixed 黄金值测试(默认 setpoint=1e12 → all-neither 路径)1e-5 内通过;`Farm::power` 路径走操作模型验证。
 
 ---
 
 ## Bug #37: awc / unified-momentum / controller-dependent 为占位实现 ⏸
 
 **Files**: `awc.rs`(委托 CosineLoss;Python 有 `base×(1−(b+c·base)·amp^a)` 公式,operation_models.py:522-523)、`unified_momentum.rs`(自创简化式且有 2 处公式错误:84 行应 ÷(2·cos²γ)、214 行 √…/(2cos²γ) 丢失 `1−`;Python 为 Heck 迭代求解器)、`controller_dependent.rs`(委托 CosineLoss;Python 为 TUM fsolve 叶素模型)。
-**计划**: 需按 Python 各自模块完整移植。
+**状态更新(随 #35)**: 操作模型测试现已真正激活各模型——awc(baseline 无幅值时退化为 cosine-loss)与 controller-dependent 在松容差(25%)下通过;**unified-momentum 如实失败(72% 偏差),已 `#[ignore]` 标注**,待移植后恢复。
+**计划**: 需按 Python 各自模块完整移植,并打通 `awc_amplitudes` → TurbineContext 接线。
 
 ---
 

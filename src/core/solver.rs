@@ -154,6 +154,8 @@ pub fn sequential_solver(
             flow_field.air_density,
             Some(&farm.yaw_angles_sorted),
             Some(&farm.tilt_angles_sorted),
+            Some(&flow_field.turbulence_intensity_field_sorted),
+            Some(&farm.power_setpoints_sorted),
             grid.average_method(),
         )?;
 
@@ -162,6 +164,8 @@ pub fn sequential_solver(
             flow_field.air_density,
             Some(&farm.yaw_angles_sorted),
             Some(&farm.tilt_angles_sorted),
+            Some(&flow_field.turbulence_intensity_field_sorted),
+            Some(&farm.power_setpoints_sorted),
             grid.average_method(),
         )?;
 
@@ -546,6 +550,8 @@ pub fn turbopark_solver(
             flow_field.air_density,
             Some(&farm.yaw_angles_sorted),
             Some(&farm.tilt_angles_sorted),
+            Some(&flow_field.turbulence_intensity_field_sorted),
+            Some(&farm.power_setpoints_sorted),
             grid.average_method(),
         )?;
 
@@ -645,6 +651,8 @@ pub fn turbopark_solver(
             flow_field.air_density,
             Some(&farm.yaw_angles_sorted),
             Some(&farm.tilt_angles_sorted),
+            Some(&flow_field.turbulence_intensity_field_sorted),
+            Some(&farm.power_setpoints_sorted),
             grid.average_method(),
         )?;
 
@@ -840,6 +848,8 @@ pub fn full_flow_sequential_solver(
             turbine_grid_flow_field.air_density,
             Some(&turbine_grid_farm.yaw_angles_sorted),
             Some(&turbine_grid_farm.tilt_angles_sorted),
+            Some(&turbine_grid_flow_field.turbulence_intensity_field_sorted),
+            Some(&turbine_grid_farm.power_setpoints_sorted),
             turbine_grid.average_method(),
         )?;
         let a_all = turbine_grid_farm.axial_induction(
@@ -847,6 +857,8 @@ pub fn full_flow_sequential_solver(
             turbine_grid_flow_field.air_density,
             Some(&turbine_grid_farm.yaw_angles_sorted),
             Some(&turbine_grid_farm.tilt_angles_sorted),
+            Some(&turbine_grid_flow_field.turbulence_intensity_field_sorted),
+            Some(&turbine_grid_farm.power_setpoints_sorted),
             turbine_grid.average_method(),
         )?;
 
@@ -1202,6 +1214,8 @@ pub fn cc_solver(
         flow_field.air_density,
         Some(&farm.yaw_angles_sorted),
         Some(&farm.tilt_angles_sorted),
+        Some(&flow_field.turbulence_intensity_field_sorted),
+        Some(&farm.power_setpoints_sorted),
         grid.average_method(),
     )?;
 
@@ -1269,6 +1283,8 @@ pub fn cc_solver(
             flow_field.air_density,
             Some(&farm.yaw_angles_sorted),
             Some(&farm.tilt_angles_sorted),
+            Some(&flow_field.turbulence_intensity_field_sorted),
+            Some(&farm.power_setpoints_sorted),
             grid.average_method(),
         )?;
         let turb_ais_2d = farm.axial_induction(
@@ -1276,6 +1292,8 @@ pub fn cc_solver(
             flow_field.air_density,
             Some(&farm.yaw_angles_sorted),
             Some(&farm.tilt_angles_sorted),
+            Some(&flow_field.turbulence_intensity_field_sorted),
+            Some(&farm.power_setpoints_sorted),
             grid.average_method(),
         )?;
 
@@ -1636,6 +1654,8 @@ pub fn empirical_gauss_solver(
             flow_field.air_density,
             Some(&farm.yaw_angles_sorted),
             Some(&farm.tilt_angles_sorted),
+            Some(&flow_field.turbulence_intensity_field_sorted),
+            Some(&farm.power_setpoints_sorted),
             grid.average_method(),
         )?;
         let a_all = farm.axial_induction(
@@ -1643,6 +1663,8 @@ pub fn empirical_gauss_solver(
             flow_field.air_density,
             Some(&farm.yaw_angles_sorted),
             Some(&farm.tilt_angles_sorted),
+            Some(&flow_field.turbulence_intensity_field_sorted),
+            Some(&farm.power_setpoints_sorted),
             grid.average_method(),
         )?;
 

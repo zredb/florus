@@ -99,14 +99,12 @@ impl OperationModel for CosineLossTurbine {
         let mut thrust_coeff = ndarray::Array::zeros((n_findex, n_turbines));
         for i in 0..n_findex {
             for j in 0..n_turbines {
+                // Python CosineLossTurbine.thrust_coefficient builds on
+                // SimpleTurbine.thrust_coefficient, which has NO air-density
+                // correction on the Ct lookup (Bug #35).
                 let vel = rotor_avg_velocities[[i, j]];
 
-                // Apply air density correction for thrust (uses 1/2 power because thrust ~ v²)
-                let air_density_correction =
-                    (ctx.air_density[i] / params.ref_air_density).powf(1.0 / 2.0);
-                let effective_vel = vel * air_density_correction;
-
-                let ct = params.thrust_table.interpolate(effective_vel);
+                let ct = params.thrust_table.interpolate(vel);
                 thrust_coeff[[i, j]] = ct.clamp(0.0001, 0.9999);
 
                 // Apply yaw/tilt corrections (Python CosineLossTurbine.
@@ -148,17 +146,11 @@ impl OperationModel for CosineLossTurbine {
         let mut base_ct = ndarray::Array::zeros((n_findex, n_turbines));
         for i in 0..n_findex {
             for j in 0..n_turbines {
+                // No air-density correction on the Ct lookup (Python
+                // SimpleTurbine.thrust_coefficient, Bug #35)
                 let vel = rotor_avg_velocities[[i, j]];
 
-                // Apply air density correction for thrust
-                let air_density_correction =
-                    (ctx.air_density[i] / params.ref_air_density).powf(1.0 / 2.0);
-                let effective_vel = vel * air_density_correction;
-
-                base_ct[[i, j]] = params
-                    .thrust_table
-                    .interpolate(effective_vel)
-                    .clamp(0.0001, 0.9999);
+                base_ct[[i, j]] = params.thrust_table.interpolate(vel).clamp(0.0001, 0.9999);
             }
         }
 

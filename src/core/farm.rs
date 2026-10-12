@@ -687,6 +687,8 @@ impl Farm {
         air_density: Float,
         yaw_angles: Option<&Array2>,
         tilt_angles: Option<&Array2>,
+        turbulence_intensities: Option<&Array4>,
+        power_setpoints: Option<&Array2>,
         average_method: AveragingMethod,
     ) -> crate::Result<Array2> {
         let shape = velocities.shape();
@@ -714,6 +716,8 @@ impl Farm {
                 air_density,
                 yaw_angles,
                 tilt_angles,
+                turbulence_intensities,
+                power_setpoints,
                 average_method,
             )?;
 
@@ -736,6 +740,8 @@ impl Farm {
         air_density: Float,
         yaw_angles: Option<&Array2>,
         tilt_angles: Option<&Array2>,
+        turbulence_intensities: Option<&Array4>,
+        power_setpoints: Option<&Array2>,
         average_method: AveragingMethod,
     ) -> crate::Result<Array2> {
         let shape = velocities.shape();
@@ -759,6 +765,8 @@ impl Farm {
                 air_density,
                 yaw_angles,
                 tilt_angles,
+                turbulence_intensities,
+                power_setpoints,
                 average_method,
             )?;
 
@@ -781,6 +789,8 @@ impl Farm {
         air_density: Float,
         yaw_angles: Option<&Array2>,
         tilt_angles: Option<&Array2>,
+        turbulence_intensities: Option<&Array4>,
+        power_setpoints: Option<&Array2>,
         average_method: AveragingMethod,
     ) -> crate::Result<Array2> {
         let shape = velocities.shape();
@@ -804,6 +814,8 @@ impl Farm {
                 air_density,
                 yaw_angles,
                 tilt_angles,
+                turbulence_intensities,
+                power_setpoints,
                 average_method,
             )?;
 

@@ -616,6 +616,25 @@ def generate_operation_model_values(output_dir: Path) -> None:
     except Exception as e:
         print(f"    ERROR: {e}")
 
+    # Peak-shaving with TI above the nrel_5MW peak_shaving_TI_threshold (0.1)
+    # so the thrust limit is actually applied — the default TI=0.06 case never
+    # shaves and cannot discriminate a broken implementation (Bug #35).
+    print("\n  Generating peak_shaving_high_ti...")
+    try:
+        fmodel = create_floris_model(
+            wind_speeds=[10.0],
+            wind_directions=[270.0],
+            turbulence_intensities=[0.15],
+            layout_x=[0.0],
+            layout_y=[0.0],
+            operation_model="peak-shaving",
+        )
+        results = extract_results(fmodel)
+        results["operation_model"] = "peak-shaving"
+        save_json(results, output_dir / "operation_models" / "peak_shaving_high_ti.json")
+    except Exception as e:
+        print(f"    ERROR: {e}")
+
 
 # =============================================================================
 # Wind Data Tests

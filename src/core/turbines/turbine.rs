@@ -35,6 +35,8 @@ impl Turbine {
         air_density: Float,
         yaw_angles: Option<&Array2>,
         tilt_angles: Option<&Array2>,
+        turbulence_intensities: Option<&Array4>,
+        power_setpoints: Option<&Array2>,
         average_method: AveragingMethod,
     ) -> crate::Result<Array2> {
         use crate::core::turbines::operation_models::{
@@ -119,8 +121,8 @@ impl Turbine {
             air_density: &air_density_array,
             yaw_angles,
             tilt_angles,
-            power_setpoints: None,
-            turbulence_intensities: None,
+            power_setpoints,
+            turbulence_intensities,
             awc_amplitudes: None,
             cubature_weights: None,
             correct_cp_ct_for_tilt: None,
@@ -138,6 +140,8 @@ impl Turbine {
         air_density: Float,
         yaw_angles: Option<&Array2>,
         tilt_angles: Option<&Array2>,
+        turbulence_intensities: Option<&Array4>,
+        power_setpoints: Option<&Array2>,
         average_method: AveragingMethod,
     ) -> crate::Result<Array2> {
         use crate::core::turbines::operation_models::{
@@ -219,8 +223,8 @@ impl Turbine {
             air_density: &air_density_array,
             yaw_angles,
             tilt_angles,
-            power_setpoints: None,
-            turbulence_intensities: None,
+            power_setpoints,
+            turbulence_intensities,
             awc_amplitudes: None,
             cubature_weights: None,
             correct_cp_ct_for_tilt: None,
@@ -240,6 +244,8 @@ impl Turbine {
         air_density: Float,
         yaw_angles: Option<&Array2>,
         tilt_angles: Option<&Array2>,
+        turbulence_intensities: Option<&Array4>,
+        power_setpoints: Option<&Array2>,
         average_method: AveragingMethod,
     ) -> crate::Result<Array2> {
         use crate::core::turbines::operation_models::{
@@ -323,8 +329,8 @@ impl Turbine {
             air_density: &air_density_array,
             yaw_angles,
             tilt_angles,
-            power_setpoints: None,
-            turbulence_intensities: None,
+            power_setpoints,
+            turbulence_intensities,
             awc_amplitudes: None,
             cubature_weights: None,
             correct_cp_ct_for_tilt: None,
