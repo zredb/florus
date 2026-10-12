@@ -469,7 +469,7 @@ Rust 原以 2D 标量近似:中心点 wake_added + 均值掩码,且湍流场不�
 
 ---
 
-## Bug #37: awc / unified-momentum / controller-dependent 为占位实现 ✅(awc、unified-momentum 已移植;controller-dependent 单列 ⏸)
+## Bug #37: awc / unified-momentum / controller-dependent 为占位实现 ✅(三模型均已完整移植)
 
 **Files**: `awc.rs`、`unified_momentum.rs`(重写)、`src/core/turbines/operation_models/mod.rs`(TurbineParameters 增加 helix_* 字段、TurbineContext 增加 awc_modes)、`turbine.rs`/`farm.rs`/`solver.rs`(awc_modes/awc_amplitudes 接线)、`tests/cross_validation_operation.rs`、`tests/generate_golden_values.py`
 
@@ -477,7 +477,15 @@ Rust 原以 2D 标量近似:中心点 wake_added + 均值掩码,且湍流场不�
 
 **unified-momentum(✅ 本批)**:按 unified_momentum_model.py 完整移植:LimitedHeck 限界解(Eq. 2.19/2.20)作初值;**Heck 不动点迭代**(Eq. 2.15 残差,max_iter=500、eps=1e-5、relax=0.1,不收敛→NaN 与 Python 一致);`UMM_rotor_axial_induction`(C_T' 用 Calaf 2010 Eq.19)与 `UMM_rotor_velocity_yaw_correction`(Eq. 2.3/D1 速度比);power/Ct 在修正后速度上重新查表(Ct 无 clamp、fill=0.0001);速度经 (ρ/ρ_ref)^(1/3) 密度修正;无 tilt 修正(Python TODO 同)。移除此前自创简化式的 2 处公式错误。
 
-**controller-dependent(⏸ 单列,规模约 900 行研究级模型)**:移植所需清单已盘点:① .npz Cp/Ct 曲面加载器(npz_loader 现为假轴占位);② 二维三次 RegularGridInterpolator((tsr,pitch) 网格);③ fsolve 等价求解器(三层嵌套:get_tsr/get_pitch→get_ct);④ find_cp/find_ct/get_ct BEM 闭式(Tamaro et al. Eq. 25);⑤ control_trajectory 区域 2/2½/3 控制器仿真(omega/torque LUT);⑥ polyfit 局部剪切;⑦ 浮式 tilt(compute_tilt_angles_for_floating_turbines)。测试保持松容差 + 注释。
+**controller-dependent(✅ 后续批完成)**:完整移植 controller_dependent_operation_model.py(~900 行):
+- **npz 曲面加载**:新 `cp_ct_table/npz_surface.rs`(zip+npy 解析,支持 f8/i8/i4/f4、fortran_order;读取 cp_lut/ct_lut/tsr_lut/pitch_lut 真实形状),替代旧占位加载器(合成假轴);`turbine_library` 的 .zip 重命名为 .npz 对齐 YAML 引用;`load_turbine_type` 钩子在 `cp_ct_data_file` 存在时加载曲面。
+- **二维三次插值**:`CubicRgi` — scipy 1.17 `RegularGridInterpolator(method="cubic")` = `make_ndbspl`(**not-a-knot 边界**,官方文档确认);以矩量法实现唯一 not-a-knot 样条(首尾 not-a-knot 方程 + 内部三对角,dense_solve 解),张量积经可分离性两步求值(tsr 列样条 → pitch 样条),越界外推(fill_value=None 语义)。
+- **fsolve 等价**:`fsolve1d` 阻尼 Newton(中心差分雅可比 + 步长折半 + hybrd 式信任域截断),覆盖全部三层嵌套求解(get_tsr/get_pitch/get_ct);根为光滑单调,与 MINPACK 收敛到同一根。
+- **BEM 闭式**:`find_cp`/`get_ct` 逐项移植(Tamaro et al. Eq. 25,含 MU==0 时 1e-6 重定义);`compute_local_vertical_shear`(polyfit 闭式,含 Python 偶数长度 `m/(m_c+m_p)/2` 的字面语义)。
+- **control_trajectory**:区域 2/2½/3 逻辑、161 点 ω-Q LUT、argmax(行优先首个)、np.interp 端点钳制;**region 2½ 的别名变异语义**精确复刻(omega_lut_torque 与 omega_lut_pow 为同一数组,两行语句 = 每 (i,j) 迭代 +0.02);功率需求经 setpoints/gen_eff(默认 1e12 → 钳制到末位额定)。
+- power(裁剪至额定)/thrust_coefficient(偏航侧 clip 1e-4~0.9999、非偏航侧不 clip,比值×三次插值)/axial_induction(Eq. 25a,用未取反 tilt 的 MU)。
+
+**Validation**: `controller-dependent` 黄金值(单机、剪切来流、setpoint=1e12 经区域 2½ 路径)与新增 `controller_dependent_yawed`(15° 偏航,激发 MU 相关项)均在 **1e-5 内逐位一致**;操作测试 15/15;337 lib + 全部集成通过;wake 交叉验证残差逐位不变;clippy=基线 19,fmt 干净。
 
 **Validation**: 新增判别黄金值 `awc_helix`(helix 2.5° 激励,功率 −2.7%)与 `unified_momentum_yawed`(20° 偏航,功率 −9.2%,Heck 迭代实际运行);四个用例均 **1e-5 内逐位一致**;awc baseline 与 UM 零偏航(退化路径)亦 1e-5;UM 的 #[ignore] 移除。操作测试 **14/14**,337 lib + 全部集成通过,wake 交叉验证残差逐位不变,clippy=基线 19,fmt 干净。
 

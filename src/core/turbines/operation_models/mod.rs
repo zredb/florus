@@ -53,6 +53,35 @@ pub struct TurbineParameters {
     pub helix_power_c: Float,
     pub helix_thrust_b: Float,
     pub helix_thrust_c: Float,
+    /// Parameters for the controller-dependent (TUM) model; present only when
+    /// the turbine YAML defines controller_dependent_turbine_parameters and a
+    /// loadable cp_ct_data_file (Python power_thrust_table["cp_ct_data"]).
+    pub controller_dependent: Option<ControllerDependentParams>,
+}
+
+/// Fully resolved parameters for the controller-dependent (TUM) operation
+/// model (controller_dependent_operation_model.py).
+#[derive(Debug, Clone)]
+pub struct ControllerDependentParams {
+    pub sigma: Float,
+    pub beta: Float,
+    pub cd: Float,
+    pub cl_alfa: Float,
+    /// R = rotor_diameter / 2
+    pub rotor_radius: Float,
+    pub rated_rpm: Float,
+    pub generator_efficiency: Float,
+    /// rated power in kW (turbine YAML units)
+    pub rated_power_kw: Float,
+    /// Reference air density (Python control_trajectory uses
+    /// power_thrust_table["ref_air_density"] for the aero power, line 83/280)
+    pub ref_air_density: Float,
+    /// Cp over [tsr, pitch]
+    pub cp_lut: ndarray::Array2<Float>,
+    /// Ct over [tsr, pitch]
+    pub ct_lut: ndarray::Array2<Float>,
+    pub pitch_lut: ndarray::Array1<Float>,
+    pub tsr_lut: ndarray::Array1<Float>,
 }
 
 /// Input context for turbine power/thrust calculations

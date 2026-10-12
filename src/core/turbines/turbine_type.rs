@@ -155,6 +155,33 @@ impl TurbineType {
             turbine_type.power_thrust_table.cp_ct_table =
                 CpCtTable::MultiDimensional(multi_dim_table);
         }
+        // Load the Cp/Ct surface for the controller-dependent (TUM) operation
+        // model (Python loads the same .npz into
+        // power_thrust_table["cp_ct_data"], controller_dependent...py:203-209).
+        if let Some(cd_params) = turbine_type
+            .power_thrust_table
+            .controller_dependent_turbine_parameters
+            .as_mut()
+        {
+            if let Some(ref surface_file) = cd_params.cp_ct_data_file {
+                let yaml_dir = std::path::Path::new(path).parent().ok_or_else(|| {
+                    TurbineTypeError::IoError(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        "Could not determine parent directory",
+                    ))
+                })?;
+                let full_path = yaml_dir.join(surface_file);
+                let surface =
+                    crate::core::turbines::cp_ct_table::npz_surface::load_cp_ct_surface(&full_path)
+                        .map_err(|e| {
+                            TurbineTypeError::IoError(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!("Failed to load cp/ct surface file: {}", e),
+                            ))
+                        })?;
+                cd_params.cp_ct_surface = Some(surface);
+            }
+        }
         Ok(turbine_type)
     }
     fn load_turbine_type_from_str(content: &str) -> Result<TurbineType, TurbineError> {
@@ -531,6 +558,11 @@ pub struct ControllerDependentTurbineParameters {
     pub cl_alfa: Option<f64>,
     #[serde(default)]
     pub cp_ct_data_file: Option<String>,
+    /// Cp/Ct surface arrays loaded from `cp_ct_data_file` (Python loads the
+    /// same .npz into power_thrust_table["cp_ct_data"]). Populated by
+    /// `TurbineType::load_turbine_type`, not by serde.
+    #[serde(skip_deserializing, skip_serializing, default)]
+    pub cp_ct_surface: Option<crate::core::turbines::cp_ct_table::npz_surface::CpCtSurface>,
 }
 
 #[cfg(test)]

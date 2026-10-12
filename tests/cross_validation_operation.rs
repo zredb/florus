@@ -320,16 +320,31 @@ fn test_unified_momentum_yawed_operation_model() {
 
 #[test]
 fn test_controller_dependent_operation_model() {
-    // controller-dependent is a placeholder (Python is a TUM fsolve
-    // blade-element model requiring the .npz Cp/Ct surfaces, cubic 2D
-    // interpolation and nested fsolve — Bug #37, deferred). Loose tolerance.
+    // Full TUM model port: BEM closed forms + control trajectory + cubic
+    // not-a-knot Cp/Ct surface interpolation, validated against Python at
+    // tight tolerance (Bug #37).
     let config = create_operation_config("controller-dependent");
     let powers = compute_powers_model(&config, "controller-dependent", None, None, None);
     let golden = common::load_operation_golden("controller-dependent");
-    assert_power_close(
+    assert_power_exact(
         powers[0][0],
         golden.turbine_powers[0][0],
         "controller-dependent",
+    );
+}
+
+#[test]
+fn test_controller_dependent_yawed_operation_model() {
+    // 15 deg yaw: the MU-dependent BEM terms, the cosd(yaw) control-trajectory
+    // terms and the yawed/unyawed Cp ratio are actually exercised (Bug #37).
+    let config = create_operation_config("controller-dependent");
+    let yaw = florus::types::Array2::from_shape_vec((1, 1), vec![15.0]).unwrap();
+    let powers = compute_powers_model(&config, "controller-dependent", Some(yaw), None, None);
+    let golden = common::load_operation_golden("controller_dependent_yawed");
+    assert_power_exact(
+        powers[0][0],
+        golden.turbine_powers[0][0],
+        "controller_dependent_yawed",
     );
 }
 

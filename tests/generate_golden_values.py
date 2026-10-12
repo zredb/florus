@@ -677,6 +677,26 @@ def generate_operation_model_values(output_dir: Path) -> None:
     except Exception as e:
         print(f"    ERROR: {e}")
 
+    # Controller-dependent with 15 deg yaw — exercises the misalignment
+    # (MU-dependent) BEM terms, the cosd(yaw) control-trajectory terms and the
+    # yawed/unyawed Cp ratio (Bug #37).
+    print("\n  Generating controller_dependent_yawed...")
+    try:
+        fmodel = create_floris_model(
+            wind_speeds=[10.0],
+            wind_directions=[270.0],
+            turbulence_intensities=[0.06],
+            layout_x=[0.0],
+            layout_y=[0.0],
+            operation_model="controller-dependent",
+        )
+        fmodel.set(yaw_angles=[[15.0]])
+        results = extract_results(fmodel)
+        results["operation_model"] = "controller-dependent"
+        save_json(results, output_dir / "operation_models" / "controller_dependent_yawed.json")
+    except Exception as e:
+        print(f"    ERROR: {e}")
+
 
 # =============================================================================
 # Wind Data Tests

@@ -146,6 +146,37 @@ impl Turbine {
                 .as_ref()
                 .map(|h| h.helix_thrust_c)
                 .unwrap_or(0.0),
+            controller_dependent: self
+                .turbine_type
+                .power_thrust_table
+                .controller_dependent_turbine_parameters
+                .as_ref()
+                .and_then(|p| {
+                    // All scalar parameters and the loaded Cp/Ct surface must
+                    // be present; otherwise the model stays unavailable.
+                    let surface = p.cp_ct_surface.as_ref()?;
+                    Some(
+                        crate::core::turbines::operation_models::ControllerDependentParams {
+                            sigma: p.rotor_solidity?,
+                            beta: p.beta?,
+                            cd: p.cd?,
+                            cl_alfa: p.cl_alfa?,
+                            rotor_radius: p.rotor_diameter? / 2.0,
+                            rated_rpm: p.rated_rpm?,
+                            generator_efficiency: p.generator_efficiency?,
+                            rated_power_kw: p.rated_power?,
+                            ref_air_density: self
+                                .turbine_type
+                                .power_thrust_table
+                                .ref_air_density
+                                .unwrap_or(1.225),
+                            cp_lut: surface.cp_lut.clone(),
+                            ct_lut: surface.ct_lut.clone(),
+                            pitch_lut: surface.pitch_lut.clone(),
+                            tsr_lut: surface.tsr_lut.clone(),
+                        },
+                    )
+                }),
         };
 
         // Create air density array
@@ -286,6 +317,37 @@ impl Turbine {
                 .as_ref()
                 .map(|h| h.helix_thrust_c)
                 .unwrap_or(0.0),
+            controller_dependent: self
+                .turbine_type
+                .power_thrust_table
+                .controller_dependent_turbine_parameters
+                .as_ref()
+                .and_then(|p| {
+                    // All scalar parameters and the loaded Cp/Ct surface must
+                    // be present; otherwise the model stays unavailable.
+                    let surface = p.cp_ct_surface.as_ref()?;
+                    Some(
+                        crate::core::turbines::operation_models::ControllerDependentParams {
+                            sigma: p.rotor_solidity?,
+                            beta: p.beta?,
+                            cd: p.cd?,
+                            cl_alfa: p.cl_alfa?,
+                            rotor_radius: p.rotor_diameter? / 2.0,
+                            rated_rpm: p.rated_rpm?,
+                            generator_efficiency: p.generator_efficiency?,
+                            rated_power_kw: p.rated_power?,
+                            ref_air_density: self
+                                .turbine_type
+                                .power_thrust_table
+                                .ref_air_density
+                                .unwrap_or(1.225),
+                            cp_lut: surface.cp_lut.clone(),
+                            ct_lut: surface.ct_lut.clone(),
+                            pitch_lut: surface.pitch_lut.clone(),
+                            tsr_lut: surface.tsr_lut.clone(),
+                        },
+                    )
+                }),
         };
 
         // Create air density array
@@ -430,6 +492,37 @@ impl Turbine {
                 .as_ref()
                 .map(|h| h.helix_thrust_c)
                 .unwrap_or(0.0),
+            controller_dependent: self
+                .turbine_type
+                .power_thrust_table
+                .controller_dependent_turbine_parameters
+                .as_ref()
+                .and_then(|p| {
+                    // All scalar parameters and the loaded Cp/Ct surface must
+                    // be present; otherwise the model stays unavailable.
+                    let surface = p.cp_ct_surface.as_ref()?;
+                    Some(
+                        crate::core::turbines::operation_models::ControllerDependentParams {
+                            sigma: p.rotor_solidity?,
+                            beta: p.beta?,
+                            cd: p.cd?,
+                            cl_alfa: p.cl_alfa?,
+                            rotor_radius: p.rotor_diameter? / 2.0,
+                            rated_rpm: p.rated_rpm?,
+                            generator_efficiency: p.generator_efficiency?,
+                            rated_power_kw: p.rated_power?,
+                            ref_air_density: self
+                                .turbine_type
+                                .power_thrust_table
+                                .ref_air_density
+                                .unwrap_or(1.225),
+                            cp_lut: surface.cp_lut.clone(),
+                            ct_lut: surface.ct_lut.clone(),
+                            pitch_lut: surface.pitch_lut.clone(),
+                            tsr_lut: surface.tsr_lut.clone(),
+                        },
+                    )
+                }),
         };
 
         // Create air density array

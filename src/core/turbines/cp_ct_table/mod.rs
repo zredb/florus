@@ -3,6 +3,7 @@
 
 mod csv_loader;
 mod npz_loader;
+pub mod npz_surface;
 
 pub use csv_loader::CsvDataLoader;
 use std::collections::HashMap;
