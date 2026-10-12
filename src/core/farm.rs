@@ -40,6 +40,10 @@ pub struct Farm {
     pub ref_tilts_sorted: Array2,
     pub correct_cp_ct_for_tilt: Vec<bool>,
     pub correct_cp_ct_for_tilt_sorted: Array2,
+    /// Per-findex sort order: `sorted_indices[[fi, i]]` is the layout index of
+    /// the turbine at sorted position `i` for findex `fi` (Python's
+    /// `turbine_type_map_sorted` dispatch key).
+    pub sorted_indices: Array2,
     pub state: State,
 }
 
@@ -137,6 +141,15 @@ impl Farm {
             ref_tilts_sorted: Array2::zeros((1, n_turbines)),
             correct_cp_ct_for_tilt: vec![false; n_turbines],
             correct_cp_ct_for_tilt_sorted: Array2::zeros((1, n_turbines)),
+            // Identity order until initialize()/expand_farm_properties() sets
+            // the per-findex sort order.
+            sorted_indices: {
+                let mut s = Array2::zeros((1, n_turbines));
+                for t in 0..n_turbines {
+                    s[[0, t]] = t as Float;
+                }
+                s
+            },
             state: State::default(),
         };
 
@@ -156,6 +169,9 @@ impl Farm {
     }
 
     pub fn initialize(&mut self, sorted_coord_indices: &Array2) {
+        // Keep the sort order for heterogeneous dispatch in power/Ct/AI
+        // (Python's turbine_type_map_sorted equivalent).
+        self.sorted_indices = sorted_coord_indices.clone();
         let n_findex = self.yaw_angles.dim().0;
         let n_turbines = self.yaw_angles.dim().1;
 
@@ -248,6 +264,10 @@ impl Farm {
     // ... 其他方法保持不变
     pub fn expand_farm_properties(&mut self, n_findex: usize, sorted_coord_indices: &Array2) {
         let n_turbines = self.n_turbines();
+
+        // Keep the sort order for heterogeneous dispatch in power/Ct/AI
+        // (Python's turbine_type_map_sorted equivalent).
+        self.sorted_indices = sorted_coord_indices.clone();
 
         // Helper function to broadcast array2 from (1, n) to (n_findex, n)
         let broadcast_array2 = |arr: &Array2| -> Array2 {
@@ -662,8 +682,8 @@ impl Farm {
 
     // Calculate power for array of turbines
     pub fn power(
+        &self,
         velocities: &Array4,
-        turbines: &[Turbine],
         air_density: Float,
         yaw_angles: Option<&Array2>,
         tilt_angles: Option<&Array2>,
@@ -673,22 +693,35 @@ impl Farm {
         let n_findex = shape[0];
         let n_turbines = shape[1];
 
+        // Layout index of the turbine at sorted position (fi, ti). Python
+        // dispatches curves via turbine_type_map_sorted (turbine.py); the
+        // stored sort order provides the same mapping, with identity fallback
+        // for an un-expanded farm.
+        let sorted = &self.sorted_indices;
+        let src_of = |fi: usize, ti: usize| -> usize {
+            if sorted.shape()[0] == 1 {
+                sorted[[0, ti]] as usize
+            } else {
+                sorted[[fi, ti]] as usize
+            }
+        };
+
         let mut power_output = Array::zeros((n_findex, n_turbines));
 
-        for ti in 0..n_turbines {
-            if ti < turbines.len() {
-                let turbine_power = turbines[ti].power(
-                    velocities,
-                    air_density,
-                    yaw_angles,
-                    tilt_angles,
-                    average_method,
-                )?;
+        for (t, turbine) in self.turbines.iter().enumerate() {
+            let turbine_power = turbine.power(
+                velocities,
+                air_density,
+                yaw_angles,
+                tilt_angles,
+                average_method,
+            )?;
 
-                for fi in 0..n_findex {
-                    // Column ti of turbine ti's computation (Bug #1 analog —
-                    // previously [[fi, 0]], Bug #31).
-                    power_output[[fi, ti]] = turbine_power[[fi, ti]];
+            for fi in 0..n_findex {
+                for ti in 0..n_turbines {
+                    if src_of(fi, ti) == t {
+                        power_output[[fi, ti]] = turbine_power[[fi, ti]];
+                    }
                 }
             }
         }
@@ -698,31 +731,42 @@ impl Farm {
 
     /// Calculate thrust coefficient for array of turbines
     pub fn thrust_coefficient(
+        &self,
         velocities: &Array4,
         air_density: Float,
-        turbines: &[Turbine],
         yaw_angles: Option<&Array2>,
         tilt_angles: Option<&Array2>,
         average_method: AveragingMethod,
     ) -> crate::Result<Array2> {
         let shape = velocities.shape();
         let n_findex = shape[0];
-        let n_turbines = turbines.len().min(shape[1]);
+        let n_turbines = shape[1];
+
+        let sorted = &self.sorted_indices;
+        let src_of = |fi: usize, ti: usize| -> usize {
+            if sorted.shape()[0] == 1 {
+                sorted[[0, ti]] as usize
+            } else {
+                sorted[[fi, ti]] as usize
+            }
+        };
 
         let mut ct_output = Array::zeros((n_findex, n_turbines));
 
-        for ti in 0..n_turbines {
-            if ti < turbines.len() {
-                let turbine_ct = turbines[ti].thrust_coefficient(
-                    velocities,
-                    air_density,
-                    yaw_angles,
-                    tilt_angles,
-                    average_method,
-                )?;
+        for (t, turbine) in self.turbines.iter().enumerate() {
+            let turbine_ct = turbine.thrust_coefficient(
+                velocities,
+                air_density,
+                yaw_angles,
+                tilt_angles,
+                average_method,
+            )?;
 
-                for fi in 0..n_findex {
-                    ct_output[[fi, ti]] = turbine_ct[[fi, ti]];
+            for fi in 0..n_findex {
+                for ti in 0..n_turbines {
+                    if src_of(fi, ti) == t {
+                        ct_output[[fi, ti]] = turbine_ct[[fi, ti]];
+                    }
                 }
             }
         }
@@ -732,32 +776,42 @@ impl Farm {
 
     /// Calculate axial induction from thrust coefficient
     pub fn axial_induction(
+        &self,
         velocities: &Array4,
         air_density: Float,
-        turbines: &[Turbine],
         yaw_angles: Option<&Array2>,
         tilt_angles: Option<&Array2>,
         average_method: AveragingMethod,
     ) -> crate::Result<Array2> {
-        // Call the turbine's axial_induction method directly
         let shape = velocities.shape();
         let n_findex = shape[0];
-        let n_turbines = turbines.len().min(shape[1]);
+        let n_turbines = shape[1];
+
+        let sorted = &self.sorted_indices;
+        let src_of = |fi: usize, ti: usize| -> usize {
+            if sorted.shape()[0] == 1 {
+                sorted[[0, ti]] as usize
+            } else {
+                sorted[[fi, ti]] as usize
+            }
+        };
 
         let mut ai_output = Array::zeros((n_findex, n_turbines));
 
-        for ti in 0..n_turbines {
-            if ti < turbines.len() {
-                let turbine_ai = turbines[ti].axial_induction(
-                    velocities,
-                    air_density,
-                    yaw_angles,
-                    tilt_angles,
-                    average_method,
-                )?;
+        for (t, turbine) in self.turbines.iter().enumerate() {
+            let turbine_ai = turbine.axial_induction(
+                velocities,
+                air_density,
+                yaw_angles,
+                tilt_angles,
+                average_method,
+            )?;
 
-                for fi in 0..n_findex {
-                    ai_output[[fi, ti]] = turbine_ai[[fi, ti]];
+            for fi in 0..n_findex {
+                for ti in 0..n_turbines {
+                    if src_of(fi, ti) == t {
+                        ai_output[[fi, ti]] = turbine_ai[[fi, ti]];
+                    }
                 }
             }
         }

@@ -244,7 +244,7 @@ fn calculate_peak_deficit(ct: Float, sigma_over_d: Float) -> Float {
 pub fn turbopark_velocity_deficit(
     turbulence_intensity: &Array4,
     thrust_coefficients: &Array2,
-    rotor_diameters: &Array1,
+    rotor_diameters: &Array2,
     grid_x: &Array4,
     grid_y: &Array4,
     grid_z: &Array4,
@@ -280,10 +280,10 @@ pub fn turbopark_velocity_deficit(
         y_i /= n_pts;
         z_i /= n_pts;
 
-        let d_i = rotor_diameters[target_index];
+        let d_i = rotor_diameters[[fi, target_index]];
 
         for m in 0..n_turbines {
-            let d_m = rotor_diameters[m];
+            let d_m = rotor_diameters[[fi, m]];
             let ct_m = thrust_coefficients[[fi, m]];
 
             for iy in 0..n_y {
@@ -364,8 +364,8 @@ impl VelocityModel for TurbOParkVelocityDeficit {
         _yaw_angle: Array2,
         turbulence_intensity: Array4,
         thrust_coefficient: Array2,
-        hub_height: Float,
-        rotor_diameter: Float,
+        hub_heights: &Array2,
+        rotor_diameters: &Array2,
         turbine_index: usize,
         _model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4> {
@@ -375,10 +375,12 @@ impl VelocityModel for TurbOParkVelocityDeficit {
         let n_y = shape[2];
         let n_z = shape[3];
 
-        let r0 = rotor_diameter / 2.0;
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
         for fi in 0..n_findex {
+            let rotor_diameter = rotor_diameters[[fi, 0]];
+            let r0 = rotor_diameter / 2.0;
+            let hub_height = hub_heights[[fi, 0]];
             let mut x_wake_source = 0.0;
             let mut y_wake_source = 0.0;
             let mut count = 0.0;

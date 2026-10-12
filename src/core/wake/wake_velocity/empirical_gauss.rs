@@ -152,8 +152,8 @@ impl VelocityModel for EmpiricalGaussVelocityDeficit {
         yaw_angle: Array2,
         _turbulence_intensity: Array4,
         thrust_coefficient: Array2,
-        hub_height: Float,
-        rotor_diameter: Float,
+        hub_heights: &Array2,
+        rotor_diameters: &Array2,
         turbine_index: usize,
         _model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4> {
@@ -180,8 +180,8 @@ impl VelocityModel for EmpiricalGaussVelocityDeficit {
             &tilt_arr,
             &ct_arr,
             &mixing_i,
-            hub_height,
-            rotor_diameter,
+            hub_heights,
+            rotor_diameters,
             turbine_index,
             0.0,
         ))
@@ -210,8 +210,8 @@ impl EmpiricalGaussVelocityDeficit {
         tilt_angle: &Array1,
         thrust_coefficient: &Array1,
         mixing_i: &Array1,
-        hub_height: Float,
-        rotor_diameter: Float,
+        hub_heights: &Array2,
+        rotor_diameters: &Array2,
         turbine_index: usize,
         wind_veer: Float,
     ) -> Array4 {
@@ -244,6 +244,8 @@ impl EmpiricalGaussVelocityDeficit {
 
             let yaw_i = yaw_angle[fi];
             let ct_i = thrust_coefficient[fi];
+            let hub_height = hub_heights[[fi, 0]];
+            let rotor_diameter = rotor_diameters[[fi, 0]];
 
             // cosd is even: cosd(-yaw) == cosd(yaw)
             let sigma_y0 = self.sigma_0_d * rotor_diameter * cosd(yaw_i);

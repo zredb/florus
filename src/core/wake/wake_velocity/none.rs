@@ -55,8 +55,8 @@ impl VelocityModel for NoneVelocity {
         _yaw_angle: Array2,
         _turbulence_intensity: Array4,
         _thrust_coefficient: Array2,
-        _hub_height: Float,
-        _rotor_diameter: Float,
+        _hub_heights: &Array2,
+        _rotor_diameters: &Array2,
         _turbine_index: usize,
         _model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4> {

@@ -97,8 +97,8 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
         _yaw_angle: Array2,
         turbulence_intensity: Array4,
         thrust_coefficient: Array2,
-        _hub_height: Float,
-        rotor_diameter: Float,
+        _hub_heights: &Array2,
+        rotor_diameters: &Array2,
         turbine_index: usize,
         _model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4> {
@@ -112,6 +112,7 @@ impl VelocityModel for TurbOParkGaussVelocityDeficit {
 
         for fi in 0..n_findex {
             let ct_i = thrust_coefficient[[fi, turbine_index]];
+            let rotor_diameter = rotor_diameters[[fi, 0]];
 
             // Compute mean position of the source turbine (matches Python solver.py
             // x_i = np.mean(grid.x_sorted[:, i:i+1], axis=(2, 3), keepdims=True))

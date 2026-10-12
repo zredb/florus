@@ -71,8 +71,8 @@ impl VelocityModel for GaussVelocity {
         yaw_angle: Array2,
         turbulence_intensity: Array4,
         thrust_coefficient: Array2,
-        hub_height: Float,
-        rotor_diameter: Float,
+        hub_heights: &Array2,
+        rotor_diameters: &Array2,
         turbine_index: usize,
         model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4> {
@@ -116,6 +116,11 @@ impl VelocityModel for GaussVelocity {
         for fi in 0..n_findex {
             let x_i = x_i_array[[fi, turbine_index]];
             let y_i = y_i_array[[fi, turbine_index]];
+
+            // Source turbine's hub height / rotor diameter for this findex
+            // (Python broadcasts (n_findex, 1, 1, 1) arrays)
+            let hub_height = hub_heights[[fi, 0]];
+            let rotor_diameter = rotor_diameters[[fi, 0]];
 
             // Opposite sign convention in this model
             let yaw = -yaw_angle[[fi, turbine_index]];

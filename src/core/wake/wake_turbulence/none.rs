@@ -4,7 +4,7 @@
 
 use crate::core::wake::{BaseModel, TurbulenceModel};
 use crate::core::{FlowField, Grid};
-use crate::types::{Array1, Array4, Float};
+use crate::types::{Array1, Array2, Array4, Float};
 use std::collections::HashMap;
 
 /// No additional wake turbulence
@@ -45,7 +45,7 @@ impl TurbulenceModel for NoneTurbulence {
         _ambient_turbulence_intensity: &Array4,
         x: &Array4,
         _x_i: &Array4,
-        _rotor_diameter: Float,
+        _rotor_diameters: &Array2,
         _axial_induction: &Array4,
     ) -> anyhow::Result<Array4> {
         Ok(Array4::zeros(x.dim()))

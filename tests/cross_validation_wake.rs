@@ -105,7 +105,15 @@ fn powers_from_u_sorted(
             }
             let rotor_avg_velocity = (v_cubed_sum / grid_points as f64).powf(1.0 / 3.0);
 
-            let turbine = &farm.turbines[ti];
+            // Heterogeneous dispatch (Bug #34): the velocity at sorted
+            // position `ti` belongs to the layout turbine recorded in
+            // farm.sorted_indices, and the yaw/tilt are the sorted values.
+            let src = if farm.sorted_indices.shape()[0] == 1 {
+                farm.sorted_indices[[0, ti]] as usize
+            } else {
+                farm.sorted_indices[[fi, ti]] as usize
+            };
+            let turbine = &farm.turbines[src];
             let ref_air_density = turbine
                 .turbine_type
                 .power_thrust_table
@@ -119,7 +127,7 @@ fn powers_from_u_sorted(
                 .power_thrust_table
                 .cosine_loss_exponent_yaw
                 .unwrap_or(1.88);
-            let yaw = farm.yaw_angles[[fi, ti]];
+            let yaw = farm.yaw_angles_sorted[[fi, ti]];
             let yaw_correction = cosd(yaw).powf(cosine_loss_exponent_yaw / 3.0);
             rotor_effective_velocity *= yaw_correction;
 
@@ -133,7 +141,7 @@ fn powers_from_u_sorted(
                 .power_thrust_table
                 .ref_tilt
                 .unwrap_or(5.0);
-            let tilt = farm.tilt_angles[[fi, ti]];
+            let tilt = farm.tilt_angles_sorted[[fi, ti]];
             let tilt_correction =
                 (cosd(tilt) / cosd(ref_tilt)).powf(cosine_loss_exponent_tilt / 3.0);
             rotor_effective_velocity *= tilt_correction;
@@ -1044,6 +1052,112 @@ fn test_gauss_staggered_ti() {
         &powers,
         &golden.turbine_powers,
         "gauss_staggered_ti",
+        1e-5,
+        1.0,
+    );
+}
+
+/// Heterogeneous fleet + per-findex sort-order-change regression against
+/// Python FLORIS v4.6.4 (Bug #34).
+///
+/// Turbines 0/2 are nrel_5MW and turbine 1 is iea_10MW with a large lateral
+/// offset. At 270 deg the sort order is 0, 1, 2; at 290 deg the rotated
+/// coordinates reorder to 1, 0, 2, so each findex maps different layout
+/// turbines to the sorted positions. This locks in the per-findex rotor
+/// diameter / hub height plumbing and the Cp/Ct curve dispatch through
+/// `farm.sorted_indices` (Python's turbine_type_map_sorted equivalent), which
+/// the homogeneous colinear layouts of the other golden tests cannot detect.
+#[test]
+fn test_gauss_heterogeneous_sort() {
+    let config = FlorisConfig {
+        name: "hetero_sort".to_string(),
+        description: None,
+        floris_version: "v4".to_string(),
+        logging: LoggingConfig::default(),
+        solver: SolverConfig {
+            turbine_grid_points: 2,
+            ..SolverConfig::default()
+        },
+        farm: FarmConfig {
+            layout_x: vec![0.0, 252.0, 504.0],
+            layout_y: vec![0.0, 700.0, 0.0],
+            turbine_type: vec![
+                "nrel_5MW".to_string(),
+                "iea_10MW".to_string(),
+                "nrel_5MW".to_string(),
+            ],
+        },
+        flow_field: FlowFieldConfig {
+            wind_speeds: vec![8.0, 8.0],
+            wind_directions: vec![270.0, 290.0],
+            turbulence_intensities: vec![0.1, 0.1],
+            wind_shear: 0.12,
+            wind_veer: 0.0,
+            air_density: 1.225,
+            reference_wind_height: 90.0,
+            multidim_conditions: None,
+        },
+        wake: WakeConfig {
+            model_strings: WakeModelStringsConfig {
+                velocity_model: VelocityModelConfig::Gauss {
+                    alpha: 0.58,
+                    beta: 0.077,
+                    ka: 0.38,
+                    kb: 0.004,
+                },
+                deflection_model: DeflectionModelConfig::Gauss {
+                    alpha: 0.58,
+                    beta: 0.077,
+                    ad: 0.0,
+                    bd: 0.0,
+                    dm: 1.0,
+                    ka: 0.38,
+                    kb: 0.004,
+                },
+                combination_model: CombinationModelConfig::SOSFS,
+                turbulence_model: TurbulenceModelConfig::CrespoHernandez {
+                    initial: 0.1,
+                    constant: 0.5,
+                    ai: 0.8,
+                    downstream: -0.32,
+                },
+            },
+            enable_secondary_steering: true,
+            enable_yaw_added_recovery: true,
+            enable_transverse_velocities: true,
+            enable_active_wake_mixing: false,
+            enable_wake_mixing: false,
+            use_parallel_calc: false,
+        },
+        turbine_library: "turbine_library".to_string(),
+    };
+    let mut model = FlorisModel::from_config(config).expect("model");
+    let yaw = Array2::from_shape_fn((2, 3), |(_, ti)| if ti == 0 { 5.0 } else { 0.0 });
+    model.set_yaw_angles(yaw).expect("yaw");
+    model.initialize_grid().expect("grid");
+    model.initialize_flow_field().expect("ff");
+    let grid = model.core().grid.as_ref().unwrap();
+    let turbine_grid = grid.as_any().downcast_ref::<TurbineGrid>().unwrap();
+    let farm = model.core().farm.clone();
+    let mut flow_field = model.core().flow_field.clone();
+    let wake = model.core().wake.clone();
+    sequential_solver(&farm, &mut flow_field, turbine_grid, &wake).expect("solver");
+
+    // powers_from_u_sorted returns sorted-position powers; the golden values
+    // are in layout order, so invert via farm.sorted_indices.
+    let powers_sorted = powers_from_u_sorted(&farm, &flow_field);
+    let mut powers = vec![vec![0.0; 3]; 2];
+    for fi in 0..2 {
+        for k in 0..3 {
+            let src = farm.sorted_indices[[fi, k]] as usize;
+            powers[fi][src] = powers_sorted[fi][k];
+        }
+    }
+    let golden = common::load_wake_golden("gauss_hetero_sort");
+    assert_powers_close_tol(
+        &powers,
+        &golden.turbine_powers,
+        "gauss_hetero_sort",
         1e-5,
         1.0,
     );

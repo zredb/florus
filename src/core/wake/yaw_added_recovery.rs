@@ -4,7 +4,7 @@
 //! `gamma`, `calculate_transverse_velocity`, `yaw_added_turbulence_mixing`.
 //! These implement the GCH wake-added turbulence recovery mechanism.
 
-use crate::types::{Array1, Array4, Float};
+use crate::types::{Array1, Array2, Array4, Float};
 use crate::utilities::{cosd, sind};
 use ndarray::Array;
 use std::f64::consts::PI;
@@ -35,8 +35,8 @@ pub fn calculate_transverse_velocity(
     delta_x: &Array4,
     delta_y: &Array4,
     z: &Array4,
-    rotor_diameter: Float,
-    hub_height: Float,
+    rotor_diameters: &Array2,
+    hub_heights: &Array2,
     yaw: &Array1,
     ct_i: &Array1,
     tsr_i: &Array1,
@@ -54,11 +54,12 @@ pub fn calculate_transverse_velocity(
     let mut w = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
     let eps_gain = 0.2;
-    let eps = eps_gain * rotor_diameter;
-    let d = rotor_diameter;
-    let hh = hub_height;
 
     for fi in 0..n_findex {
+        let d = rotor_diameters[[fi, 0]];
+        let hh = hub_heights[[fi, 0]];
+        let eps = eps_gain * d;
+
         let yaw_f = yaw[fi];
         let ct_f = ct_i[fi];
         let tsr_f = tsr_i[fi];
@@ -199,8 +200,8 @@ pub fn wake_added_yaw(
     u_initial: &Array4,
     delta_y: &Array4,
     z_i: &Array4,
-    rotor_diameter: Float,
-    hub_height: Float,
+    rotor_diameters: &Array2,
+    hub_heights: &Array2,
     ct_i: &Array4,
     tip_speed_ratio: &Array4,
     axial_induction_i: &Array4,
@@ -211,15 +212,15 @@ pub fn wake_added_yaw(
     let n_y = u_i.shape()[2];
     let n_z = u_i.shape()[3];
 
-    let d = rotor_diameter;
-    let hh = hub_height;
-
     let eps_gain = 0.2;
-    let eps = eps_gain * d;
 
     let mut y = Array1::zeros(n_findex);
 
     for fi in 0..n_findex {
+        let d = rotor_diameters[[fi, 0]];
+        let hh = hub_heights[[fi, 0]];
+        let eps = eps_gain * d;
+
         let ct_f = ct_i[[fi, 0, 0, 0]];
         let tsr_f = tip_speed_ratio[[fi, 0, 0, 0]];
         let ai_f = axial_induction_i[[fi, 0, 0, 0]];

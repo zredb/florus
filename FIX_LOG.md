@@ -432,12 +432,16 @@ Rust 原以 2D 标量近似:中心点 wake_added + 均值掩码,且湍流场不�
 
 ---
 
-## Bug #34: 异质机群 per-findex 属性缺失(findex-0 标量 + rotor_diameters 未排序 + 无 type_map_sorted) ⏸
+## Bug #34: 异质机群 per-findex 属性缺失(findex-0 标量 + rotor_diameters 未排序 + 无 type_map_sorted) ✅
 
-**Files**: `src/core/solver.rs`(161-164、593、1161、1234-1235、1399、1614)、`src/core/models.rs`(trait 的 `hub_height/rotor_diameter: Float` 标量)、`src/core/farm.rs`(turbine_type_map_sorted 被注释)
-**Symptom**: 多风向 + 异质风机(D/hub/Cp-Ct 曲线不同)时取错参数/曲线;turbopark/cc 自由函数收到**布局序** `farm.rotor_diameters`(Python 传 `rotor_diameters_sorted[:, :, None, None]`)。
-**Root cause**: Python 全部按 findex 传 `(nfi,1,1,1)`/`(nfi,nt,1,1)`;Rust trait 签名为标量,求解器多处取 `[[0, i]]`。
-**计划**: 需 trait 签名 `Float → Array2` 的重构(规模同 Front 2),连同 `turbine_type_map_sorted` 一起做。共线同质布局(所有现有测试)下无影响。
+**Files**: `src/core/models.rs`(trait 三处 `Float → &Array2 (nfi,1)`)、`src/core/solver.rs`(5 个求解器)、`src/core/wake/wake_velocity/*.rs`(8 模型逐 fi 读取)、`src/core/wake/wake_deflection/*.rs`、`src/core/wake/wake_turbulence/crespo_hernandez.rs`(逐 fi 除法)、`src/core/wake/yaw_added_recovery.rs`(transverse/二次转向 D/hub 逐 fi)、`src/core/farm.rs`(新增 `sorted_indices` 字段 + power/Ct/AI 三方法改实例方法并按排序索引 scatter)、`tests/cross_validation_wake.rs`(`powers_from_u_sorted` 亦按 sorted_indices 分发曲线与 sorted yaw/tilt)
+**Symptom**: 多风向 + 异质风机(D/hub/Cp-Ct 曲线不同)时:① 求解器把 `[[0, i]]` 标量广播到所有 findex(取错风机参数);② turbopark/cc 自由函数收到布局序 `farm.rotor_diameters`(Python 传 `rotor_diameters_sorted[:,:,None,None]`);③ Farm 的 power/Ct/AI 把布局序曲线硬配到排序序列(缺 `turbine_type_map_sorted`)。
+**Fix**:
+- trait 签名 `hub_height/rotor_diameter: Float → &Array2 (nfi,1)`(对应 Python 的 `(nfi,1,1,1)` 广播),各模型在 fi 循环顶部读取 `[[fi, 0]]`;CH 湍流模型逐 findex 行除以各自源直径。
+- 求解器全部改传 `farm.{rotor_diameters,hub_heights,tsrs}_sorted.slice(s![.., i..i+1])`;WAT 掩码(2D/15D)与 cc 的 0.51D 转子掩码在 fi 循环内取当轮 `d_i`;turbopark/cc 自由函数改收 `rotor_diameters_sorted: &Array2`,按 `[[fi, m]]` 读取。
+- Farm 新增 `sorted_indices` 字段(`initialize`/`expand_farm_properties` 时记录排序,`Farm::new` 默认恒等);`power/thrust_coefficient/axial_induction` 改为实例方法:每台布局风机用自身曲线算全场后,把结果 **scatter** 到 `sorted_indices[[fi,ti]] == t` 的位置(Python turbine.py 按 `turbine_type_map_sorted` 分发的等价实现),未展开时回退恒等映射。
+**Validation**: 新增黄金值测试 `test_gauss_heterogeneous_sort`(机型 [nrel_5MW, iea_10MW, nrel_5MW]、布局 [0,252,504]×[0,700,0]、风向 [270°, 290°]——290° 时排序由 0,1,2 翻转为 1,0,2):6 个功率值与 Python v4.6.4 **逐位一致**(12 位有效数字,含 iea 曲线分发、逐 fi D/hub、yawed t0);黄金值由 `generate_golden_values.py::generate_wake_hetero_sort_value` 生成。既有 11 项交叉验证残差逐位不变(gauss 族 ~1e-13%、turbopark 3.5e-3%),337 lib + 全部集成测试通过,clippy/fmt 与基线一致。
+**注**: 测试辅助函数 `powers_from_u_sorted` 原以布局序曲线配排序序速度(恒等假设),一并修复为经 `sorted_indices` 分发 + sorted yaw/tilt——异质用例首次运行即抓到此缺陷,佐证了恒等布局测试对此类问题的盲区。
 
 ---
 

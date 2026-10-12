@@ -149,29 +149,30 @@ pub fn sequential_solver(
         // Compute thrust coefficient and axial induction through the operation
         // model (rotor-averaged velocity), matching Python solver.py which calls
         // floris.core.thrust_coefficient with ix_filter=[i].
-        let ct_i = Farm::thrust_coefficient(
+        let ct_i = farm.thrust_coefficient(
             &flow_field.u_sorted,
             flow_field.air_density,
-            &farm.turbines,
             Some(&farm.yaw_angles_sorted),
             Some(&farm.tilt_angles_sorted),
             grid.average_method(),
         )?;
 
-        let a_i = Farm::axial_induction(
+        let a_i = farm.axial_induction(
             &flow_field.u_sorted,
             flow_field.air_density,
-            &farm.turbines,
             Some(&farm.yaw_angles_sorted),
             Some(&farm.tilt_angles_sorted),
             grid.average_method(),
         )?;
 
-        // Use rotor_diameters_sorted with sorted index i
-        let rotor_diameter_i = farm.rotor_diameters_sorted[[0, i]];
+        // Source turbine's rotor diameter / hub height per findex
+        // (Python: rotor_diameters_sorted[:, i:i+1, None, None])
+        let rotor_diameters_i = farm
+            .rotor_diameters_sorted
+            .slice(s![.., i..i + 1])
+            .to_owned();
 
-        // Use hub_heights_sorted with sorted index i
-        let hub_height_i = farm.hub_heights_sorted[[0, i]];
+        let hub_heights_i = farm.hub_heights_sorted.slice(s![.., i..i + 1]).to_owned();
 
         // Current turbine velocity slices (captured before this turbine's wake is added)
         let u_i = flow_field
@@ -228,8 +229,8 @@ pub fn sequential_solver(
                 &flow_field.u_initial_sorted,
                 &delta_y_ss,
                 &z_i_block,
-                rotor_diameter_i,
-                hub_height_i,
+                &rotor_diameters_i,
+                &hub_heights_i,
                 &ct_4d,
                 &tsr_4d,
                 &ai_4d,
@@ -268,7 +269,7 @@ pub fn sequential_solver(
             &effective_yaw_arr,
             &ti_source,
             &ct_arr,
-            rotor_diameter_i,
+            &rotor_diameters_i,
             &x_grid,
             &deflection_model_args,
         )?;
@@ -285,8 +286,8 @@ pub fn sequential_solver(
                 &delta_x,
                 &delta_y,
                 &z_grid,
-                rotor_diameter_i,
-                hub_height_i,
+                &rotor_diameters_i,
+                &hub_heights_i,
                 &yaw_arr,
                 &ct_arr,
                 &tsr_arr,
@@ -335,8 +336,8 @@ pub fn sequential_solver(
             farm.yaw_angles_sorted.clone(),
             turbine_turbulence_intensity.clone(),
             ct_i,
-            hub_height_i,
-            rotor_diameter_i,
+            &hub_heights_i,
+            &rotor_diameters_i,
             i, // turbine_index
             &velocity_model_args,
         )?;
@@ -379,7 +380,7 @@ pub fn sequential_solver(
             &ambient_ti_4d,
             &x_grid,
             &x_i_4d,
-            rotor_diameter_i,
+            &rotor_diameters_i,
             &ai_4d,
         )?;
         // Match Python's np.nan_to_num(..., posinf=0.0)
@@ -388,12 +389,13 @@ pub fn sequential_solver(
         // grid_y_dim * grid_z_dim == grid_resolution^2 (turbine grid): the number of
         // grid points per turbine, the normalization for area_overlap.
         let grid_res_sq = (grid_y_dim * grid_z_dim) as Float;
-        let downstream_influence_length = 15.0 * rotor_diameter_i;
 
         for fi in 0..n_findex {
             let x_src = x_mean[[fi, i]];
             let y_src = y_mean[[fi, i]];
             let ambient = flow_field.turbulence_intensities[fi];
+            let d_i = rotor_diameters_i[[fi, 0]];
+            let downstream_influence_length = 15.0 * d_i;
             for j in 0..n_turbines {
                 // Fraction of turbine j's grid points with absolute deficit > 0.05 m/s
                 let mut overlap_count = 0.0_f64;
@@ -413,7 +415,7 @@ pub fn sequential_solver(
                         // grid.x_sorted <= 15D + x_i)
                         let x_pt = x_grid[[fi, j, iy, iz]];
                         let downstream = x_pt > x_src
-                            && (y_src - y_grid[[fi, j, iy, iz]]).abs() < 2.0 * rotor_diameter_i
+                            && (y_src - y_grid[[fi, j, iy, iz]]).abs() < 2.0 * d_i
                             && x_pt <= downstream_influence_length + x_src;
                         let ti_added = if downstream {
                             area_overlap * wake_added[[fi, j, iy, iz]]
@@ -539,10 +541,9 @@ pub fn turbopark_solver(
     for i in 0..n_turbines {
         // All turbines' thrust coefficients from the current u_sorted (matching
         // Python: recomputed each iteration as the wakes evolve)
-        let cts_all = Farm::thrust_coefficient(
+        let cts_all = farm.thrust_coefficient(
             &flow_field.u_sorted,
             flow_field.air_density,
-            &farm.turbines,
             Some(&farm.yaw_angles_sorted),
             Some(&farm.tilt_angles_sorted),
             grid.average_method(),
@@ -575,7 +576,10 @@ pub fn turbopark_solver(
                 let ti_ii: Array4 = turbine_turbulence_intensity
                     .slice(s![.., ii..ii + 1, .., ..])
                     .to_owned();
-                let d_ii = farm.rotor_diameters_sorted[[0, ii]];
+                let d_ii = farm
+                    .rotor_diameters_sorted
+                    .slice(s![.., ii..ii + 1])
+                    .to_owned();
 
                 let field_ii = model_manager.deflection_model.function(
                     &x_2d,
@@ -583,7 +587,7 @@ pub fn turbopark_solver(
                     &yaw_ii_arr,
                     &ti_ii,
                     &ct_ii_arr,
-                    d_ii,
+                    &d_ii,
                     grid.x_sorted(),
                     &deflection_model_args,
                 )?;
@@ -606,7 +610,7 @@ pub fn turbopark_solver(
         let velocity_deficit = crate::core::wake_velocity::turbopark::turbopark_velocity_deficit(
             &turbine_turbulence_intensity,
             &cts_all,
-            &farm.rotor_diameters.clone(),
+            &farm.rotor_diameters_sorted,
             grid.x_sorted(),
             grid.y_sorted(),
             grid.z_sorted(),
@@ -636,10 +640,9 @@ pub fn turbopark_solver(
         let x_mean = mean_value_4d_slice(&grid.x_sorted().clone())?;
         let y_mean = mean_value_4d_slice(&grid.y_sorted().clone())?;
 
-        let ai_all = Farm::axial_induction(
+        let ai_all = farm.axial_induction(
             &flow_field.u_sorted,
             flow_field.air_density,
-            &farm.turbines,
             Some(&farm.yaw_angles_sorted),
             Some(&farm.tilt_angles_sorted),
             grid.average_method(),
@@ -657,23 +660,27 @@ pub fn turbopark_solver(
             ambient_ti_4d[[fi, 0, 0, 0]] = flow_field.turbulence_intensities[fi];
         }
 
-        let rotor_diameter_i = farm.rotor_diameters_sorted[[0, i]];
+        let rotor_diameters_i = farm
+            .rotor_diameters_sorted
+            .slice(s![.., i..i + 1])
+            .to_owned();
         let mut wake_added = model_manager.turbulence_model.function(
             &ambient_ti_4d,
             grid.x_sorted(),
             &x_i_4d,
-            rotor_diameter_i,
+            &rotor_diameters_i,
             &ai_4d,
         )?;
         wake_added = wake_added.mapv(|v| if v.is_finite() { v } else { 0.0 });
 
         let grid_res_sq = (grid_y_dim * grid_z_dim) as Float;
-        let downstream_influence_length = 15.0 * rotor_diameter_i;
 
         for fi in 0..n_findex {
             let x_src = x_2d[[fi, 0]];
             let y_src = y_mean[[fi, i]];
             let ambient = flow_field.turbulence_intensities[fi];
+            let d_i = rotor_diameters_i[[fi, 0]];
+            let downstream_influence_length = 15.0 * d_i;
             for j in 0..n_turbines {
                 let mut overlap_count = 0.0_f64;
                 for iy in 0..grid_y_dim {
@@ -692,8 +699,7 @@ pub fn turbopark_solver(
                         // grid.y_sorted| < 2D, grid.x_sorted <= 15D + x_i)
                         let x_pt = grid.x_sorted()[[fi, j, iy, iz]];
                         let downstream = x_pt > x_src
-                            && (y_src - grid.y_sorted()[[fi, j, iy, iz]]).abs()
-                                < 2.0 * rotor_diameter_i
+                            && (y_src - grid.y_sorted()[[fi, j, iy, iz]]).abs() < 2.0 * d_i
                             && x_pt <= downstream_influence_length + x_src;
                         let ti_added = if downstream {
                             area_overlap * wake_added[[fi, j, iy, iz]]
@@ -829,18 +835,16 @@ pub fn full_flow_sequential_solver(
 
     for i in 0..n_turbines {
         // Per-turbine quantities from the turbine-grid solve.
-        let ct_all = Farm::thrust_coefficient(
+        let ct_all = turbine_grid_farm.thrust_coefficient(
             &turbine_grid_flow_field.u_sorted,
             turbine_grid_flow_field.air_density,
-            &turbine_grid_farm.turbines,
             Some(&turbine_grid_farm.yaw_angles_sorted),
             Some(&turbine_grid_farm.tilt_angles_sorted),
             turbine_grid.average_method(),
         )?;
-        let a_all = Farm::axial_induction(
+        let a_all = turbine_grid_farm.axial_induction(
             &turbine_grid_flow_field.u_sorted,
             turbine_grid_flow_field.air_density,
-            &turbine_grid_farm.turbines,
             Some(&turbine_grid_farm.yaw_angles_sorted),
             Some(&turbine_grid_farm.tilt_angles_sorted),
             turbine_grid.average_method(),
@@ -872,8 +876,14 @@ pub fn full_flow_sequential_solver(
             ti_arr[fi] = ti_avg[[fi, 0]];
         }
 
-        let rotor_diameter_i = turbine_grid_farm.rotor_diameters_sorted[[0, i]];
-        let hub_height_i = turbine_grid_farm.hub_heights_sorted[[0, i]];
+        let rotor_diameters_i = turbine_grid_farm
+            .rotor_diameters_sorted
+            .slice(s![.., i..i + 1])
+            .to_owned();
+        let hub_heights_i = turbine_grid_farm
+            .hub_heights_sorted
+            .slice(s![.., i..i + 1])
+            .to_owned();
 
         // Effective yaw per findex including secondary steering.
         let mut effective_yaw_arr = yaw_arr.clone();
@@ -904,8 +914,8 @@ pub fn full_flow_sequential_solver(
                 &turbine_grid_flow_field.u_initial_sorted,
                 &delta_y,
                 &z_i_block,
-                rotor_diameter_i,
-                hub_height_i,
+                &rotor_diameters_i,
+                &hub_heights_i,
                 &ct_4d,
                 &tsr_4d,
                 &ai_4d,
@@ -948,8 +958,8 @@ pub fn full_flow_sequential_solver(
                 &delta_x,
                 &delta_y,
                 &planar_z,
-                rotor_diameter_i,
-                hub_height_i,
+                &rotor_diameters_i,
+                &hub_heights_i,
                 &yaw_arr,
                 &ct_arr,
                 &tsr_arr,
@@ -1005,7 +1015,7 @@ pub fn full_flow_sequential_solver(
             &effective_yaw_arr,
             &ti_slice,
             &ct_arr,
-            rotor_diameter_i,
+            &rotor_diameters_i,
             &x_full,
             &deflection_model_args,
         )?;
@@ -1035,8 +1045,8 @@ pub fn full_flow_sequential_solver(
             yaw_bc,
             ti_bc,
             ct_bc,
-            hub_height_i,
-            rotor_diameter_i,
+            &hub_heights_i,
+            &rotor_diameters_i,
             i,
             &velocity_model_args,
         )?;
@@ -1071,13 +1081,14 @@ pub fn full_flow_sequential_solver(
             &ambient_turbulence_intensities,
             &planar_x,
             &x_i_4d,
-            rotor_diameter_i,
+            &rotor_diameters_i,
             &ai_4d,
         )?;
         wake_added_ti = wake_added_ti.mapv(|v| if v.is_finite() { v } else { 0.0 });
 
-        let downstream_influence_length = 15.0 * rotor_diameter_i;
         for fi in 0..n_findex {
+            let d_i = rotor_diameters_i[[fi, 0]];
+            let downstream_influence_length = 15.0 * d_i;
             for p in 0..n_points {
                 for iy in 0..grid_y_dim {
                     for iz in 0..grid_z_dim {
@@ -1087,8 +1098,7 @@ pub fn full_flow_sequential_solver(
                             0.0
                         };
                         let downstream = planar_x[[fi, p, iy, iz]] > x_i[[fi, 0]]
-                            && (y_i[[fi, 0]] - planar_y[[fi, p, iy, iz]]).abs()
-                                < 2.0 * rotor_diameter_i
+                            && (y_i[[fi, 0]] - planar_y[[fi, p, iy, iz]]).abs() < 2.0 * d_i
                             && planar_x[[fi, p, iy, iz]]
                                 <= downstream_influence_length + x_i[[fi, 0]];
                         let ti_added = if downstream {
@@ -1187,10 +1197,9 @@ pub fn cc_solver(
     // never updated inside the cc loop (only after it, solver.py:712) — i.e. the
     // freestream AI. Rust previously used the wake-inflow AI (turb_ais_2d),
     // which differs for waked turbines (Bug #21).
-    let ai_freestream = Farm::axial_induction(
+    let ai_freestream = farm.axial_induction(
         &flow_field.u_initial_sorted,
         flow_field.air_density,
-        &farm.turbines,
         Some(&farm.yaw_angles_sorted),
         Some(&farm.tilt_angles_sorted),
         grid.average_method(),
@@ -1203,7 +1212,10 @@ pub fn cc_solver(
         .prepare_function(grid, flow_field)?;
 
     for i in 0..n_turbines {
-        let d_i = farm.rotor_diameters_sorted[[0, i]];
+        let rotor_diameters_i = farm
+            .rotor_diameters_sorted
+            .slice(s![.., i..i + 1])
+            .to_owned();
 
         let x_i_slice = grid.x_sorted().slice(s![.., i..i + 1, .., ..]).to_owned();
         let y_i_slice = grid.y_sorted().slice(s![.., i..i + 1, .., ..]).to_owned();
@@ -1212,6 +1224,7 @@ pub fn cc_solver(
 
         // The inflow at turbine i's rotor = u_initial - turb_u_wake
         for fi in 0..n_findex {
+            let d_i = rotor_diameters_i[[fi, 0]];
             for t in 0..n_turbines {
                 for iy in 0..grid_y_dim {
                     for iz in 0..grid_z_dim {
@@ -1251,18 +1264,16 @@ pub fn cc_solver(
                 avg_vels_4d[[fi, t, 0, 0]] = turb_avg_vels[[fi, t]];
             }
         }
-        let turb_cts_2d = Farm::thrust_coefficient(
+        let turb_cts_2d = farm.thrust_coefficient(
             &avg_vels_4d,
             flow_field.air_density,
-            &farm.turbines,
             Some(&farm.yaw_angles_sorted),
             Some(&farm.tilt_angles_sorted),
             grid.average_method(),
         )?;
-        let turb_ais_2d = Farm::axial_induction(
+        let turb_ais_2d = farm.axial_induction(
             &avg_vels_4d,
             flow_field.air_density,
-            &farm.turbines,
             Some(&farm.yaw_angles_sorted),
             Some(&farm.tilt_angles_sorted),
             grid.average_method(),
@@ -1276,8 +1287,8 @@ pub fn cc_solver(
         }
 
         // Per-findex scalar arrays for the source turbine (ct, tsr, ai, yaw)
-        let hub_height_i = farm.hub_heights_sorted[[0, i]];
-        let tsr_i = farm.tsrs_sorted[[0, i]];
+        let hub_heights_i = farm.hub_heights_sorted.slice(s![.., i..i + 1]).to_owned();
+        let tsrs_i = farm.tsrs_sorted.slice(s![.., i..i + 1]).to_owned();
         let mut yaw_arr = Array1::zeros(n_findex);
         let mut ct_arr = Array1::zeros(n_findex);
         let mut tsr_arr = Array1::zeros(n_findex);
@@ -1285,7 +1296,7 @@ pub fn cc_solver(
         for fi in 0..n_findex {
             yaw_arr[fi] = farm.yaw_angles_sorted[[fi, i]];
             ct_arr[fi] = turb_cts_2d[[fi, i]];
-            tsr_arr[fi] = tsr_i;
+            tsr_arr[fi] = tsrs_i[[fi, 0]];
             // Transverse velocities use the freestream AI (Bug #21).
             ai_arr[fi] = ai_freestream[[fi, i]];
         }
@@ -1324,8 +1335,8 @@ pub fn cc_solver(
                 &delta_x,
                 &delta_y,
                 &grid.z_sorted().clone(),
-                d_i,
-                hub_height_i,
+                &rotor_diameters_i,
+                &hub_heights_i,
                 &yaw_arr,
                 &ct_arr,
                 &tsr_arr,
@@ -1378,15 +1389,13 @@ pub fn cc_solver(
                 .to_owned();
             let y_i_block = grid.y_sorted().slice(s![.., i..i + 1, .., ..]).to_owned();
             let z_i_block = grid.z_sorted().slice(s![.., i..i + 1, .., ..]).to_owned();
-            let hub_height_i = farm.hub_heights_sorted[[0, i]];
-            let tsr_i = farm.tsrs_sorted[[0, i]];
 
             let mut ct_4d = Array4::zeros((n_findex, 1, 1, 1));
             let mut tsr_4d = Array4::zeros((n_findex, 1, 1, 1));
             let mut ai_4d = Array4::zeros((n_findex, 1, 1, 1));
             for fi in 0..n_findex {
                 ct_4d[[fi, 0, 0, 0]] = turb_cts_2d[[fi, i]];
-                tsr_4d[[fi, 0, 0, 0]] = tsr_i;
+                tsr_4d[[fi, 0, 0, 0]] = tsrs_i[[fi, 0]];
                 // Secondary steering uses the freestream AI (Bug #21).
                 ai_4d[[fi, 0, 0, 0]] = ai_freestream[[fi, i]];
             }
@@ -1407,8 +1416,8 @@ pub fn cc_solver(
                 &flow_field.u_initial_sorted,
                 &delta_y,
                 &z_i_block,
-                d_i,
-                hub_height_i,
+                &rotor_diameters_i,
+                &hub_heights_i,
                 &ct_4d,
                 &tsr_4d,
                 &ai_4d,
@@ -1430,7 +1439,7 @@ pub fn cc_solver(
             &effective_yaw_arr,
             &ti_source,
             &ct_source,
-            d_i,
+            &rotor_diameters_i,
             grid.x_sorted(),
             &deflection_model_args,
         )?;
@@ -1449,7 +1458,7 @@ pub fn cc_solver(
                 &yaw_i_arr,
                 &turbine_turbulence_intensity,
                 &turb_cts_2d,
-                &farm.rotor_diameters.clone(),
+                &farm.rotor_diameters_sorted,
                 turb_u_wake,
                 ctmp,
             );
@@ -1470,18 +1479,19 @@ pub fn cc_solver(
             &ambient_ti_4d,
             grid.x_sorted(),
             &x_i_4d,
-            d_i,
+            &rotor_diameters_i,
             &ai_4d,
         )?;
         wake_added = wake_added.mapv(|v| if v.is_finite() { v } else { 0.0 });
 
         let grid_res_sq = (grid_y_dim * grid_z_dim) as Float;
-        let downstream_influence_length = 15.0 * d_i;
 
         for fi in 0..n_findex {
             let x_src = x_i_2d[[fi, 0]];
             let y_src = y_i_2d[[fi, 0]];
             let ambient = flow_field.turbulence_intensities[fi];
+            let d_i = rotor_diameters_i[[fi, 0]];
+            let downstream_influence_length = 15.0 * d_i;
             for j in 0..n_turbines {
                 // area_overlap = 1 - fraction of turbine j's rotor with wake <= 0.05
                 let mut unwaked_count = 0.0_f64;
@@ -1621,18 +1631,16 @@ pub fn empirical_gauss_solver(
     for i in 0..n_turbines {
         // Ct / AI from the current u_sorted (recomputed as wakes evolve,
         // matching Python thrust_coefficient/axial_induction with ix_filter=[i])
-        let ct_all = Farm::thrust_coefficient(
+        let ct_all = farm.thrust_coefficient(
             &flow_field.u_sorted,
             flow_field.air_density,
-            &farm.turbines,
             Some(&farm.yaw_angles_sorted),
             Some(&farm.tilt_angles_sorted),
             grid.average_method(),
         )?;
-        let a_all = Farm::axial_induction(
+        let a_all = farm.axial_induction(
             &flow_field.u_sorted,
             flow_field.air_density,
-            &farm.turbines,
             Some(&farm.yaw_angles_sorted),
             Some(&farm.tilt_angles_sorted),
             grid.average_method(),
@@ -1689,7 +1697,11 @@ pub fn empirical_gauss_solver(
 
         // Deflection field due to turbine i at every grid point
         // (Python: x_normalized = (x - x_i) evaluated on the full grid)
-        let d_i = farm.rotor_diameters_sorted[[0, i]];
+        let rotor_diameters_i = farm
+            .rotor_diameters_sorted
+            .slice(s![.., i..i + 1])
+            .to_owned();
+        let hub_heights_i = farm.hub_heights_sorted.slice(s![.., i..i + 1]).to_owned();
         let n_pts = n_turbines * grid_y_dim * grid_z_dim;
         let mut x_downstream = Array2::zeros((n_findex, n_pts));
         for fi in 0..n_findex {
@@ -1704,8 +1716,14 @@ pub fn empirical_gauss_solver(
                 }
             }
         }
-        let (dy_flat, dz_flat) =
-            defl_eg.deflection_yz(&x_downstream, &yaw_arr, &tilt_arr, &mixing_i, &ct_arr, d_i);
+        let (dy_flat, dz_flat) = defl_eg.deflection_yz(
+            &x_downstream,
+            &yaw_arr,
+            &tilt_arr,
+            &mixing_i,
+            &ct_arr,
+            &rotor_diameters_i,
+        );
         let deflection_y =
             dy_flat.into_shape_with_order((n_findex, n_turbines, grid_y_dim, grid_z_dim))?;
         let deflection_z =
@@ -1722,8 +1740,8 @@ pub fn empirical_gauss_solver(
             &tilt_arr,
             &ct_arr,
             &mixing_i,
-            farm.hub_heights_sorted[[0, i]],
-            d_i,
+            &hub_heights_i,
+            &rotor_diameters_i,
             i,
             wind_veer,
         );

@@ -5,7 +5,8 @@
 
 use crate::core::wake::{BaseModel, TurbulenceModel};
 use crate::core::{FlowField, Grid};
-use crate::types::{Array1, Array4, Float};
+use crate::types::{Array1, Array2, Array4, Float};
+use ndarray::s;
 use std::collections::HashMap;
 
 /// Crespo-Hernandez wake turbulence model parameters
@@ -54,7 +55,7 @@ impl TurbulenceModel for CrespoHernandez {
         ambient_turbulence_intensity: &Array4,
         x: &Array4,
         x_i: &Array4,
-        rotor_diameter: Float,
+        rotor_diameters: &Array2,
         axial_induction: &Array4,
     ) -> anyhow::Result<Array4> {
         // delta_x = x - x_i  (x_i broadcasts over the [findex, 1, 1, 1] axis)
@@ -69,7 +70,18 @@ impl TurbulenceModel for CrespoHernandez {
 
         let axial = axial_induction.mapv(|v| v.powf(self.ai));
         let ambient = ambient_turbulence_intensity.mapv(|v| v.powf(self.initial));
-        let ratio = (&delta_x_eff / rotor_diameter).mapv(|v| v.powf(self.downstream));
+
+        // Per-findex rotor diameter: Python divides by the (n_findex, 1, 1, 1)
+        // broadcast array, so each findex row uses its own source diameter.
+        let shape = delta_x_eff.shape();
+        let n_findex = shape[0];
+        let mut ratio = Array4::zeros((shape[0], shape[1], shape[2], shape[3]));
+        for fi in 0..n_findex {
+            let d = rotor_diameters[[fi, 0]];
+            let mut row = delta_x_eff.slice(s![fi, .., .., ..]).to_owned();
+            row.mapv_inplace(|v| (v / d).powf(self.downstream));
+            ratio.slice_mut(s![fi, .., .., ..]).assign(&row);
+        }
 
         let ti = (axial * ambient * ratio).mapv(|v| self.constant * v);
 
@@ -101,7 +113,9 @@ mod tests {
         let x = Array4::from_elem((1, 1, 1, 1), 500.0);
         let x_i = Array4::from_elem((1, 1, 1, 1), 0.0);
         let ai = Array4::from_elem((1, 1, 1, 1), 0.25);
-        let result = crespo.function(&ambient, &x, &x_i, 126.0, &ai).unwrap();
+        let result = crespo
+            .function(&ambient, &x, &x_i, &Array2::from_elem((1, 1), 126.0), &ai)
+            .unwrap();
         // delta_x = 500 > 0 -> downstream, ti = 0.9 * 0.25^0.8 * 0.06^0.1 * (500/126)^(-0.32)
         let expected =
             0.9 * 0.25_f64.powf(0.8) * 0.06_f64.powf(0.1) * (500.0 / 126.0_f64).powf(-0.32);
@@ -116,7 +130,9 @@ mod tests {
         let x = Array4::from_elem((1, 1, 1, 1), -100.0);
         let x_i = Array4::from_elem((1, 1, 1, 1), 0.0);
         let ai = Array4::from_elem((1, 1, 1, 1), 0.25);
-        let result = crespo.function(&ambient, &x, &x_i, 126.0, &ai).unwrap();
+        let result = crespo
+            .function(&ambient, &x, &x_i, &Array2::from_elem((1, 1), 126.0), &ai)
+            .unwrap();
         assert_relative_eq!(result[[0, 0, 0, 0]], 0.0, epsilon = 1e-12);
     }
 }

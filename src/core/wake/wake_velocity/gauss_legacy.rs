@@ -71,13 +71,11 @@ impl VelocityModel for GaussLegacyVelocityDeficit {
         _yaw_angle: Array2,
         turbulence_intensity: Array4,
         _thrust_coefficient: Array2,
-        hub_height: Float,
-        rotor_diameter: Float,
+        hub_heights: &Array2,
+        rotor_diameters: &Array2,
         turbine_index: usize,
         _model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4> {
-        let r0 = rotor_diameter / 2.0;
-
         let shape = x.shape();
         let n_findex = shape[0];
         let n_turbines = shape[1];
@@ -87,6 +85,8 @@ impl VelocityModel for GaussLegacyVelocityDeficit {
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
         for fi in 0..n_findex {
+            let r0 = rotor_diameters[[fi, 0]] / 2.0;
+            let hub_height = hub_heights[[fi, 0]];
             let mut x_wake_source = 0.0;
             let mut y_wake_source = 0.0;
             let mut count = 0.0;

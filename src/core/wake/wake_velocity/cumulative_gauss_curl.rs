@@ -142,7 +142,7 @@ pub fn cc_velocity_deficit(
     yaw_angle: &Array1,
     turbulence_intensity: &Array4,
     turb_cts: &Array2,
-    rotor_diameters: &Array1,
+    rotor_diameters: &Array2,
     mut turb_u_wake: Array4,
     mut ctmp: ArrayD,
 ) -> (Array4, ArrayD) {
@@ -197,7 +197,7 @@ pub fn cc_velocity_deficit(
     for fi in 0..n_findex {
         let ct_i = turb_cts[[fi, ii]];
         let yaw_i = yaw_angle[fi];
-        let d_i = rotor_diameters[ii];
+        let d_i = rotor_diameters[[fi, ii]];
         let x_i_loc = x_mean[[fi, ii]];
         let y_i_loc = y_mean[[fi, ii]];
         let z_i_loc = z_mean[[fi, ii]];
@@ -206,7 +206,7 @@ pub fn cc_velocity_deficit(
         let mut sum_lbda = Array4::zeros((n_findex, n_turbines, n_y, n_z));
         for m in 0..ii.saturating_sub(1) {
             let ct_m = turb_cts[[fi, m]];
-            let d_m = rotor_diameters[m];
+            let d_m = rotor_diameters[[fi, m]];
             let y_m_loc = y_mean[[fi, m]];
             let z_m_loc = z_mean[[fi, m]];
 
@@ -346,8 +346,8 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
         _yaw_angle: Array2,
         turbulence_intensity: Array4,
         thrust_coefficient: Array2,
-        hub_height: Float,
-        rotor_diameter: Float,
+        hub_heights: &Array2,
+        rotor_diameters: &Array2,
         turbine_index: usize,
         _model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4> {
@@ -360,6 +360,8 @@ impl VelocityModel for CumulativeCurlVelocityDeficit {
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
         for fi in 0..n_findex {
+            let hub_height = hub_heights[[fi, 0]];
+            let rotor_diameter = rotor_diameters[[fi, 0]];
             let mut x_wake_source = 0.0;
             let mut y_wake_source = 0.0;
             let mut count = 0.0;

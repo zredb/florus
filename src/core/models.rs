@@ -49,6 +49,8 @@ pub trait VelocityModel {
     /// deflection_field is the wake-source deflection evaluated at every grid
     /// point, shape (n_findex, n_turbines, grid_y, grid_z) — matching the
     /// Python `deflection_field_i` argument.
+    /// hub_heights / rotor_diameters are the wake source's values per findex,
+    /// shape (n_findex, 1), matching Python's (n_findex, 1, 1, 1) broadcast.
     #[allow(clippy::too_many_arguments)]
     fn function(
         &self,
@@ -60,8 +62,8 @@ pub trait VelocityModel {
         yaw_angle: Array2,
         turbulence_intensity: Array4,
         thrust_coefficient: Array2,
-        hub_height: Float,
-        rotor_diameter: Float,
+        hub_heights: &Array2,
+        rotor_diameters: &Array2,
         turbine_index: usize,
         model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4>;
@@ -94,7 +96,8 @@ pub trait DeflectionModel {
     ///   slice of the evolving 4D TI field, shape `[n_findex, 1, grid_y, grid_z]`
     ///   (Python: `turbulence_intensity_i = turbine_turbulence_intensity[:, i:i+1]`)
     /// * `thrust_coefficient_i`: per-findex Ct of the source, shape `[n_findex]`
-    /// * `rotor_diameter`: source rotor diameter (scalar)
+    /// * `rotor_diameters`: source rotor diameter per findex, shape
+    ///   `[n_findex, 1]` (Python passes `(n_findex, 1, 1, 1)`)
     /// * `grid_x`: full grid x-coordinates, shape `[n_findex, n_turbines, grid_y, grid_z]`
     ///
     /// Returns: deflection field, shape `[n_findex, n_turbines, grid_y, grid_z]`
@@ -106,7 +109,7 @@ pub trait DeflectionModel {
         yaw_i: &Array1,
         turbulence_intensity_i: &Array4,
         thrust_coefficient_i: &Array1,
-        rotor_diameter: Float,
+        rotor_diameters: &Array2,
         grid_x: &Array4,
         model_args: &HashMap<String, Array1>,
     ) -> anyhow::Result<Array4>;
@@ -135,14 +138,15 @@ pub trait TurbulenceModel {
     /// * `ambient_turbulence_intensity`: shape `[findex, 1, 1, 1]` (inflow TI)
     /// * `x`: full grid x, shape `[findex, n_turbines, grid_y, grid_z]`
     /// * `x_i`: source turbine mean x, shape `[findex, 1, 1, 1]`
-    /// * `rotor_diameter`: source turbine rotor diameter (scalar)
+    /// * `rotor_diameters`: source rotor diameter per findex, shape
+    ///   `[n_findex, 1]` (Python passes `(n_findex, 1, 1, 1)`)
     /// * `axial_induction`: source turbine axial induction, shape `[findex, 1, 1, 1]`
     fn function(
         &self,
         ambient_turbulence_intensity: &Array4,
         x: &Array4,
         x_i: &Array4,
-        rotor_diameter: Float,
+        rotor_diameters: &Array2,
         axial_induction: &Array4,
     ) -> anyhow::Result<Array4>;
 

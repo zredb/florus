@@ -82,7 +82,7 @@ impl DeflectionModel for EmpiricalGaussVelocityDeflection {
         yaw_i: &Array1,
         _turbulence_intensity_i: &Array4,
         thrust_coefficient_i: &Array1,
-        rotor_diameter: Float,
+        rotor_diameters: &Array2,
         grid_x: &Array4,
         _model_args: &HashMap<String, Array1>,
     ) -> anyhow::Result<Array4> {
@@ -117,7 +117,7 @@ impl DeflectionModel for EmpiricalGaussVelocityDeflection {
             &tilt_arr,
             &mixing_arr,
             thrust_coefficient_i,
-            rotor_diameter,
+            rotor_diameters,
         );
         let deflection_y =
             deflection_y.into_shape_with_order((n_findex, n_turbines, grid_y_dim, grid_z_dim))?;
@@ -141,24 +141,25 @@ impl EmpiricalGaussVelocityDeflection {
         tilt_angle: &Array1,
         mixing_i: &Array1,
         thrust_coefficient: &Array1,
-        rotor_diameter: Float,
+        rotor_diameters: &Array2,
     ) -> (Array2, Array2) {
         let shape = x_downstream.shape();
         let n_findex = shape[0];
         let n = shape[1];
 
-        let deflection_gain_y = self.horizontal_deflection_gain_d * rotor_diameter;
-        // vertical_deflection_gain_D == -1 means "same as horizontal"
-        let deflection_gain_z = if self.vertical_deflection_gain_d == -1.0 {
-            deflection_gain_y
-        } else {
-            self.vertical_deflection_gain_d * rotor_diameter
-        };
-
         let mut deflection_y = Array::zeros((n_findex, n));
         let mut deflection_z = Array::zeros((n_findex, n));
 
         for fi in 0..n_findex {
+            let rotor_diameter = rotor_diameters[[fi, 0]];
+            let deflection_gain_y = self.horizontal_deflection_gain_d * rotor_diameter;
+            // vertical_deflection_gain_D == -1 means "same as horizontal"
+            let deflection_gain_z = if self.vertical_deflection_gain_d == -1.0 {
+                deflection_gain_y
+            } else {
+                self.vertical_deflection_gain_d * rotor_diameter
+            };
+
             // CW yaw for consistency with other models
             let yaw_r = -yaw_angle[fi].to_radians();
             let tilt_r = tilt_angle[fi].to_radians();
@@ -210,7 +211,14 @@ mod tests {
         let mixing = Array1::zeros(1);
         let ct = Array1::from_vec(vec![0.76]);
 
-        let (defl_y, defl_z) = empirical.deflection_yz(&x_dist, &yaw, &tilt, &mixing, &ct, 126.0);
+        let (defl_y, defl_z) = empirical.deflection_yz(
+            &x_dist,
+            &yaw,
+            &tilt,
+            &mixing,
+            &ct,
+            &Array2::from_elem((1, 1), 126.0),
+        );
 
         assert_relative_eq!(defl_y[[0, 0]], 0.0, epsilon = 1e-12);
         // tilt_r = 5 deg in rad; log_term at 5D = ln((5-22)/(5+22) + 2)

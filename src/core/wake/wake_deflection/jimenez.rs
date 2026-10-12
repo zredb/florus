@@ -56,7 +56,7 @@ impl DeflectionModel for JimenezVelocityDeflection {
         yaw_i: &Array1,
         _turbulence_intensity_i: &Array4,
         thrust_coefficient_i: &Array1,
-        rotor_diameter: Float,
+        rotor_diameters: &Array2,
         grid_x: &Array4,
         _model_args: &HashMap<String, Array1>,
     ) -> anyhow::Result<Array4> {
@@ -76,6 +76,7 @@ impl DeflectionModel for JimenezVelocityDeflection {
                 * thrust_coefficient_i[fi]
                 / 2.0;
             let x_src = x_i[[fi, 0]];
+            let rotor_diameter = rotor_diameters[[fi, 0]];
 
             for ti in 0..n_turbines {
                 for iy in 0..grid_y_dim {
@@ -130,7 +131,7 @@ mod tests {
                 &yaw_arr,
                 &ti,
                 &ct,
-                126.0,
+                &Array::from_elem((1, 1), 126.0),
                 &grid_x,
                 &HashMap::new(),
             )

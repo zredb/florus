@@ -348,6 +348,99 @@ def generate_wake_ti4d_value(output_dir: Path) -> None:
     save_json(results, output_dir / "wake_regression" / "gauss_staggered_ti.json")
 
 
+def generate_wake_hetero_sort_value(output_dir: Path) -> None:
+    """Generate the heterogeneous-fleet golden value with a per-findex sort
+    order change (Bug #34).
+
+    Turbines 0 and 2 are nrel_5MW, turbine 1 is iea_10MW with a large lateral
+    offset. At 270 deg the sort order is 0, 1, 2; at 290 deg the rotated
+    coordinates reorder to 1, 0, 2, so each findex maps different layout
+    turbines to the sorted positions — exercising per-findex rotor diameter /
+    hub height and Cp/Ct curve dispatch.
+    """
+    print("\n=== Generating Heterogeneous-Sort Wake Golden Value ===")
+
+    fmodel = FlorisModel(
+        {
+            "name": "hetero_sort",
+            "description": "heterogeneous fleet with per-findex sort order change",
+            "floris_version": "v4",
+            "logging": {
+                "console": {"enable": False, "level": "WARNING"},
+                "file": {"enable": False, "level": "WARNING"},
+            },
+            "solver": {"type": "turbine_grid", "turbine_grid_points": 2},
+            "farm": {
+                "layout_x": [0.0, 252.0, 504.0],
+                "layout_y": [0.0, 700.0, 0.0],
+                "turbine_type": ["nrel_5MW", "iea_10MW", "nrel_5MW"],
+            },
+            "flow_field": {
+                "wind_speeds": [8.0, 8.0],
+                "wind_directions": [270.0, 290.0],
+                "turbulence_intensities": [0.1, 0.1],
+                "wind_shear": 0.12,
+                "wind_veer": 0.0,
+                "air_density": 1.225,
+                "reference_wind_height": 90.0,
+            },
+            "wake": {
+                "model_strings": {
+                    "velocity_model": "gauss",
+                    "deflection_model": "gauss",
+                    "combination_model": "sosfs",
+                    "turbulence_model": "crespo_hernandez",
+                },
+                "enable_secondary_steering": True,
+                "enable_yaw_added_recovery": True,
+                "enable_transverse_velocities": True,
+                "enable_active_wake_mixing": False,
+                "wake_deflection_parameters": {
+                    "gauss": {
+                        "ad": 0.0,
+                        "alpha": 0.58,
+                        "bd": 0.0,
+                        "beta": 0.077,
+                        "dm": 1.0,
+                        "ka": 0.38,
+                        "kb": 0.004,
+                    },
+                },
+                "wake_velocity_parameters": {
+                    "gauss": {"ka": 0.38, "kb": 0.004, "alpha": 0.58, "beta": 0.077},
+                },
+                "wake_turbulence_parameters": {
+                    "crespo_hernandez": {
+                        "initial": 0.1,
+                        "constant": 0.5,
+                        "ai": 0.8,
+                        "downstream": -0.32,
+                    },
+                },
+            },
+        }
+    )
+    fmodel.set(yaw_angles=[[5.0, 0.0, 0.0], [5.0, 0.0, 0.0]])
+    fmodel.run()
+
+    powers = fmodel.get_turbine_powers()
+    results = {
+        "turbine_powers": [[float(p) for p in row] for row in powers.tolist()],
+        "farm_power": [float(p) for p in fmodel.get_farm_power().tolist()],
+        "n_findex": 2,
+        "n_turbines": 3,
+        "velocities_shape": list(fmodel.core.flow_field.u.shape),
+        "config": {
+            "velocity_model": "gauss",
+            "deflection_model": "gauss",
+            "combination_model": "sosfs",
+            "turbulence_model": "crespo_hernandez",
+            "yawed": True,
+        },
+    }
+    save_json(results, output_dir / "wake_regression" / "gauss_hetero_sort.json")
+
+
 # =============================================================================
 # FlorisModel API Tests
 # =============================================================================

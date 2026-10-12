@@ -57,8 +57,8 @@ impl VelocityModel for JensenVelocity {
         _yaw_angle: Array2,
         _turbulence_intensity: Array4,
         _thrust_coefficient: Array2,
-        _hub_height: Float,
-        rotor_diameter: Float,
+        _hub_heights: &Array2,
+        rotor_diameters: &Array2,
         turbine_index: usize,
         _model_args: &HashMap<String, Array4>,
     ) -> anyhow::Result<Array4> {
@@ -70,11 +70,11 @@ impl VelocityModel for JensenVelocity {
 
         let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
 
-        let r0 = rotor_diameter / 2.0;
         let we = self.kd;
         const NUM_EPS: Float = 0.001;
 
         for fi in 0..n_findex {
+            let r0 = rotor_diameters[[fi, 0]] / 2.0;
             let mut x_wake_source = 0.0;
             let mut y_wake_source = 0.0;
             let mut z_wake_source = 0.0;

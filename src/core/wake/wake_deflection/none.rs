@@ -51,7 +51,7 @@ impl DeflectionModel for NoneVelocityDeflection {
         _yaw_i: &Array1,
         _turbulence_intensity_i: &Array4,
         _thrust_coefficient_i: &Array1,
-        _rotor_diameter: Float,
+        _rotor_diameters: &Array2,
         grid_x: &Array4,
         _model_args: &HashMap<String, Array1>,
     ) -> anyhow::Result<Array4> {

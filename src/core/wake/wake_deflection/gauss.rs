@@ -94,7 +94,7 @@ impl DeflectionModel for GaussVelocityDeflection {
         yaw_i: &Array1,
         turbulence_intensity_i: &Array4,
         thrust_coefficient_i: &Array1,
-        rotor_diameter: Float,
+        rotor_diameters: &Array2,
         grid_x: &Array4,
         model_args: &HashMap<String, Array1>,
     ) -> anyhow::Result<Array4> {
@@ -122,6 +122,7 @@ impl DeflectionModel for GaussVelocityDeflection {
             let yaw = -yaw_i[fi];
             let ct = thrust_coefficient_i[fi];
             let x_src = x_i[[fi, 0]];
+            let rotor_diameter = rotor_diameters[[fi, 0]];
 
             // Initial velocity deficits (Python uses the freestream-normalized
             // freestream_velocity = 1; it cancels in u_r/(u + u0))
@@ -253,14 +254,32 @@ mod tests {
         let grid_x = Array::from_shape_vec((1, 1, 1, 1), vec![126.0]).unwrap();
 
         let result = gauss
-            .function(&x_i, &y_i, &yaw, &ti, &ct, 126.0, &grid_x, &HashMap::new())
+            .function(
+                &x_i,
+                &y_i,
+                &yaw,
+                &ti,
+                &ct,
+                &Array2::from_elem((1, 1), 126.0),
+                &grid_x,
+                &HashMap::new(),
+            )
             .unwrap();
         assert_relative_eq!(result[[0, 0, 0, 0]], -1.74781831, epsilon = 1e-6);
 
         // Zero yaw gives exactly zero deflection
         let yaw0 = Array1::from_vec(vec![0.0]);
         let zero = gauss
-            .function(&x_i, &y_i, &yaw0, &ti, &ct, 126.0, &grid_x, &HashMap::new())
+            .function(
+                &x_i,
+                &y_i,
+                &yaw0,
+                &ti,
+                &ct,
+                &Array2::from_elem((1, 1), 126.0),
+                &grid_x,
+                &HashMap::new(),
+            )
             .unwrap();
         assert_relative_eq!(zero[[0, 0, 0, 0]], 0.0, epsilon = 1e-12);
     }
