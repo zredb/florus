@@ -469,11 +469,17 @@ Rust 原以 2D 标量近似:中心点 wake_added + 均值掩码,且湍流场不�
 
 ---
 
-## Bug #37: awc / unified-momentum / controller-dependent 为占位实现 ⏸
+## Bug #37: awc / unified-momentum / controller-dependent 为占位实现 ✅(awc、unified-momentum 已移植;controller-dependent 单列 ⏸)
 
-**Files**: `awc.rs`(委托 CosineLoss;Python 有 `base×(1−(b+c·base)·amp^a)` 公式,operation_models.py:522-523)、`unified_momentum.rs`(自创简化式且有 2 处公式错误:84 行应 ÷(2·cos²γ)、214 行 √…/(2cos²γ) 丢失 `1−`;Python 为 Heck 迭代求解器)、`controller_dependent.rs`(委托 CosineLoss;Python 为 TUM fsolve 叶素模型)。
-**状态更新(随 #35)**: 操作模型测试现已真正激活各模型——awc(baseline 无幅值时退化为 cosine-loss)与 controller-dependent 在松容差(25%)下通过;**unified-momentum 如实失败(72% 偏差),已 `#[ignore]` 标注**,待移植后恢复。
-**计划**: 需按 Python 各自模块完整移植,并打通 `awc_amplitudes` → TurbineContext 接线。
+**Files**: `awc.rs`、`unified_momentum.rs`(重写)、`src/core/turbines/operation_models/mod.rs`(TurbineParameters 增加 helix_* 字段、TurbineContext 增加 awc_modes)、`turbine.rs`/`farm.rs`/`solver.rs`(awc_modes/awc_amplitudes 接线)、`tests/cross_validation_operation.rs`、`tests/generate_golden_values.py`
+
+**awc(✅ 本批)**:按 Python AWCTurbine(operation_models.py:510-623)移植:`AWC_model(a,b,c,base,amp) = base·(1−(b+c·base)·amp^a)`;`helix` 掩码位用 helix_power_b/c 修功率、helix_thrust_b/c 修 Ct,`baseline` 直通;无效模式与近额定(np.isclose 语义,rtol=1e-5/atol=1e-8)按 Python 的 `raise UserWarning` 对应 bail!;axial_induction 由 AWC 修正后的 Ct 推出。awc_modes/awc_amplitudes 经 TurbineContext→Farm→solver 全链接线(求解器中 helix 激活现影响尾流,Python 语义)。
+
+**unified-momentum(✅ 本批)**:按 unified_momentum_model.py 完整移植:LimitedHeck 限界解(Eq. 2.19/2.20)作初值;**Heck 不动点迭代**(Eq. 2.15 残差,max_iter=500、eps=1e-5、relax=0.1,不收敛→NaN 与 Python 一致);`UMM_rotor_axial_induction`(C_T' 用 Calaf 2010 Eq.19)与 `UMM_rotor_velocity_yaw_correction`(Eq. 2.3/D1 速度比);power/Ct 在修正后速度上重新查表(Ct 无 clamp、fill=0.0001);速度经 (ρ/ρ_ref)^(1/3) 密度修正;无 tilt 修正(Python TODO 同)。移除此前自创简化式的 2 处公式错误。
+
+**controller-dependent(⏸ 单列,规模约 900 行研究级模型)**:移植所需清单已盘点:① .npz Cp/Ct 曲面加载器(npz_loader 现为假轴占位);② 二维三次 RegularGridInterpolator((tsr,pitch) 网格);③ fsolve 等价求解器(三层嵌套:get_tsr/get_pitch→get_ct);④ find_cp/find_ct/get_ct BEM 闭式(Tamaro et al. Eq. 25);⑤ control_trajectory 区域 2/2½/3 控制器仿真(omega/torque LUT);⑥ polyfit 局部剪切;⑦ 浮式 tilt(compute_tilt_angles_for_floating_turbines)。测试保持松容差 + 注释。
+
+**Validation**: 新增判别黄金值 `awc_helix`(helix 2.5° 激励,功率 −2.7%)与 `unified_momentum_yawed`(20° 偏航,功率 −9.2%,Heck 迭代实际运行);四个用例均 **1e-5 内逐位一致**;awc baseline 与 UM 零偏航(退化路径)亦 1e-5;UM 的 #[ignore] 移除。操作测试 **14/14**,337 lib + 全部集成通过,wake 交叉验证残差逐位不变,clippy=基线 19,fmt 干净。
 
 ---
 

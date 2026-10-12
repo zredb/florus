@@ -1,44 +1,111 @@
-//! Unified Momentum turbine operation model
+//! Unified Momentum Model turbine operation model
 //!
-//! Based on Unified Momentum Model (Liew et al., 2024) which provides
-//! a unified framework for rotor aerodynamics across operating regimes
+//! Port of Python UnifiedMomentumModelTurbine (unified_momentum_model.py),
+//! the yawed actuator-disk model of Heck et al. (2023). Assumes the modified
+//! thrust coefficient C_T' is invariant to yaw:
 //!
-//! This model implements:
-//! 1. Rotor-normal axial induction factor (an) - accounting for induction increase with yaw
-//! 2. Streamwise outlet velocity (u4) - for power calculation
-//! 3. Modified thrust coefficient (CT') - including yaw and tilt effects
-//! 4. Near-wake length (x0) - distance where wake pressure equals ambient
-//! 5. Wake pressure deficit - pressure difference across wake
+//! - `umm_rotor_axial_induction`: C_T' from Eq. (19) of Calaf et al. (2010),
+//!   then the Heck fixed-point iteration for the yawed induction `an`.
+//! - `umm_rotor_velocity_yaw_correction`: ratio of yaw-adjusted to yaw-aligned
+//!   rotor wind speed (Eq. 2.3 / Eq. D1 of Heck et al.).
 //!
-//! Reference: "Unified Momentum Model for Rotor Aerodynamics Across
-//!            Operating Regimes" (Nature Communications, 2024)
-//!
-//! Implementation follows the coupled equation system from the paper:
-//! - an = (1 - sqrt(1 - ct*cos^2(gamma))) / (2*cos^2(gamma))
-//! - u4 = u_inf * (1 - an) / 2) * cos^2(gamma)
-//! - x0 = -C'T / (2*u4) where C' captures pressure effects
-//!
-//! The model provides analytical solutions that:
-//! - Capture the monotonic increase in thrust with induction observed in experiments
-//! - Work across yaw misaligned and high thrust states
-//! - Eliminate the need for empirical corrections in classical momentum theory
+//! The Heck solver is the fixed-point iteration defined at
+//! unified_momentum_model.py:451 — max_iter=500, tolerance=1e-5,
+//! relaxation=0.1 — with the LimitedHeck (Eq. 2.19/2.20) initial guess. No
+//! defensive clamps: unconverged solves propagate NaN exactly as Python does.
 
 use crate::core::turbines::operation_models::OperationModel;
 use crate::core::{TurbineContext, TurbineParameters};
-use crate::types::Float;
-use crate::types::{Array2, Array3, Array4};
-use ndarray::s;
+use crate::types::{Array2, Array4, Float};
 
 /// Unified Momentum turbine model
 #[derive(Debug, Clone, Default)]
 pub struct UnifiedMomentumTurbine;
 
-impl OperationModel for UnifiedMomentumTurbine {
-    fn model_name(&self) -> &'static str {
-        "unified-momentum"
+/// Limited case v_4 << u_4 (Eq. 2.19, 2.20 of Heck et al.). Returns
+/// (a, u4, v4).
+#[inline]
+fn limited_heck(ct_prime: Float, yaw: Float) -> (Float, Float, Float) {
+    let cos_yaw = yaw.cos();
+    let sin_yaw = yaw.sin();
+    let c2 = ct_prime * cos_yaw * cos_yaw;
+    let a = c2 / (4.0 + c2);
+    let u4 = (4.0 - c2) / (4.0 + c2);
+    let v4 = -(4.0 * ct_prime * sin_yaw * cos_yaw * cos_yaw) / (4.0 + c2).powi(2);
+    (a, u4, v4)
+}
+
+/// Heck fixed-point iteration on the residual of Eq. 2.15 (Python
+/// `@fixedpointiteration(max_iter=500, tolerance=0.00001, relaxation=0.1)`,
+/// unified_momentum_model.py:451). Returns the yawed axial induction `an`,
+/// or NaN if the iteration did not converge (Python post_process).
+fn heck_an(ct_prime: Float, yaw: Float) -> Float {
+    let eps = 0.00001;
+    let maxiter = 500;
+    let relax = 0.1;
+
+    let (mut a, mut u4, mut v4) = limited_heck(ct_prime, yaw);
+    let mut converged = false;
+
+    for _ in 0..maxiter {
+        // residual(x, Ct', yaw) — Eq. 2.15
+        let e_a = 1.0 - (1.0 - u4 * u4 - v4 * v4).sqrt() / (ct_prime.sqrt() * yaw.cos()) - a;
+        let e_u4 = (1.0 - 0.5 * ct_prime * (1.0 - a) * yaw.cos() * yaw.cos()) - u4;
+        let e_v4 =
+            -0.25 * ct_prime * (1.0 - a) * (1.0 - a) * yaw.sin() * yaw.cos() * yaw.cos() - v4;
+
+        // x0 = x0 + (1 - relax) * residual
+        a += (1.0 - relax) * e_a;
+        u4 += (1.0 - relax) * e_u4;
+        v4 += (1.0 - relax) * e_v4;
+
+        if e_a.abs() < eps && e_u4.abs() < eps && e_v4.abs() < eps {
+            converged = true;
+            break;
+        }
     }
 
-    fn power(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
+    if converged {
+        a
+    } else {
+        Float::NAN
+    }
+}
+
+/// UMM_rotor_axial_induction (unified_momentum_model.py:28-47).
+#[inline]
+fn umm_rotor_axial_induction(ct: Float, yaw_deg: Float) -> Float {
+    let ai_yawaligned = 0.5 * (1.0 - (1.0 - ct).sqrt()); // Actuator disc theory
+    let ct_prime = ct / (1.0 - ai_yawaligned).powi(2); // Eq. (19) of Calaf et al., 2010
+    heck_an(ct_prime, yaw_deg.to_radians())
+}
+
+/// UMM_rotor_velocity_yaw_correction (unified_momentum_model.py:49-79).
+#[allow(clippy::too_many_arguments)]
+fn umm_rotor_velocity_yaw_correction(
+    ct: Float,
+    yaw_deg: Float,
+    axial_induction: Float,
+    rotor_effective_velocity: Float,
+) -> Float {
+    let ai_yawaligned = 0.5 * (1.0 - (1.0 - ct).sqrt());
+    let ct_prime = ct / (1.0 - ai_yawaligned).powi(2);
+
+    let yaw = yaw_deg.to_radians();
+    let u_d_yawed = (1.0 - axial_induction) * yaw.cos(); // Eq. 2.3 of Heck et al.
+    let u_d_aligned = 1.0 - ct_prime / (ct_prime + 4.0); // Eq. D1 of Heck et al.
+
+    (u_d_yawed / u_d_aligned) * rotor_effective_velocity
+}
+
+impl UnifiedMomentumTurbine {
+    /// Shared computation: (ct at v_eff, UMM axial induction, corrected
+    /// rotor-effective velocity). Ct lookup has fill_value=0.0001 outside the
+    /// table and NO clamp (Python interp1d directly).
+    fn solve(
+        params: &TurbineParameters,
+        ctx: &TurbineContext,
+    ) -> crate::Result<(Array2, Array2, Array2, Array2)> {
         let yaw_angles = ctx
             .yaw_angles
             .ok_or_else(|| anyhow::anyhow!("Yaw angles required for UnifiedMomentumTurbine"))?;
@@ -54,66 +121,56 @@ impl OperationModel for UnifiedMomentumTurbine {
             None, // TODO: cubature_weights conversion from Array2 to Array1 needed
         )?;
 
-        let yaw_rad = yaw_angles.mapv(|y| y.to_radians());
+        // rotor_velocity_air_density_correction: v * (rho/rho_ref)^(1/3)
+        let mut rotor_effective_velocities = ndarray::Array::zeros((n_findex, n_turbines));
+        let mut thrust_coefficients = ndarray::Array::zeros((n_findex, n_turbines));
+        let mut axial_inductions = ndarray::Array::zeros((n_findex, n_turbines));
+        let mut corrected_velocities = ndarray::Array::zeros((n_findex, n_turbines));
 
-        // Get base thrust coefficient from table
-        let mut ct_base = ndarray::Array::zeros((n_findex, n_turbines));
         for i in 0..n_findex {
+            let density_factor = (ctx.air_density[i] / params.ref_air_density).powf(1.0 / 3.0);
             for j in 0..n_turbines {
-                let vel = rotor_avg_velocities[[i, j]];
-                ct_base[[i, j]] = params.thrust_table.interpolate(vel).clamp(0.0001, 0.9999);
+                let v_eff = rotor_avg_velocities[[i, j]] * density_factor;
+                rotor_effective_velocities[[i, j]] = v_eff;
+
+                let ct = params.thrust_table.interpolate(v_eff);
+                thrust_coefficients[[i, j]] = ct;
+
+                let yaw = yaw_angles[[i, j]];
+                let ai = umm_rotor_axial_induction(ct, yaw);
+                axial_inductions[[i, j]] = ai;
+
+                corrected_velocities[[i, j]] =
+                    umm_rotor_velocity_yaw_correction(ct, yaw, ai, v_eff);
             }
         }
 
-        // Modified thrust coefficient with yaw effect from Unified Momentum Model
-        let mut ct_mod = ct_base.clone();
-        for i in 0..n_findex {
-            for j in 0..n_turbines {
-                let cos_gamma = yaw_rad[[i, j]].cos();
-                ct_mod[[i, j]] = ct_base[[i, j]] * cos_gamma * cos_gamma;
-            }
+        Ok((
+            rotor_effective_velocities,
+            thrust_coefficients,
+            axial_inductions,
+            corrected_velocities,
+        ))
+    }
+}
+
+impl OperationModel for UnifiedMomentumTurbine {
+    fn model_name(&self) -> &'static str {
+        "unified-momentum"
+    }
+
+    fn power(&self, params: &TurbineParameters, ctx: &TurbineContext) -> crate::Result<Array2> {
+        // Python: power_interpolator(corrected_rotor_effective_velocities)*1e3
+        // (no yaw/tilt cosine corrections — TODO in the Python source).
+        let (.., corrected) = UnifiedMomentumTurbine::solve(params, ctx)?;
+        let mut power = ndarray::Array::zeros(corrected.dim());
+        for ((p, v), table) in power
+            .iter_mut()
+            .zip(corrected.iter())
+            .zip(std::iter::repeat(&params.power_table))
+        {
+            *p = table.interpolate(*v) * 1000.0;
         }
-
-        // Compute rotor-normal axial induction factor (an)
-        // From Unified Momentum Model: an = (1 - sqrt(1 - ct*cos^2(gamma))) / (2*cos^2(gamma))
-        // This captures the observed monotonic increase in thrust with induction
-        let mut an = ndarray::Array::zeros((n_findex, n_turbines));
-        for i in 0..n_findex {
-            for j in 0..n_turbines {
-                let ct = ct_mod[[i, j]];
-                an[[i, j]] = (1.0 - (1.0 - ct).sqrt()) / (2.0 * ct.powf(2.0));
-            }
-        }
-
-        // Compute streamwise outlet velocity (u4) - for power calculation
-        let mut u4_normalized = ndarray::Array::zeros((n_findex, n_turbines));
-        for i in 0..n_findex {
-            for j in 0..n_turbines {
-                let one_minus_an = 1.0 - an[[i, j]];
-                u4_normalized[[i, j]] = one_minus_an * yaw_rad[[i, j]].cos().powf(2.0) / 2.0;
-            }
-        }
-
-        // Apply air density correction
-        let density_correction = (ctx.air_density[0] / params.ref_air_density).powf(1.0 / 3.0);
-
-        // Compute effective velocities and power
-        let mut power = ndarray::Array::zeros((n_findex, n_turbines));
-        for i in 0..n_findex {
-            for j in 0..n_turbines {
-                let vel = rotor_avg_velocities[[i, j]];
-                let mut effective_vel = vel * density_correction;
-
-                // Apply yaw correction to effective velocity
-                let yaw = yaw_rad[[i, j]];
-                let pw = params.cosine_loss_exponent_yaw / 3.0;
-                effective_vel *= yaw.cos().powf(pw);
-
-                power[[i, j]] =
-                    params.power_table.interpolate(effective_vel) * u4_normalized[[i, j]] * 1000.0;
-            }
-        }
-
         Ok(power)
     }
 
@@ -122,65 +179,17 @@ impl OperationModel for UnifiedMomentumTurbine {
         params: &TurbineParameters,
         ctx: &TurbineContext,
     ) -> crate::Result<Array2> {
-        let yaw_angles = ctx
-            .yaw_angles
-            .ok_or_else(|| anyhow::anyhow!("Yaw angles required for UnifiedMomentumTurbine"))?;
-        let tilt_angles = ctx
-            .tilt_angles
-            .ok_or_else(|| anyhow::anyhow!("Tilt angles required for UnifiedMomentumTurbine"))?;
-
-        let n_findex = ctx.air_density.len();
-        let n_turbines = ctx.n_turbines();
-
-        let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
-        let rotor_avg_velocities = crate::core::rotor_velocity::average_velocity(
-            &velocities_dyn,
-            None,
-            &ctx.average_method,
-            None, // TODO: cubature_weights conversion from Array2 to Array1 needed
-        )?;
-
-        let yaw_rad = yaw_angles.mapv(|y| y.to_radians());
-
-        // Get base thrust coefficient from table with air density correction
-        let mut ct_base = ndarray::Array::zeros((n_findex, n_turbines));
-        for i in 0..n_findex {
-            for j in 0..n_turbines {
-                let vel = rotor_avg_velocities[[i, j]];
-
-                // Apply air density correction for thrust (uses 1/2 power because thrust ~ v²)
-                let air_density_correction =
-                    (ctx.air_density[i] / params.ref_air_density).powf(1.0 / 2.0);
-                let effective_vel = vel * air_density_correction;
-
-                ct_base[[i, j]] = params
-                    .thrust_table
-                    .interpolate(effective_vel)
-                    .clamp(0.0001, 0.9999);
-            }
+        // Python: yawed_thrust_coefficients = interpolator(corrected velocity)
+        let (.., corrected) = UnifiedMomentumTurbine::solve(params, ctx)?;
+        let mut yawed_ct = ndarray::Array::zeros(corrected.dim());
+        for ((c, v), table) in yawed_ct
+            .iter_mut()
+            .zip(corrected.iter())
+            .zip(std::iter::repeat(&params.thrust_table))
+        {
+            *c = table.interpolate(*v);
         }
-
-        // Modified thrust coefficient with yaw effect
-        let mut ct_mod = ct_base.clone();
-        for i in 0..n_findex {
-            for j in 0..n_turbines {
-                let cos_gamma = yaw_rad[[i, j]].cos();
-                ct_mod[[i, j]] = ct_base[[i, j]] * cos_gamma * cos_gamma;
-            }
-        }
-
-        // Apply tilt correction if available
-        let ref_tilt_rad = params.ref_tilt.to_radians();
-        for i in 0..n_findex {
-            for j in 0..n_turbines {
-                let tilt = tilt_angles[[i, j]].to_radians();
-                let cos_tilt = tilt.cos();
-                let ref_cos = ref_tilt_rad.cos();
-                ct_mod[[i, j]] = ct_mod[[i, j]] * cos_tilt / ref_cos;
-            }
-        }
-
-        Ok(ct_mod)
+        Ok(yawed_ct)
     }
 
     fn axial_induction(
@@ -188,34 +197,8 @@ impl OperationModel for UnifiedMomentumTurbine {
         params: &TurbineParameters,
         ctx: &TurbineContext,
     ) -> crate::Result<Array2> {
-        let yaw_angles = ctx
-            .yaw_angles
-            .ok_or_else(|| anyhow::anyhow!("Yaw angles required for UnifiedMomentumTurbine"))?;
-        ctx.tilt_angles
-            .ok_or_else(|| anyhow::anyhow!("Tilt angles required for UnifiedMomentumTurbine"))?;
-
-        let n_findex = ctx.air_density.len();
-        let n_turbines = ctx.n_turbines();
-
-        let yaw_rad = yaw_angles.mapv(|y| y.to_radians());
-
-        // Get thrust coefficient using unified model
-        let ct = self.thrust_coefficient(params, ctx)?;
-
-        // Compute rotor-normal induction factor (an) from Unified Momentum Model
-        let mut an = ndarray::Array::zeros((n_findex, n_turbines));
-        for i in 0..n_findex {
-            for j in 0..n_turbines {
-                let gamma = yaw_rad[[i, j]];
-                let cos_gamma_sq = gamma.cos().powf(2.0);
-                let ct_ij = ct[[i, j]];
-
-                let sqrt_term = (1.0 - ct_ij * cos_gamma_sq).sqrt();
-                an[[i, j]] = sqrt_term / (2.0 * cos_gamma_sq);
-            }
-        }
-
-        Ok(an)
+        let (_, _, axial, _) = UnifiedMomentumTurbine::solve(params, ctx)?;
+        Ok(axial)
     }
 
     fn clone_box(&self) -> Box<dyn OperationModel> {

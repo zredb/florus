@@ -635,6 +635,48 @@ def generate_operation_model_values(output_dir: Path) -> None:
     except Exception as e:
         print(f"    ERROR: {e}")
 
+    # AWC with an active helix excitation — the baseline default never applies
+    # the AWC_model correction and cannot discriminate a placeholder (Bug #37).
+    print("\n  Generating awc_helix...")
+    try:
+        fmodel = create_floris_model(
+            wind_speeds=[10.0],
+            wind_directions=[270.0],
+            turbulence_intensities=[0.06],
+            layout_x=[0.0],
+            layout_y=[0.0],
+            operation_model="awc",
+        )
+        fmodel.set(
+            awc_modes=np.array([["helix"]]),
+            awc_amplitudes=np.array([[2.5]]),
+        )
+        results = extract_results(fmodel)
+        results["operation_model"] = "awc"
+        save_json(results, output_dir / "operation_models" / "awc_helix.json")
+    except Exception as e:
+        print(f"    ERROR: {e}")
+
+    # Unified-momentum with 20 deg yaw — at zero yaw the UMM velocity
+    # correction ratio is 1 and the model reduces to the simple lookup,
+    # which cannot discriminate a placeholder (Bug #37).
+    print("\n  Generating unified_momentum_yawed...")
+    try:
+        fmodel = create_floris_model(
+            wind_speeds=[10.0],
+            wind_directions=[270.0],
+            turbulence_intensities=[0.06],
+            layout_x=[0.0],
+            layout_y=[0.0],
+            operation_model="unified-momentum",
+        )
+        fmodel.set(yaw_angles=[[20.0]])
+        results = extract_results(fmodel)
+        results["operation_model"] = "unified-momentum"
+        save_json(results, output_dir / "operation_models" / "unified_momentum_yawed.json")
+    except Exception as e:
+        print(f"    ERROR: {e}")
+
 
 # =============================================================================
 # Wind Data Tests

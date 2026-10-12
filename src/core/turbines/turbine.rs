@@ -37,6 +37,8 @@ impl Turbine {
         tilt_angles: Option<&Array2>,
         turbulence_intensities: Option<&Array4>,
         power_setpoints: Option<&Array2>,
+        awc_modes: Option<&ndarray::Array2<String>>,
+        awc_amplitudes: Option<&Array2>,
         average_method: AveragingMethod,
     ) -> crate::Result<Array2> {
         use crate::core::turbines::operation_models::{
@@ -109,6 +111,41 @@ impl Turbine {
                 .power_thrust_table
                 .peak_shaving_ti_threshold
                 .unwrap_or(0.0),
+            helix_a: self
+                .turbine_type
+                .power_thrust_table
+                .helix
+                .as_ref()
+                .map(|h| h.a)
+                .unwrap_or(0.0),
+            helix_power_b: self
+                .turbine_type
+                .power_thrust_table
+                .helix
+                .as_ref()
+                .map(|h| h.helix_power_b)
+                .unwrap_or(0.0),
+            helix_power_c: self
+                .turbine_type
+                .power_thrust_table
+                .helix
+                .as_ref()
+                .map(|h| h.helix_power_c)
+                .unwrap_or(0.0),
+            helix_thrust_b: self
+                .turbine_type
+                .power_thrust_table
+                .helix
+                .as_ref()
+                .map(|h| h.helix_thrust_b)
+                .unwrap_or(0.0),
+            helix_thrust_c: self
+                .turbine_type
+                .power_thrust_table
+                .helix
+                .as_ref()
+                .map(|h| h.helix_thrust_c)
+                .unwrap_or(0.0),
         };
 
         // Create air density array
@@ -123,7 +160,8 @@ impl Turbine {
             tilt_angles,
             power_setpoints,
             turbulence_intensities,
-            awc_amplitudes: None,
+            awc_modes,
+            awc_amplitudes,
             cubature_weights: None,
             correct_cp_ct_for_tilt: None,
             average_method,
@@ -142,6 +180,8 @@ impl Turbine {
         tilt_angles: Option<&Array2>,
         turbulence_intensities: Option<&Array4>,
         power_setpoints: Option<&Array2>,
+        awc_modes: Option<&ndarray::Array2<String>>,
+        awc_amplitudes: Option<&Array2>,
         average_method: AveragingMethod,
     ) -> crate::Result<Array2> {
         use crate::core::turbines::operation_models::{
@@ -211,6 +251,41 @@ impl Turbine {
                 .power_thrust_table
                 .peak_shaving_ti_threshold
                 .unwrap_or(0.0),
+            helix_a: self
+                .turbine_type
+                .power_thrust_table
+                .helix
+                .as_ref()
+                .map(|h| h.a)
+                .unwrap_or(0.0),
+            helix_power_b: self
+                .turbine_type
+                .power_thrust_table
+                .helix
+                .as_ref()
+                .map(|h| h.helix_power_b)
+                .unwrap_or(0.0),
+            helix_power_c: self
+                .turbine_type
+                .power_thrust_table
+                .helix
+                .as_ref()
+                .map(|h| h.helix_power_c)
+                .unwrap_or(0.0),
+            helix_thrust_b: self
+                .turbine_type
+                .power_thrust_table
+                .helix
+                .as_ref()
+                .map(|h| h.helix_thrust_b)
+                .unwrap_or(0.0),
+            helix_thrust_c: self
+                .turbine_type
+                .power_thrust_table
+                .helix
+                .as_ref()
+                .map(|h| h.helix_thrust_c)
+                .unwrap_or(0.0),
         };
 
         // Create air density array
@@ -225,7 +300,8 @@ impl Turbine {
             tilt_angles,
             power_setpoints,
             turbulence_intensities,
-            awc_amplitudes: None,
+            awc_modes,
+            awc_amplitudes,
             cubature_weights: None,
             correct_cp_ct_for_tilt: None,
             average_method,
@@ -246,6 +322,8 @@ impl Turbine {
         tilt_angles: Option<&Array2>,
         turbulence_intensities: Option<&Array4>,
         power_setpoints: Option<&Array2>,
+        awc_modes: Option<&ndarray::Array2<String>>,
+        awc_amplitudes: Option<&Array2>,
         average_method: AveragingMethod,
     ) -> crate::Result<Array2> {
         use crate::core::turbines::operation_models::{
@@ -317,6 +395,41 @@ impl Turbine {
                 .power_thrust_table
                 .peak_shaving_ti_threshold
                 .unwrap_or(0.0),
+            helix_a: self
+                .turbine_type
+                .power_thrust_table
+                .helix
+                .as_ref()
+                .map(|h| h.a)
+                .unwrap_or(0.0),
+            helix_power_b: self
+                .turbine_type
+                .power_thrust_table
+                .helix
+                .as_ref()
+                .map(|h| h.helix_power_b)
+                .unwrap_or(0.0),
+            helix_power_c: self
+                .turbine_type
+                .power_thrust_table
+                .helix
+                .as_ref()
+                .map(|h| h.helix_power_c)
+                .unwrap_or(0.0),
+            helix_thrust_b: self
+                .turbine_type
+                .power_thrust_table
+                .helix
+                .as_ref()
+                .map(|h| h.helix_thrust_b)
+                .unwrap_or(0.0),
+            helix_thrust_c: self
+                .turbine_type
+                .power_thrust_table
+                .helix
+                .as_ref()
+                .map(|h| h.helix_thrust_c)
+                .unwrap_or(0.0),
         };
 
         // Create air density array
@@ -331,7 +444,8 @@ impl Turbine {
             tilt_angles,
             power_setpoints,
             turbulence_intensities,
-            awc_amplitudes: None,
+            awc_modes,
+            awc_amplitudes,
             cubature_weights: None,
             correct_cp_ct_for_tilt: None,
             average_method,

@@ -81,6 +81,7 @@ fn compute_powers_model(
     operation_model: &str,
     yaw: Option<florus::types::Array2>,
     setpoints: Option<florus::types::Array2>,
+    awc: Option<(String, florus::types::Float)>,
 ) -> Vec<Vec<f64>> {
     let mut model = FlorisModel::from_config(config.clone()).expect("Failed to create FlorisModel");
 
@@ -105,6 +106,15 @@ fn compute_powers_model(
     if let Some(sp) = setpoints {
         farm.set_power_setpoints(sp);
     }
+    if let Some((mode, amplitude)) = awc {
+        // Match the Python generator: fmodel.set(awc_modes=..., awc_amplitudes=...)
+        let modes = ndarray::Array2::from_elem((1, 1), mode);
+        farm.awc_modes = modes.clone();
+        farm.awc_modes_sorted = modes;
+        let amps = florus::types::Array2::from_elem((1, 1), amplitude);
+        farm.awc_amplitudes = amps.clone();
+        farm.awc_amplitudes_sorted = amps;
+    }
     let mut flow_field = model.core().flow_field.clone();
     let wake = model.core().wake.clone();
 
@@ -120,6 +130,8 @@ fn compute_powers_model(
             Some(&farm.tilt_angles_sorted),
             Some(&flow_field.turbulence_intensity_field_sorted),
             Some(&farm.power_setpoints_sorted),
+            Some(&farm.awc_modes_sorted),
+            Some(&farm.awc_amplitudes_sorted),
             turbine_grid.average_method,
         )
         .expect("Farm::power failed");
@@ -183,7 +195,7 @@ fn create_operation_config_ti(operation_model: &str, ti: Float) -> FlorisConfig 
 #[test]
 fn test_simple_operation_model() {
     let config = create_operation_config("simple");
-    let powers = compute_powers_model(&config, "simple", None, None);
+    let powers = compute_powers_model(&config, "simple", None, None, None);
     let golden = common::load_operation_golden("simple");
     assert_power_exact(powers[0][0], golden.turbine_powers[0][0], "simple");
 }
@@ -193,7 +205,7 @@ fn test_cosine_loss_operation_model() {
     // The Python golden generator sets yaw 10 deg for the cosine-loss case.
     let config = create_operation_config("cosine-loss");
     let yaw = florus::types::Array2::from_shape_vec((1, 1), vec![10.0]).unwrap();
-    let powers = compute_powers_model(&config, "cosine-loss", Some(yaw), None);
+    let powers = compute_powers_model(&config, "cosine-loss", Some(yaw), None, None);
     let golden = common::load_operation_golden("cosine-loss");
     assert_power_exact(powers[0][0], golden.turbine_powers[0][0], "cosine-loss");
 }
@@ -203,7 +215,7 @@ fn test_peak_shaving_operation_model() {
     // TI=0.06 is below the nrel_5MW peak_shaving_TI_threshold (0.1): no
     // shaving is applied, so this checks the passthrough path only.
     let config = create_operation_config("peak-shaving");
-    let powers = compute_powers_model(&config, "peak-shaving", None, None);
+    let powers = compute_powers_model(&config, "peak-shaving", None, None, None);
     let golden = common::load_operation_golden("peak-shaving");
     assert_power_exact(powers[0][0], golden.turbine_powers[0][0], "peak-shaving");
 }
@@ -215,7 +227,7 @@ fn test_peak_shaving_high_ti_operation_model() {
     // exercised — the default TI=0.06 case cannot detect a broken
     // implementation (Bug #35).
     let config = create_operation_config_ti("peak-shaving", 0.15);
-    let powers = compute_powers_model(&config, "peak-shaving", None, None);
+    let powers = compute_powers_model(&config, "peak-shaving", None, None, None);
     let golden = common::load_operation_golden("peak_shaving_high_ti");
     assert_power_exact(
         powers[0][0],
@@ -229,7 +241,7 @@ fn test_mixed_operation_model() {
     // Default yaw/setpoints: every turbine falls in the "neither" bucket and
     // the mixed model reduces to SimpleTurbine.
     let config = create_operation_config("mixed");
-    let powers = compute_powers_model(&config, "mixed", None, None);
+    let powers = compute_powers_model(&config, "mixed", None, None, None);
     let golden = common::load_operation_golden("mixed");
     assert_power_exact(powers[0][0], golden.turbine_powers[0][0], "mixed");
 }
@@ -238,7 +250,7 @@ fn test_mixed_operation_model() {
 fn test_simple_derating_operation_model() {
     // Default setpoints (1e12): no derating, passthrough path.
     let config = create_operation_config("simple-derating");
-    let powers = compute_powers_model(&config, "simple-derating", None, None);
+    let powers = compute_powers_model(&config, "simple-derating", None, None, None);
     let golden = common::load_operation_golden("simple-derating");
     assert_power_exact(powers[0][0], golden.turbine_powers[0][0], "simple-derating");
 }
@@ -250,31 +262,40 @@ fn test_derating_3mw_operation_model() {
     // actually exercised (Bug #29 discriminative case).
     let config = create_operation_config("simple-derating");
     let setpoints = florus::types::Array2::from_shape_vec((1, 1), vec![3e6]).unwrap();
-    let powers = compute_powers_model(&config, "simple-derating", None, Some(setpoints));
+    let powers = compute_powers_model(&config, "simple-derating", None, Some(setpoints), None);
     let golden = common::load_operation_golden("derating_3MW");
     assert_power_exact(powers[0][0], golden.turbine_powers[0][0], "derating_3MW");
 }
 
 #[test]
 fn test_awc_operation_model() {
-    // awc is a placeholder (delegates to cosine-loss; Python applies an
-    // amplitude-based Ct modification) — deferred, Bug #37. Loose tolerance.
+    // Baseline mode (no excitation): the AWC model reduces to the simple
+    // power/Ct lookup. Python golden = simple golden in this case.
     let config = create_operation_config("awc");
-    let powers = compute_powers_model(&config, "awc", None, None);
+    let powers = compute_powers_model(&config, "awc", None, None, None);
     let golden = common::load_operation_golden("awc");
-    assert_power_close(powers[0][0], golden.turbine_powers[0][0], "awc");
+    assert_power_exact(powers[0][0], golden.turbine_powers[0][0], "awc");
 }
 
 #[test]
-#[ignore = "Bug #37: unified-momentum is a placeholder (Python uses the Heck iterative \
-solver); now that the test actually activates the model, it fails honestly until ported."]
+fn test_awc_helix_operation_model() {
+    // Active helix excitation (2.5 deg): the AWC_model correction
+    // `base * (1 - (b + c*base) * amp^a)` is actually applied to both power
+    // and Ct — the baseline case cannot discriminate a placeholder (Bug #37).
+    let config = create_operation_config("awc");
+    let powers = compute_powers_model(&config, "awc", None, None, Some(("helix".to_string(), 2.5)));
+    let golden = common::load_operation_golden("awc_helix");
+    assert_power_exact(powers[0][0], golden.turbine_powers[0][0], "awc_helix");
+}
+
+#[test]
 fn test_unified_momentum_operation_model() {
-    // unified-momentum is a placeholder (Python uses the Heck iterative
-    // solver) — deferred, Bug #37. Loose tolerance.
+    // At zero yaw the UMM velocity-correction ratio is 1, so the model
+    // reduces to the plain table lookup at the rotor-effective velocity.
     let config = create_operation_config("unified-momentum");
-    let powers = compute_powers_model(&config, "unified-momentum", None, None);
+    let powers = compute_powers_model(&config, "unified-momentum", None, None, None);
     let golden = common::load_operation_golden("unified-momentum");
-    assert_power_close(
+    assert_power_exact(
         powers[0][0],
         golden.turbine_powers[0][0],
         "unified-momentum",
@@ -282,11 +303,28 @@ fn test_unified_momentum_operation_model() {
 }
 
 #[test]
+fn test_unified_momentum_yawed_operation_model() {
+    // 20 deg yaw: the Heck fixed-point iteration and the yawed rotor
+    // velocity correction are actually exercised — the zero-yaw case cannot
+    // discriminate a placeholder (Bug #37).
+    let config = create_operation_config("unified-momentum");
+    let yaw = florus::types::Array2::from_shape_vec((1, 1), vec![20.0]).unwrap();
+    let powers = compute_powers_model(&config, "unified-momentum", Some(yaw), None, None);
+    let golden = common::load_operation_golden("unified_momentum_yawed");
+    assert_power_exact(
+        powers[0][0],
+        golden.turbine_powers[0][0],
+        "unified_momentum_yawed",
+    );
+}
+
+#[test]
 fn test_controller_dependent_operation_model() {
     // controller-dependent is a placeholder (Python is a TUM fsolve
-    // blade-element model) — deferred, Bug #37. Loose tolerance.
+    // blade-element model requiring the .npz Cp/Ct surfaces, cubic 2D
+    // interpolation and nested fsolve — Bug #37, deferred). Loose tolerance.
     let config = create_operation_config("controller-dependent");
-    let powers = compute_powers_model(&config, "controller-dependent", None, None);
+    let powers = compute_powers_model(&config, "controller-dependent", None, None, None);
     let golden = common::load_operation_golden("controller-dependent");
     assert_power_close(
         powers[0][0],

@@ -47,6 +47,12 @@ pub struct TurbineParameters {
     pub ref_tilt: Float,
     pub peak_shaving_fraction: Float,
     pub peak_shaving_ti_threshold: Float,
+    /// Helix (AWC) tuning parameters (Python power_thrust_table helix_*)
+    pub helix_a: Float,
+    pub helix_power_b: Float,
+    pub helix_power_c: Float,
+    pub helix_thrust_b: Float,
+    pub helix_thrust_c: Float,
 }
 
 /// Input context for turbine power/thrust calculations
@@ -58,6 +64,7 @@ pub struct TurbineContext<'a> {
     pub tilt_angles: Option<&'a Array2>,
     pub power_setpoints: Option<&'a Array2>,
     pub turbulence_intensities: Option<&'a Array4>,
+    pub awc_modes: Option<&'a ndarray::Array2<String>>,
     pub awc_amplitudes: Option<&'a Array2>,
     pub cubature_weights: Option<&'a Array2>,
     pub correct_cp_ct_for_tilt: Option<&'a ndarray::Array2<bool>>,
