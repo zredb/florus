@@ -77,6 +77,7 @@ def create_floris_model(
     operation_model: str = "cosine-loss",
     yaw_angles: Optional[List[List[float]]] = None,
     turbine_grid_points: Optional[int] = None,
+    air_density: float = 1.225,
 ) -> FlorisModel:
     """Create a FlorisModel with specified configuration."""
     
@@ -126,7 +127,7 @@ def create_floris_model(
             "turbulence_intensities": turbulence_intensities,
             "wind_shear": 0.12,
             "wind_veer": 0.0,
-            "air_density": 1.225,
+            "air_density": air_density,
             "reference_wind_height": 90.0,
         },
         "wake": {
@@ -694,6 +695,41 @@ def generate_operation_model_values(output_dir: Path) -> None:
         results = extract_results(fmodel)
         results["operation_model"] = "controller-dependent"
         save_json(results, output_dir / "operation_models" / "controller_dependent_yawed.json")
+    except Exception as e:
+        print(f"    ERROR: {e}")
+
+    # Controller-dependent with air_density=1.1 != ref_air_density (1.225) —
+    # discriminates the Python thrust-path quirk that thrust_coefficient()
+    # reassigns air_density = ref BEFORE rotor_velocity_air_density_correction
+    # (a no-op: the control trajectory sees the UNCORRECTED rotor-average
+    # velocity), while power() corrects with the ambient density. Also saves
+    # the thrust coefficients so the Ct path is validated, not just power.
+    #
+    # Wind speeds: ws=10 is below the region 2/3 boundary
+    # (omega_rated * R / tsr_opt = 12.1*pi/30 * 63 / 7 = 11.39 m/s) and its
+    # unclipped power (~3 MW) varies with the density-corrected velocity —
+    # it discriminates the POWER path. ws=14 is in region 3, where
+    # tsr = omega_rated * R / u and the pitch root both depend on the
+    # trajectory's input velocity — it discriminates the THRUST path (the
+    # region-2 (tsr, pitch) = (tsr_opt, pitch_opt) is u-independent and
+    # cannot detect a spurious density correction) (Bug #37).
+    print("\n  Generating controller_dependent_density...")
+    try:
+        fmodel = create_floris_model(
+            wind_speeds=[10.0, 14.0],
+            wind_directions=[270.0, 270.0],
+            turbulence_intensities=[0.06, 0.06],
+            layout_x=[0.0],
+            layout_y=[0.0],
+            operation_model="controller-dependent",
+            air_density=1.1,
+        )
+        results = extract_results(fmodel)
+        results["operation_model"] = "controller-dependent"
+        results["turbine_thrust_coefficients"] = (
+            fmodel.get_turbine_thrust_coefficients().tolist()
+        )
+        save_json(results, output_dir / "operation_models" / "controller_dependent_density.json")
     except Exception as e:
         print(f"    ERROR: {e}")
 

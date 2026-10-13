@@ -30,6 +30,10 @@ pub struct PowerGolden {
 pub struct OperationModelGolden {
     pub turbine_powers: Vec<Vec<f64>>,
     pub farm_power: Vec<f64>,
+    /// Thrust coefficients; only the controller_dependent_density golden
+    /// stores them (the other operation-model goldens predate the field).
+    #[serde(default)]
+    pub turbine_thrust_coefficients: Option<Vec<Vec<f64>>>,
 }
 
 #[derive(Debug, Deserialize)]

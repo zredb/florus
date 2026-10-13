@@ -26,6 +26,16 @@ use ndarray::s;
 #[derive(Debug, Clone, Default)]
 pub struct ControllerDependentTurbine;
 
+/// Which Python entry point's conventions `solve_pair` applies to the BEM
+/// solve results (see `ControllerDependentTurbine::solve_pair` docs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SolveQuantity {
+    /// `power()`: strict `ier == 1` gate, Cp on success, `-1e3` otherwise.
+    Power,
+    /// `thrust_coefficient()`: convergence ignored; yawed clipped, unyawed raw.
+    Thrust,
+}
+
 // ===================== numerics: 1D not-a-knot cubic spline =====================
 
 /// 1D cubic spline with not-a-knot end conditions, matching scipy's
@@ -938,9 +948,18 @@ fn get_pitch_residual(
 impl ControllerDependentTurbine {
     /// Shared solve: (tilt_negated, rotor_effective_velocities, shear,
     /// pitch_out, tsr_out).
+    ///
+    /// `apply_density_correction` mirrors the Python asymmetry between the
+    /// two entry points: `power()` corrects the rotor-average velocity with
+    /// the ambient air density (`rotor_velocity_air_density_correction`,
+    /// line 65-69), while `thrust_coefficient()` reassigns
+    /// `air_density = power_thrust_table["ref_air_density"]` BEFORE the
+    /// correction (line 280-286), making it a no-op — the control trajectory
+    /// there sees the UNCORRECTED rotor-average velocity.
     fn prepare(
         params: &TurbineParameters,
         ctx: &TurbineContext,
+        apply_density_correction: bool,
     ) -> crate::Result<(Array2, Array2, Array2, Array2, Array2)> {
         let cd = params
             .controller_dependent
@@ -962,7 +981,8 @@ impl ControllerDependentTurbine {
         // Python sign convention: negative tilt creates tower clearance
         let tilt_negated = -tilt_angles.clone();
 
-        // rotor average + air-density correction
+        // rotor average + air-density correction (power path only; see
+        // `prepare` docs — the Python thrust path skips it)
         let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
         let rotor_avg = crate::core::rotor_velocity::average_velocity(
             &velocities_dyn,
@@ -972,7 +992,11 @@ impl ControllerDependentTurbine {
         )?;
         let mut rotor_eff = Array2::zeros((n_findex, n_turbines));
         for fi in 0..n_findex {
-            let density_factor = (ctx.air_density[fi] / params.ref_air_density).powf(1.0 / 3.0);
+            let density_factor = if apply_density_correction {
+                (ctx.air_density[fi] / params.ref_air_density).powf(1.0 / 3.0)
+            } else {
+                1.0
+            };
             for ti in 0..n_turbines {
                 rotor_eff[[fi, ti]] = rotor_avg[[fi, ti]] * density_factor;
             }
@@ -1020,13 +1044,20 @@ impl ControllerDependentTurbine {
         Ok((tilt_negated, rotor_eff, shear, pitch_out, tsr_out))
     }
 
-    /// Yawed/unyawed BEM solve pair for each (findex, turbine), returning
-    /// (yawed, unyawed) values per element via the requested quantity.
+    /// Yawed/unyawed BEM solve pair for each (findex, turbine). Mirrors the
+    /// per-quantity Python conventions:
+    ///
+    /// - `Power` (lines 107-197): both loops gate on `fsolve(..., ier == 1)`
+    ///   and fall back to `-1e3` on non-convergence.
+    /// - `Thrust` (lines 307-356): `fsolve` return is used REGARDLESS of the
+    ///   convergence flag; the yawed Ct is clipped to `[0.0001, 0.9999]`
+    ///   (line 330) while the unyawed Ct is used raw (line 356 — the clip
+    ///   is commented out in the Python source).
     fn solve_pair(
         params: &TurbineParameters,
         prepared: &(Array2, Array2, Array2, Array2, Array2),
         yaw_angles: &Array2,
-        quantity: fn(&BemArgs, Float) -> Float,
+        quantity: SolveQuantity,
         x0: Float,
     ) -> crate::Result<(Array2, Array2)> {
         let cd = params.controller_dependent.as_ref().unwrap();
@@ -1061,7 +1092,16 @@ impl ControllerDependentTurbine {
                     mu,
                 };
                 let (ct, ok) = solve_ct(&args, x0);
-                yawed[[fi, ti]] = if ok { quantity(&args, ct) } else { -1e3 };
+                yawed[[fi, ti]] = match quantity {
+                    SolveQuantity::Power => {
+                        if ok {
+                            find_cp(&args, ct)
+                        } else {
+                            -1e3
+                        }
+                    }
+                    SolveQuantity::Thrust => ct.clamp(0.0001, 0.9999),
+                };
 
                 // unyawed
                 let mu0 = cosd(delta).acos();
@@ -1079,7 +1119,17 @@ impl ControllerDependentTurbine {
                     mu: mu0,
                 };
                 let (ct0, ok0) = solve_ct(&args0, x0);
-                unyawed[[fi, ti]] = if ok0 { quantity(&args0, ct0) } else { -1e3 };
+                unyawed[[fi, ti]] = match quantity {
+                    SolveQuantity::Power => {
+                        if ok0 {
+                            find_cp(&args0, ct0)
+                        } else {
+                            -1e3
+                        }
+                    }
+                    // Python uses the raw unyawed Ct (no clip, no ier gate)
+                    SolveQuantity::Thrust => ct0,
+                };
             }
         }
         Ok((yawed, unyawed))
@@ -1100,9 +1150,14 @@ impl OperationModel for ControllerDependentTurbine {
             .yaw_angles
             .ok_or_else(|| anyhow::anyhow!("Yaw angles required for ControllerDependentTurbine"))?;
 
-        let prepared = ControllerDependentTurbine::prepare(params, ctx)?;
-        let (p, p0) =
-            ControllerDependentTurbine::solve_pair(params, &prepared, yaw_angles, find_cp, 0.2)?;
+        let prepared = ControllerDependentTurbine::prepare(params, ctx, true)?;
+        let (p, p0) = ControllerDependentTurbine::solve_pair(
+            params,
+            &prepared,
+            yaw_angles,
+            SolveQuantity::Power,
+            0.2,
+        )?;
 
         let ratio = &p / &p0;
 
@@ -1169,14 +1224,18 @@ impl OperationModel for ControllerDependentTurbine {
             .yaw_angles
             .ok_or_else(|| anyhow::anyhow!("Yaw angles required for ControllerDependentTurbine"))?;
 
-        let prepared = ControllerDependentTurbine::prepare(params, ctx)?;
+        // Python thrust_coefficient: air_density := ref BEFORE the rotor
+        // density correction (a no-op), so the trajectory sees the raw
+        // rotor-average velocity (lines 280-298).
+        let prepared = ControllerDependentTurbine::prepare(params, ctx, false)?;
 
         // Python clips the yawed Ct (line 330) but not the unyawed one
+        // (line 356), and uses the fsolve return regardless of convergence.
         let (ct1, ct0) = ControllerDependentTurbine::solve_pair(
             params,
             &prepared,
             yaw_angles,
-            |_args, ct| ct.clamp(0.0001, 0.9999),
+            SolveQuantity::Thrust,
             0.2,
         )?;
         let ratio = &ct1 / &ct0;

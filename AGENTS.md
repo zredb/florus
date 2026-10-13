@@ -86,6 +86,7 @@ src/
 
 - `get_turbine_powers()` bypasses the operation model for power calculation (uses inline Cp lookup). Power setpoint clamping is applied post-hoc.
 - `get_turbine_thrust_coefficients()` uses `wind_speeds[fi]` (freestream) not rotor-averaged velocity, and doesn't go through the operation model.
+- Floating-tilt correction (`compute_tilt_angles_for_floating_turbines` + `correct_cp_ct_for_tilt`) is not wired into operation models: Python applies it inside each model's `thrust_coefficient()` (e.g. controller_dependent_operation_model.py:262-269), Rust passes `correct_cp_ct_for_tilt: None`. Only affects floating turbines with tilt interpolation; fixed-bottom turbines are unaffected (`np.where(correct_cp_ct_for_tilt, ...)` keeps the original tilt).
 - Disabled turbines via `set_operation(disable_turbines=...)` set power to 0; the solver DOES see the (near-zero) setpoint in Ct/AI since the Bug #35 wiring, but disable does not itself trigger wake re-computation (call `run()` after `set_operation`).
 - `sample_flow_at_points()` only samples at findex=0 — loop through wind directions individually for multi-condition sampling.
 - `sample_ti_at_points()` returns constant inflow TI — the turbulence field isn't populated after wake solving.

@@ -68,21 +68,24 @@ fn create_operation_config(operation_model: &str) -> FlorisConfig {
 }
 
 /// Run the sequential solver with the requested operation model ACTUALLY
-/// enabled, then compute the power THROUGH the operation model via
-/// `Farm::power`.
+/// enabled, returning the solved (farm, flow_field) for result extraction.
 ///
 /// Previously `create_operation_config(name)` never used the model name (all
 /// tests ran the turbine YAML's default model) and power was computed with an
 /// inline Cp lookup that bypassed the operation model entirely — so a broken
 /// peak-shaving implementation still "passed" against per-model Python
 /// goldens under a 25% tolerance (Bug #35).
-fn compute_powers_model(
+fn solve_with_model(
     config: &FlorisConfig,
     operation_model: &str,
     yaw: Option<florus::types::Array2>,
     setpoints: Option<florus::types::Array2>,
     awc: Option<(String, florus::types::Float)>,
-) -> Vec<Vec<f64>> {
+) -> (
+    florus::core::farm::Farm,
+    florus::core::flow_field::FlowField,
+    florus::core::rotor_velocity::AveragingMethod,
+) {
     let mut model = FlorisModel::from_config(config.clone()).expect("Failed to create FlorisModel");
 
     // Match the Python golden generator: fmodel.set_operation_model(name)
@@ -120,6 +123,19 @@ fn compute_powers_model(
 
     sequential_solver(&farm, &mut flow_field, turbine_grid, &wake).expect("solver failed");
 
+    (farm, flow_field, turbine_grid.average_method)
+}
+
+fn compute_powers_model(
+    config: &FlorisConfig,
+    operation_model: &str,
+    yaw: Option<florus::types::Array2>,
+    setpoints: Option<florus::types::Array2>,
+    awc: Option<(String, florus::types::Float)>,
+) -> Vec<Vec<f64>> {
+    let (farm, flow_field, average_method) =
+        solve_with_model(config, operation_model, yaw, setpoints, awc);
+
     // Model-aware power (Python: core power() dispatches through the
     // operation model; the inline Cp lookup bypassed it).
     let powers = farm
@@ -132,11 +148,57 @@ fn compute_powers_model(
             Some(&farm.power_setpoints_sorted),
             Some(&farm.awc_modes_sorted),
             Some(&farm.awc_amplitudes_sorted),
-            turbine_grid.average_method,
+            average_method,
         )
         .expect("Farm::power failed");
 
     powers.outer_iter().map(|row| row.to_vec()).collect()
+}
+
+/// Like `compute_powers_model`, but also computes the thrust coefficients
+/// through the operation model (Python: get_turbine_thrust_coefficients).
+fn compute_powers_and_cts_model(
+    config: &FlorisConfig,
+    operation_model: &str,
+    yaw: Option<florus::types::Array2>,
+    setpoints: Option<florus::types::Array2>,
+    awc: Option<(String, florus::types::Float)>,
+) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
+    let (farm, flow_field, average_method) =
+        solve_with_model(config, operation_model, yaw, setpoints, awc);
+
+    let powers = farm
+        .power(
+            &flow_field.u_sorted,
+            flow_field.air_density,
+            Some(&farm.yaw_angles_sorted),
+            Some(&farm.tilt_angles_sorted),
+            Some(&flow_field.turbulence_intensity_field_sorted),
+            Some(&farm.power_setpoints_sorted),
+            Some(&farm.awc_modes_sorted),
+            Some(&farm.awc_amplitudes_sorted),
+            average_method,
+        )
+        .expect("Farm::power failed");
+
+    let cts = farm
+        .thrust_coefficient(
+            &flow_field.u_sorted,
+            flow_field.air_density,
+            Some(&farm.yaw_angles_sorted),
+            Some(&farm.tilt_angles_sorted),
+            Some(&flow_field.turbulence_intensity_field_sorted),
+            Some(&farm.power_setpoints_sorted),
+            Some(&farm.awc_modes_sorted),
+            Some(&farm.awc_amplitudes_sorted),
+            average_method,
+        )
+        .expect("Farm::thrust_coefficient failed");
+
+    (
+        powers.outer_iter().map(|row| row.to_vec()).collect(),
+        cts.outer_iter().map(|row| row.to_vec()).collect(),
+    )
 }
 
 fn power_close(test: f64, golden: f64) -> bool {
@@ -346,6 +408,52 @@ fn test_controller_dependent_yawed_operation_model() {
         golden.turbine_powers[0][0],
         "controller_dependent_yawed",
     );
+}
+
+#[test]
+fn test_controller_dependent_density_operation_model() {
+    // air_density=1.1 != ref_air_density (1.225): Python power() feeds the
+    // density-corrected rotor velocity into control_trajectory while
+    // thrust_coefficient() feeds the UNCORRECTED velocity (air_density :=
+    // ref before the no-op correction). The ambient-density golden cannot
+    // discriminate the two paths, so this case checks power AND Ct (Bug #37).
+    //
+    // findex 0 (ws=10, region 2, unclipped ~3 MW): power varies with the
+    // density-corrected velocity — discriminates the POWER path.
+    // findex 1 (ws=14, region 3 above the 11.39 m/s boundary): tsr and the
+    // pitch root depend on the trajectory's input velocity — discriminates
+    // the THRUST path (region 2's (tsr, pitch) = (tsr_opt, pitch_opt) is
+    // u-independent and cannot detect a spurious density correction).
+    let mut config = create_operation_config("controller-dependent");
+    config.flow_field.air_density = 1.1;
+    config.flow_field.wind_speeds = vec![10.0, 14.0];
+    config.flow_field.wind_directions = vec![270.0, 270.0];
+    config.flow_field.turbulence_intensities = vec![0.06, 0.06];
+    let (powers, cts) =
+        compute_powers_and_cts_model(&config, "controller-dependent", None, None, None);
+    let golden = common::load_operation_golden("controller_dependent_density");
+    for fi in 0..2 {
+        assert_power_exact(
+            powers[fi][0],
+            golden.turbine_powers[fi][0],
+            "controller_dependent_density",
+        );
+    }
+
+    let golden_cts = golden
+        .turbine_thrust_coefficients
+        .expect("controller_dependent_density golden is missing turbine_thrust_coefficients");
+    for fi in 0..2 {
+        let rel = (cts[fi][0] - golden_cts[fi][0]).abs() / golden_cts[fi][0].abs();
+        assert!(
+            rel <= 1e-5,
+            "controller_dependent_density Ct mismatch (findex {}): got {:.8}, expected {:.8} (rel {:.3e})",
+            fi,
+            cts[fi][0],
+            golden_cts[fi][0],
+            rel
+        );
+    }
 }
 
 // ============================================================
