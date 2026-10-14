@@ -1,6 +1,7 @@
-mod common;
+﻿mod common;
 
-use florus::core::grid::TurbineGrid;
+use florus::core::grid::{Grid, TurbineGrid};
+use florus::core::rotor_velocity::AveragingMethod;
 use florus::core::solver::sequential_solver;
 use florus::core::turbines::cp_ct_table::TableConditions;
 use florus::core::wake::WakeModelManager;
@@ -222,6 +223,61 @@ fn compute_powers_manual(config: &FlorisConfig, yaw_angles: Option<&Array2>) -> 
     powers_from_u_sorted(&farm, &flow_field)
 }
 
+/// Solve on the TurbineCubatureGrid and compute powers the way Python's
+/// `get_turbine_powers()` does.
+///
+/// IMPORTANT: Python `_get_turbine_powers` (floris_model.py) does NOT pass
+/// the grid's average_method/cubature_weights to the operation models —
+/// `turbine.py:power()` defaults to "cubic-mean" with no weights, so even on
+/// a TurbineCubatureGrid the POWER is the equal-weight cubic mean of the
+/// rotor points. The grid's "simple-cubature" method + weights only feed the
+/// SOLVER's thrust_coefficient/axial_induction calls (solver.py), which the
+/// sequential_solver call below already receives via the grid. Verified
+/// against Python 2026-10-14 on the gauss_cubature_grid case: the upstream
+/// rotor average is 7.945264066787553 (simple-cubature) vs 7.9604633...
+/// (cubic-mean); the golden value 1745305.9474260707 W is the power-curve
+/// interpolation at the cubic-mean average. Passing the cubature method here
+/// (a previous version of this helper did) yields 1735364.4597640086 W —
+/// faithful simple-cubature power, but NOT Python's semantics.
+fn compute_powers_cubature(config: &FlorisConfig) -> Vec<Vec<f64>> {
+    let mut model = FlorisModel::from_config(config.clone()).expect("Failed to create FlorisModel");
+
+    model.initialize_grid().expect("init grid failed");
+    model
+        .initialize_flow_field()
+        .expect("init flow field failed");
+
+    let grid = model.core().grid.as_ref().unwrap();
+    let cubature_grid = grid
+        .as_any()
+        .downcast_ref::<florus::core::grid::TurbineCubatureGrid>()
+        .expect("grid is not a TurbineCubatureGrid");
+
+    let farm = model.core().farm.clone();
+    let mut flow_field = model.core().flow_field.clone();
+    let wake = model.core().wake.clone();
+
+    // gauss velocity model -> sequential solver (Python core.py:201)
+    sequential_solver(&farm, &mut flow_field, cubature_grid, &wake).expect("solver failed");
+
+    let powers = farm
+        .power(
+            &flow_field.u_sorted,
+            flow_field.air_density,
+            Some(&farm.yaw_angles_sorted),
+            Some(&farm.tilt_angles_sorted),
+            Some(&flow_field.turbulence_intensity_field_sorted),
+            Some(&farm.power_setpoints_sorted),
+            Some(&farm.awc_modes_sorted),
+            Some(&farm.awc_amplitudes_sorted),
+            AveragingMethod::CubicMean,
+            None,
+        )
+        .expect("Farm::power failed");
+
+    powers.outer_iter().map(|row| row.to_vec()).collect()
+}
+
 /// Compute turbine powers via the turbopark_solver (target-centric port)
 fn compute_powers_turbopark(config: &FlorisConfig, yaw_angles: Option<&Array2>) -> Vec<Vec<f64>> {
     let mut model = FlorisModel::from_config(config.clone()).expect("Failed to create FlorisModel");
@@ -412,6 +468,61 @@ fn test_gauss_regression() {
         "gauss_regression",
         1e-3,
         500.0,
+    );
+}
+
+#[test]
+fn test_gauss_cubature_grid_golden() {
+    // Discriminates the full cubature chain: the Python polar point layout
+    // (r_i * q_j, r_i * t_j scaled by R, N^2 points) determines where wakes
+    // are evaluated AND enters the cubic-mean rotor power directly; the
+    // (N, N) weight matrix A_i/N from get_cubature_coefficients feeds the
+    // solver's thrust_coefficient/axial_induction (Python solver.py), which
+    // shapes the downstream deficits. A TurbineGrid run (2x2 bilinear points,
+    // no weights) cannot detect either — the upstream cubic-mean over the
+    // cubature points already differs from the bilinear-grid average at 0.19%
+    // (shear asymmetry), well above the 1e-5 tolerance.
+    let mut config = create_floris_config(
+        VelocityModelConfig::Gauss {
+            alpha: 0.58,
+            beta: 0.077,
+            ka: 0.38,
+            kb: 0.004,
+        },
+        DeflectionModelConfig::Gauss {
+            alpha: 0.58,
+            beta: 0.077,
+            ad: 0.0,
+            bd: 0.0,
+            dm: 1.0,
+            ka: 0.38,
+            kb: 0.004,
+        },
+        CombinationModelConfig::FLS,
+        TurbulenceModelConfig::CrespoHernandez {
+            initial: 0.1,
+            constant: 0.5,
+            ai: 0.8,
+            downstream: -0.32,
+        },
+        true,
+        true,
+        true,
+    );
+    config.solver = florus::floris_config::SolverConfig {
+        solver_type: florus::floris_config::SolverType::TurbineCubatureGrid,
+        turbine_grid_points: 2,
+        ..florus::floris_config::SolverConfig::default()
+    };
+
+    let powers = compute_powers_cubature(&config);
+    let golden = common::load_wake_golden("gauss_cubature_grid");
+    assert_powers_close_tol(
+        &powers,
+        &golden.turbine_powers,
+        "gauss_cubature_grid",
+        1e-5,
+        50.0,
     );
 }
 

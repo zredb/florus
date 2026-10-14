@@ -112,6 +112,16 @@ impl<'a> TurbineContext<'a> {
             self.velocities.shape()[1]
         }
     }
+
+    /// Flatten the grid's cubature weights into the 1D form
+    /// `average_velocity` expects (Python `simple_cubature` does
+    /// `cubature_weights.flatten()`, rotor_velocity.py:61). The grid stores
+    /// them as an (N, N) kron matrix (grid.py:301-304) whose row-major
+    /// flattening matches Python's; all turbines share the same weights.
+    pub fn cubature_weights_1d(&self) -> Option<crate::types::Array1> {
+        self.cubature_weights
+            .map(|w| crate::types::Array1::from_iter(w.iter().copied()))
+    }
 }
 
 /// Base trait for all turbine operation models

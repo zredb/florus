@@ -90,5 +90,6 @@ src/
 - Disabled turbines via `set_operation(disable_turbines=...)` set power to 0; the solver DOES see the (near-zero) setpoint in Ct/AI since the Bug #35 wiring, but disable does not itself trigger wake re-computation (call `run()` after `set_operation`).
 - `sample_flow_at_points()` only samples at findex=0 — loop through wind directions individually for multi-condition sampling.
 - `sample_ti_at_points()` returns constant inflow TI — the turbulence field isn't populated after wake solving.
+- `TurbineCubatureGrid`'s `average_method` (`"simple-cubature"`) + `cubature_weights` feed **only** the solver's thrust/axial-induction path (Python `core/solver.py`). `get_turbine_powers()` still averages with the cubic-mean default — Python `_get_turbine_powers` does not forward the grid's averaging to `power()`; do not wire the cubature weights into the power path (verified against Python: gauss_cubature_grid upstream power 1745305.95 W from cubic-mean vs 1735364.46 W from simple-cubature).
 
 参考的python 代码在:D:\code\florus\floris下

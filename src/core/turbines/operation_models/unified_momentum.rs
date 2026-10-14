@@ -114,11 +114,12 @@ impl UnifiedMomentumTurbine {
         let n_turbines = ctx.n_turbines();
 
         let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
+        let cubature_weights = ctx.cubature_weights_1d();
         let rotor_avg_velocities = crate::core::rotor_velocity::average_velocity(
             &velocities_dyn,
             None,
             &ctx.average_method,
-            None, // TODO: cubature_weights conversion from Array2 to Array1 needed
+            cubature_weights.as_ref(),
         )?;
 
         // rotor_velocity_air_density_correction: v * (rho/rho_ref)^(1/3)

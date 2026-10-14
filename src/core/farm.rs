@@ -692,6 +692,7 @@ impl Farm {
         awc_modes: Option<&ndarray::Array2<String>>,
         awc_amplitudes: Option<&Array2>,
         average_method: AveragingMethod,
+        cubature_weights: Option<&Array2>,
     ) -> crate::Result<Array2> {
         let shape = velocities.shape();
         let n_findex = shape[0];
@@ -723,6 +724,7 @@ impl Farm {
                 awc_modes,
                 awc_amplitudes,
                 average_method,
+                cubature_weights,
             )?;
 
             for fi in 0..n_findex {
@@ -749,6 +751,7 @@ impl Farm {
         awc_modes: Option<&ndarray::Array2<String>>,
         awc_amplitudes: Option<&Array2>,
         average_method: AveragingMethod,
+        cubature_weights: Option<&Array2>,
     ) -> crate::Result<Array2> {
         let shape = velocities.shape();
         let n_findex = shape[0];
@@ -776,6 +779,7 @@ impl Farm {
                 awc_modes,
                 awc_amplitudes,
                 average_method,
+                cubature_weights,
             )?;
 
             for fi in 0..n_findex {
@@ -802,6 +806,7 @@ impl Farm {
         awc_modes: Option<&ndarray::Array2<String>>,
         awc_amplitudes: Option<&Array2>,
         average_method: AveragingMethod,
+        cubature_weights: Option<&Array2>,
     ) -> crate::Result<Array2> {
         let shape = velocities.shape();
         let n_findex = shape[0];
@@ -829,6 +834,7 @@ impl Farm {
                 awc_modes,
                 awc_amplitudes,
                 average_method,
+                cubature_weights,
             )?;
 
             for fi in 0..n_findex {

@@ -29,6 +29,9 @@ impl Turbine {
     /// * `yaw_angles` - Yaw angles [degrees]
     /// * `tilt_angles` - Tilt angles [degrees]
     /// * `average_method` - Method for averaging velocities
+    /// * `cubature_weights` - Grid cubature weights (TurbineCubatureGrid only;
+    ///   Python turbine.py passes grid.cubature_weights through to the
+    ///   operation models' average_velocity calls)
     pub fn power(
         &self,
         velocities: &Array4,
@@ -40,6 +43,7 @@ impl Turbine {
         awc_modes: Option<&ndarray::Array2<String>>,
         awc_amplitudes: Option<&Array2>,
         average_method: AveragingMethod,
+        cubature_weights: Option<&Array2>,
     ) -> crate::Result<Array2> {
         use crate::core::turbines::operation_models::{
             OperationModel, TurbineContext, TurbineParameters,
@@ -193,7 +197,7 @@ impl Turbine {
             turbulence_intensities,
             awc_modes,
             awc_amplitudes,
-            cubature_weights: None,
+            cubature_weights,
             correct_cp_ct_for_tilt: None,
             average_method,
         };
@@ -214,6 +218,7 @@ impl Turbine {
         awc_modes: Option<&ndarray::Array2<String>>,
         awc_amplitudes: Option<&Array2>,
         average_method: AveragingMethod,
+        cubature_weights: Option<&Array2>,
     ) -> crate::Result<Array2> {
         use crate::core::turbines::operation_models::{
             OperationModel, TurbineContext, TurbineParameters,
@@ -364,7 +369,7 @@ impl Turbine {
             turbulence_intensities,
             awc_modes,
             awc_amplitudes,
-            cubature_weights: None,
+            cubature_weights,
             correct_cp_ct_for_tilt: None,
             average_method,
         };
@@ -387,6 +392,7 @@ impl Turbine {
         awc_modes: Option<&ndarray::Array2<String>>,
         awc_amplitudes: Option<&Array2>,
         average_method: AveragingMethod,
+        cubature_weights: Option<&Array2>,
     ) -> crate::Result<Array2> {
         use crate::core::turbines::operation_models::{
             OperationModel, TurbineContext, TurbineParameters,
@@ -539,7 +545,7 @@ impl Turbine {
             turbulence_intensities,
             awc_modes,
             awc_amplitudes,
-            cubature_weights: None,
+            cubature_weights,
             correct_cp_ct_for_tilt: None,
             average_method,
         };

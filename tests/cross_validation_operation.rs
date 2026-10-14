@@ -1,6 +1,6 @@
 mod common;
 
-use florus::core::grid::TurbineGrid;
+use florus::core::grid::{Grid, TurbineGrid};
 use florus::core::solver::sequential_solver;
 use florus::core::turbines::cp_ct_table::TableConditions;
 use florus::floris_config::{
@@ -85,6 +85,7 @@ fn solve_with_model(
     florus::core::farm::Farm,
     florus::core::flow_field::FlowField,
     florus::core::rotor_velocity::AveragingMethod,
+    Option<florus::types::Array2>,
 ) {
     let mut model = FlorisModel::from_config(config.clone()).expect("Failed to create FlorisModel");
 
@@ -123,7 +124,17 @@ fn solve_with_model(
 
     sequential_solver(&farm, &mut flow_field, turbine_grid, &wake).expect("solver failed");
 
-    (farm, flow_field, turbine_grid.average_method)
+    // Clone the weights out of the grid before the model is dropped
+    // (Python passes grid.cubature_weights through to the operation
+    // models; None for TurbineGrid, Some for TurbineCubatureGrid).
+    let cubature_weights = turbine_grid.cubature_weights().cloned();
+
+    (
+        farm,
+        flow_field,
+        turbine_grid.average_method,
+        cubature_weights,
+    )
 }
 
 fn compute_powers_model(
@@ -133,7 +144,7 @@ fn compute_powers_model(
     setpoints: Option<florus::types::Array2>,
     awc: Option<(String, florus::types::Float)>,
 ) -> Vec<Vec<f64>> {
-    let (farm, flow_field, average_method) =
+    let (farm, flow_field, average_method, cubature_weights) =
         solve_with_model(config, operation_model, yaw, setpoints, awc);
 
     // Model-aware power (Python: core power() dispatches through the
@@ -149,6 +160,7 @@ fn compute_powers_model(
             Some(&farm.awc_modes_sorted),
             Some(&farm.awc_amplitudes_sorted),
             average_method,
+            cubature_weights.as_ref(),
         )
         .expect("Farm::power failed");
 
@@ -164,7 +176,7 @@ fn compute_powers_and_cts_model(
     setpoints: Option<florus::types::Array2>,
     awc: Option<(String, florus::types::Float)>,
 ) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
-    let (farm, flow_field, average_method) =
+    let (farm, flow_field, average_method, cubature_weights) =
         solve_with_model(config, operation_model, yaw, setpoints, awc);
 
     let powers = farm
@@ -178,6 +190,7 @@ fn compute_powers_and_cts_model(
             Some(&farm.awc_modes_sorted),
             Some(&farm.awc_amplitudes_sorted),
             average_method,
+            cubature_weights.as_ref(),
         )
         .expect("Farm::power failed");
 
@@ -192,6 +205,7 @@ fn compute_powers_and_cts_model(
             Some(&farm.awc_modes_sorted),
             Some(&farm.awc_amplitudes_sorted),
             average_method,
+            cubature_weights.as_ref(),
         )
         .expect("Farm::thrust_coefficient failed");
 

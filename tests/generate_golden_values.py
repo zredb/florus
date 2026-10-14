@@ -78,6 +78,7 @@ def create_floris_model(
     yaw_angles: Optional[List[List[float]]] = None,
     turbine_grid_points: Optional[int] = None,
     air_density: float = 1.225,
+    solver_type: str = "turbine_grid",
 ) -> FlorisModel:
     """Create a FlorisModel with specified configuration."""
     
@@ -109,7 +110,7 @@ def create_floris_model(
             },
         },
         "solver": {
-            "type": "turbine_grid",
+            "type": solver_type,
             "turbine_grid_points": (
                 turbine_grid_points
                 if turbine_grid_points is not None
@@ -312,6 +313,36 @@ def generate_wake_regression_values(output_dir: Path) -> None:
             
         except Exception as e:
             print(f"    ERROR: {e}")
+
+    # Gauss on the TurbineCubatureGrid (order 2 -> 4 rotor points). The
+    # cubature grid's average_method is "simple-cubature", so get_turbine_powers
+    # weights the rotor average with the (N, N) cubature weight matrix —
+    # a plain TurbineGrid golden cannot detect a missing/incorrect weight
+    # wiring or a wrong point layout (Bug: cubature grid parity).
+    print("\n  Generating gauss_cubature_grid...")
+    try:
+        fmodel = create_floris_model(
+            velocity_model="gauss",
+            deflection_model="gauss",
+            combination_model="fls",
+            turbulence_model="crespo_hernandez",
+            solver_type="turbine_cubature_grid",
+            turbine_grid_points=2,
+        )
+
+        results = extract_results(fmodel)
+        results["config"] = {
+            "velocity_model": "gauss",
+            "deflection_model": "gauss",
+            "combination_model": "fls",
+            "turbulence_model": "crespo_hernandez",
+            "yawed": False,
+        }
+
+        save_json(results, output_dir / "wake_regression" / "gauss_cubature_grid.json")
+
+    except Exception as e:
+        print(f"    ERROR: {e}")
 
 
 def generate_wake_ti4d_value(output_dir: Path) -> None:

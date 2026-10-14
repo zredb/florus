@@ -984,11 +984,12 @@ impl ControllerDependentTurbine {
         // rotor average + air-density correction (power path only; see
         // `prepare` docs — the Python thrust path skips it)
         let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
+        let cubature_weights = ctx.cubature_weights_1d();
         let rotor_avg = crate::core::rotor_velocity::average_velocity(
             &velocities_dyn,
             None,
             &ctx.average_method,
-            None,
+            cubature_weights.as_ref(),
         )?;
         let mut rotor_eff = Array2::zeros((n_findex, n_turbines));
         for fi in 0..n_findex {

@@ -280,13 +280,10 @@ pub fn rotor_effective_velocity(
 ) -> crate::Result<Array3> {
     // Calculate base average velocity
     let velocities_dyn = velocities.view().into_dyn().to_owned();
-    let avg_vel_2d = average_velocity(
-        &velocities_dyn,
-        None,
-        &method,
-        None, // TODO: cubature_weights conversion needed
-    )
-    .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let cubature_weights_1d: Option<crate::types::Array1> =
+        cubature_weights.map(|w| crate::types::Array1::from_iter(w.iter().copied()));
+    let avg_vel_2d = average_velocity(&velocities_dyn, None, &method, cubature_weights_1d.as_ref())
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     // Convert Array2 to Array3 by adding a third dimension
     let mut avg_vel = Array3::zeros((avg_vel_2d.shape()[0], avg_vel_2d.shape()[1], 1));

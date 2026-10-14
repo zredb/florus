@@ -91,11 +91,12 @@ impl OperationModel for PeakShavingTurbine {
         }
 
         let velocities_dyn = ctx.velocities.view().into_dyn().to_owned();
+        let cubature_weights = ctx.cubature_weights_1d();
         let rotor_avg_velocities = crate::core::rotor_velocity::average_velocity(
             &velocities_dyn,
             None,
             &ctx.average_method,
-            None, // TODO: cubature_weights conversion from Array2 to Array1 needed
+            cubature_weights.as_ref(),
         )?;
 
         let mut thrust_coeff = ndarray::Array::zeros((n_findex, n_turbines));

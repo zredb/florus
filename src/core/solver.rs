@@ -159,6 +159,7 @@ pub fn sequential_solver(
             Some(&farm.awc_modes_sorted),
             Some(&farm.awc_amplitudes_sorted),
             grid.average_method(),
+            grid.cubature_weights(),
         )?;
 
         let a_i = farm.axial_induction(
@@ -171,6 +172,7 @@ pub fn sequential_solver(
             Some(&farm.awc_modes_sorted),
             Some(&farm.awc_amplitudes_sorted),
             grid.average_method(),
+            grid.cubature_weights(),
         )?;
 
         // Source turbine's rotor diameter / hub height per findex
@@ -559,6 +561,7 @@ pub fn turbopark_solver(
             Some(&farm.awc_modes_sorted),
             Some(&farm.awc_amplitudes_sorted),
             grid.average_method(),
+            grid.cubature_weights(),
         )?;
 
         // Deflection field at turbine i due to each upstream source:
@@ -662,6 +665,7 @@ pub fn turbopark_solver(
             Some(&farm.awc_modes_sorted),
             Some(&farm.awc_amplitudes_sorted),
             grid.average_method(),
+            grid.cubature_weights(),
         )?;
 
         let x_i_4d_slice = grid.x_sorted().slice(s![.., i..i + 1, .., ..]).to_owned();
@@ -861,6 +865,7 @@ pub fn full_flow_sequential_solver(
             Some(&turbine_grid_farm.awc_modes_sorted),
             Some(&turbine_grid_farm.awc_amplitudes_sorted),
             turbine_grid.average_method(),
+            turbine_grid.cubature_weights(),
         )?;
         let a_all = turbine_grid_farm.axial_induction(
             &turbine_grid_flow_field.u_sorted,
@@ -872,6 +877,7 @@ pub fn full_flow_sequential_solver(
             Some(&turbine_grid_farm.awc_modes_sorted),
             Some(&turbine_grid_farm.awc_amplitudes_sorted),
             turbine_grid.average_method(),
+            turbine_grid.cubature_weights(),
         )?;
 
         // Per-findex scalars for the current turbine.
@@ -1231,6 +1237,7 @@ pub fn cc_solver(
         Some(&farm.awc_modes_sorted),
         Some(&farm.awc_amplitudes_sorted),
         grid.average_method(),
+        grid.cubature_weights(),
     )?;
 
     // Model-specific deflection arguments (e.g. wind_veer for gauss), matching
@@ -1302,6 +1309,7 @@ pub fn cc_solver(
             Some(&farm.awc_modes_sorted),
             Some(&farm.awc_amplitudes_sorted),
             grid.average_method(),
+            grid.cubature_weights(),
         )?;
         let turb_ais_2d = farm.axial_induction(
             &avg_vels_4d,
@@ -1313,6 +1321,7 @@ pub fn cc_solver(
             Some(&farm.awc_modes_sorted),
             Some(&farm.awc_amplitudes_sorted),
             grid.average_method(),
+            grid.cubature_weights(),
         )?;
 
         // The source's inflow (n_findex, 1, gy, gz) and yaw per findex
@@ -1677,6 +1686,7 @@ pub fn empirical_gauss_solver(
             Some(&farm.awc_modes_sorted),
             Some(&farm.awc_amplitudes_sorted),
             grid.average_method(),
+            grid.cubature_weights(),
         )?;
         let a_all = farm.axial_induction(
             &flow_field.u_sorted,
@@ -1688,6 +1698,7 @@ pub fn empirical_gauss_solver(
             Some(&farm.awc_modes_sorted),
             Some(&farm.awc_amplitudes_sorted),
             grid.average_method(),
+            grid.cubature_weights(),
         )?;
 
         // Per-findex source-turbine quantities. Python computes tilt via

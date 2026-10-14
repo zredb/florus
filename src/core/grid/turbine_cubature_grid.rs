@@ -3,7 +3,7 @@ use super::*;
 use crate::types::{Array1, Array2, Array4, Float};
 use crate::utilities::{reverse_rotate_coordinates_rel_west, rotate_coordinates_rel_west};
 use ndarray::Array;
-use std::f64::consts::PI;
+use std::f64::consts::FRAC_1_SQRT_2;
 
 #[derive(Debug, Clone)]
 pub struct TurbineCubatureGrid {
@@ -34,9 +34,12 @@ impl TurbineCubatureGrid {
         wind_directions: Array1,
         grid_resolution: usize,
     ) -> crate::Result<Self> {
-        if grid_resolution < 1 || grid_resolution > 10 {
+        // `grid_resolution` is the cubature ORDER N (Python grid.py:265-272,
+        // 373-376): the rotor disk is sampled at N^2 points and N must be an
+        // integer in [1, 10].
+        if !(1..=10).contains(&grid_resolution) {
             return Err(anyhow::anyhow!(
-                "Cubature grid resolution must be between 1 and 10, got {}",
+                "Order of cubature integration must be between '1' and '10', given {}.",
                 grid_resolution
             ));
         }
@@ -44,16 +47,18 @@ impl TurbineCubatureGrid {
         let n_turbines = turbine_coordinates.shape()[0];
         let n_findex = wind_directions.len();
 
-        // Get cubature coefficients based on resolution
-        // Using Gauss-Legendre based cubature for circular disk integration
-        let coeffs = Self::compute_cubature_points(grid_resolution)?;
-        let n_points = coeffs.len();
+        // Polar cubature coefficients (Python get_cubature_coefficients,
+        // grid.py:358-435): N radii |r_i| crossed with N unit direction
+        // vectors (q_j, t_j) place N^2 points on the unit disk.
+        let (r, t, q, a) = Self::get_cubature_coefficients(grid_resolution);
+        let n = grid_resolution;
+        let n_points = n * n;
 
         // Rotate coordinates
         let (
             rotated_coords_x,
             rotated_coords_y,
-            rotated_coords_z,
+            _rotated_coords_z,
             x_center_of_rotation,
             y_center_of_rotation,
         ) = rotate_coordinates_rel_west(&wind_directions, &turbine_coordinates)?;
@@ -61,29 +66,39 @@ impl TurbineCubatureGrid {
         // Get hub heights from turbine coordinates (z-coordinate)
         let hub_heights = turbine_coordinates.column(2).to_owned();
 
-        // Generate cubature grid points at rotor positions
+        // Grid points (Python grid.py:296-329):
+        //   yv = np.kron(r, q); zv = np.kron(r, t)
+        //   _y[:, ti] += yv * D[ti] / 2; _z[:, ti] += zv * D[ti] / 2
+        // i.e. point k = (i * N + j) sits at (r_i * q_j, r_i * t_j) scaled by
+        // the rotor radius, offset from the rotated turbine center.
         // Shape: (n_findex, n_turbines, n_points, 1)
         let mut x_sorted = Array::zeros((n_findex, n_turbines, n_points, 1));
         let mut y_sorted = Array::zeros((n_findex, n_turbines, n_points, 1));
         let mut z_sorted = Array::zeros((n_findex, n_turbines, n_points, 1));
-        let mut cubature_weights = Array::zeros((n_turbines, n_points));
 
         for fi in 0..n_findex {
             for ti in 0..n_turbines {
                 let rotor_radius = turbine_diameters[ti] / 2.0;
-
-                for (pi, coeff) in coeffs.iter().enumerate() {
-                    // Apply cubature point position scaled by rotor radius
+                for pi in 0..n_points {
+                    let (i, j) = (pi / n, pi % n);
                     x_sorted[[fi, ti, pi, 0]] = rotated_coords_x[[fi, ti]];
-                    y_sorted[[fi, ti, pi, 0]] = rotated_coords_y[[fi, ti]] + coeff.y * rotor_radius;
-                    z_sorted[[fi, ti, pi, 0]] = hub_heights[ti] + coeff.z * rotor_radius;
+                    y_sorted[[fi, ti, pi, 0]] =
+                        rotated_coords_y[[fi, ti]] + r[i] * q[j] * rotor_radius;
+                    z_sorted[[fi, ti, pi, 0]] = hub_heights[ti] + r[i] * t[j] * rotor_radius;
                 }
+            }
+        }
 
-                // Store normalized weights for this turbine
-                let total_weight: Float = coeffs.iter().map(|c| c.w).sum();
-                for (pi, coeff) in coeffs.iter().enumerate() {
-                    cubature_weights[[ti, pi]] = coeff.w / total_weight;
-                }
+        // Integration weights (Python grid.py:301-304):
+        //   np.kron(A, np.ones((1, N))) * B / np.pi,  B = np.pi / N
+        // Row i holds N copies of A_i / N, so the (N, N) matrix sums to 1
+        // (the A_i are normalized ring-area fractions). The weights are
+        // turbine-independent; `simple_cubature` re-normalizes on use
+        // (rotor_velocity.py:60-64), which is scale-invariant.
+        let mut cubature_weights = Array::zeros((n, n));
+        for i in 0..n {
+            for j in 0..n {
+                cubature_weights[[i, j]] = a[i] / n as Float;
             }
         }
 
@@ -138,220 +153,306 @@ impl TurbineCubatureGrid {
         })
     }
 
-    /// Compute cubature points and weights for circular disk integration
+    /// Python `TurbineCubatureGrid.get_cubature_coefficients` (grid.py:358-435).
     ///
-    /// This implements Gauss-Legendre based cubature for integrating over a circular disk.
-    /// The points are placed optimally for numerical integration.
-    fn compute_cubature_points(n: usize) -> crate::Result<Vec<CubaturePoint>> {
+    /// Returns `(r, t, q, A)`: the radii, the z-direction cosines, the
+    /// y-direction cosines, and the normalized ring-area fractions for the
+    /// N-th order unit-disk cubature. `B = pi / N` is folded into the weight
+    /// construction at the call site.
+    ///
+    /// The 26-digit literals are transcribed verbatim from the Python source;
+    /// clippy::excessive_precision is allowed here so the tables stay diffable
+    /// against the reference implementation (f64 keeps only 17 significant
+    /// digits — the extra digits are inert). `FRAC_1_SQRT_2` is used where the
+    /// literal is bit-identical to the std constant.
+    #[allow(clippy::excessive_precision)]
+    fn get_cubature_coefficients(n: usize) -> (Vec<Float>, Vec<Float>, Vec<Float>, Vec<Float>) {
         match n {
-            1 => Ok(vec![CubaturePoint {
-                y: 0.0,
-                z: 0.0,
-                w: 1.0,
-            }]),
-            2 => {
-                // Two-point approximation
-                let r = 1.0 / std::f64::consts::SQRT_2;
-                Ok(vec![
-                    CubaturePoint {
-                        y: r,
-                        z: 0.0,
-                        w: 0.5,
-                    },
-                    CubaturePoint {
-                        y: -r,
-                        z: 0.0,
-                        w: 0.5,
-                    },
-                ])
-            }
-            3 => {
-                let r = 2.0 / 3.0;
-                let sqrt3 = 3.0_f64.sqrt();
-                Ok(vec![
-                    CubaturePoint {
-                        y: 0.0,
-                        z: r,
-                        w: 1.0 / 3.0,
-                    },
-                    CubaturePoint {
-                        y: r * sqrt3 / 2.0,
-                        z: -r / 2.0,
-                        w: 1.0 / 3.0,
-                    },
-                    CubaturePoint {
-                        y: -r * sqrt3 / 2.0,
-                        z: -r / 2.0,
-                        w: 1.0 / 3.0,
-                    },
-                ])
-            }
-            4 => {
-                // Four-point approximation (square vertices)
-                let r = std::f64::consts::SQRT_2 / 2.0;
-                Ok(vec![
-                    CubaturePoint {
-                        y: r,
-                        z: r,
-                        w: 0.25,
-                    },
-                    CubaturePoint {
-                        y: -r,
-                        z: r,
-                        w: 0.25,
-                    },
-                    CubaturePoint {
-                        y: r,
-                        z: -r,
-                        w: 0.25,
-                    },
-                    CubaturePoint {
-                        y: -r,
-                        z: -r,
-                        w: 0.25,
-                    },
-                ])
-            }
-            5 => {
-                // Five-point approximation (center + square)
-                let r = 2.0 / 3.0;
-                Ok(vec![
-                    CubaturePoint {
-                        y: 0.0,
-                        z: 0.0,
-                        w: 0.4,
-                    },
-                    CubaturePoint {
-                        y: r,
-                        z: r,
-                        w: 0.15,
-                    },
-                    CubaturePoint {
-                        y: -r,
-                        z: r,
-                        w: 0.15,
-                    },
-                    CubaturePoint {
-                        y: r,
-                        z: -r,
-                        w: 0.15,
-                    },
-                    CubaturePoint {
-                        y: -r,
-                        z: -r,
-                        w: 0.15,
-                    },
-                ])
-            }
-            6 => {
-                let sqrt3_inv = 1.0 / 3.0_f64.sqrt();
-                let points: Vec<CubaturePoint> = (0..6)
-                    .map(|i| {
-                        let angle = (i as Float) * PI / 3.0;
-                        CubaturePoint {
-                            y: sqrt3_inv * angle.cos(),
-                            z: sqrt3_inv * angle.sin(),
-                            w: 1.0 / 6.0,
-                        }
-                    })
-                    .collect();
-                Ok(points)
-            }
-            8 => {
-                // Eight-point approximation (square vertices + midpoints)
-                let r = std::f64::consts::SQRT_2 / 2.0;
-                let w_corner = 1.0 / 6.0;
-                let w_edge = 1.0 / 3.0;
-                Ok(vec![
-                    CubaturePoint {
-                        y: r,
-                        z: r,
-                        w: w_corner,
-                    },
-                    CubaturePoint {
-                        y: -r,
-                        z: r,
-                        w: w_corner,
-                    },
-                    CubaturePoint {
-                        y: r,
-                        z: -r,
-                        w: w_corner,
-                    },
-                    CubaturePoint {
-                        y: -r,
-                        z: -r,
-                        w: w_corner,
-                    },
-                    CubaturePoint {
-                        y: 1.0,
-                        z: 0.0,
-                        w: w_edge,
-                    },
-                    CubaturePoint {
-                        y: -1.0,
-                        z: 0.0,
-                        w: w_edge,
-                    },
-                    CubaturePoint {
-                        y: 0.0,
-                        z: 1.0,
-                        w: w_edge,
-                    },
-                    CubaturePoint {
-                        y: 0.0,
-                        z: -1.0,
-                        w: w_edge,
-                    },
-                ])
-            }
-            _ => {
-                // For larger n, use tensor product of Gauss-Legendre points
-                let m = (n + 1) / 2;
-                let points = Self::gauss_legendre_2d(m);
-                Ok(points)
-            }
+            1 => (vec![0.0], vec![0.0], vec![1.0], vec![1.0]),
+            2 => (
+                vec![-FRAC_1_SQRT_2, FRAC_1_SQRT_2],
+                vec![-FRAC_1_SQRT_2, FRAC_1_SQRT_2],
+                vec![FRAC_1_SQRT_2, FRAC_1_SQRT_2],
+                vec![0.5, 0.5],
+            ),
+            3 => (
+                vec![
+                    -0.8164965809277260327324280,
+                    0.0,
+                    0.8164965809277260327324280,
+                ],
+                vec![
+                    -0.8660254037844386467637232,
+                    0.0,
+                    0.8660254037844386467637232,
+                ],
+                vec![0.5, 1.0, 0.5],
+                vec![0.375, 0.25, 0.375],
+            ),
+            4 => (
+                vec![
+                    -0.8880738339771152621607646,
+                    -0.4597008433809830609776340,
+                    0.4597008433809830609776340,
+                    0.8880738339771152621607646,
+                ],
+                vec![
+                    -0.9238795325112867561281832,
+                    -0.3826834323650897717284600,
+                    0.3826834323650897717284600,
+                    0.9238795325112867561281832,
+                ],
+                vec![
+                    0.3826834323650897717284600,
+                    0.9238795325112867561281832,
+                    0.9238795325112867561281832,
+                    0.3826834323650897717284600,
+                ],
+                vec![0.25, 0.25, 0.25, 0.25],
+            ),
+            5 => (
+                vec![
+                    -0.9192110607898045793726291,
+                    -0.5958615826865180525340234,
+                    0.0,
+                    0.5958615826865180525340234,
+                    0.9192110607898045793726291,
+                ],
+                vec![
+                    -0.9510565162951535721164393,
+                    -0.5877852522924731291687060,
+                    0.0,
+                    0.5877852522924731291687060,
+                    0.9510565162951535721164393,
+                ],
+                vec![
+                    0.3090169943749474241022934,
+                    0.8090169943749474241022934,
+                    1.0,
+                    0.8090169943749474241022934,
+                    0.3090169943749474241022934,
+                ],
+                vec![
+                    0.1882015313502336375250377,
+                    0.2562429130942108069194067,
+                    0.1111111111111111111111111,
+                    0.2562429130942108069194067,
+                    0.1882015313502336375250377,
+                ],
+            ),
+            6 => (
+                vec![
+                    -0.9419651451198933233901941,
+                    -FRAC_1_SQRT_2,
+                    -0.3357106870197288066698994,
+                    0.3357106870197288066698994,
+                    FRAC_1_SQRT_2,
+                    0.9419651451198933233901941,
+                ],
+                vec![
+                    -0.9659258262890682867497432,
+                    -FRAC_1_SQRT_2,
+                    -0.2588190451025207623488988,
+                    0.2588190451025207623488988,
+                    FRAC_1_SQRT_2,
+                    0.9659258262890682867497432,
+                ],
+                vec![
+                    0.2588190451025207623488988,
+                    FRAC_1_SQRT_2,
+                    0.9659258262890682867497432,
+                    0.9659258262890682867497432,
+                    FRAC_1_SQRT_2,
+                    0.2588190451025207623488988,
+                ],
+                vec![
+                    0.1388888888888888888888889,
+                    0.2222222222222222222222222,
+                    0.1388888888888888888888889,
+                    0.1388888888888888888888889,
+                    0.2222222222222222222222222,
+                    0.1388888888888888888888889,
+                ],
+            ),
+            7 => (
+                vec![
+                    -0.9546790248493448767148503,
+                    -0.7684615381131740734708478,
+                    -0.4608042298407784190147371,
+                    0.0,
+                    0.4608042298407784190147371,
+                    0.7684615381131740734708478,
+                    0.9546790248493448767148503,
+                ],
+                vec![
+                    -0.9749279121818236070181317,
+                    -0.7818314824680298087084445,
+                    -0.4338837391175581204757683,
+                    0.0,
+                    0.4338837391175581204757683,
+                    0.7818314824680298087084445,
+                    0.9749279121818236070181317,
+                ],
+                vec![
+                    0.2225209339563144042889026,
+                    0.6234898018587335305250049,
+                    0.9009688679024191262361023,
+                    1.0,
+                    0.9009688679024191262361023,
+                    0.6234898018587335305250049,
+                    0.2225209339563144042889026,
+                ],
+                vec![
+                    0.1102311055883841876377392,
+                    0.1940967344215859403901162,
+                    0.1644221599900298719721446,
+                    0.0625,
+                    0.1644221599900298719721446,
+                    0.1940967344215859403901162,
+                    0.1102311055883841876377392,
+                ],
+            ),
+            8 => (
+                vec![
+                    -0.9646596061808674528345806,
+                    -0.8185294874300058668603761,
+                    -0.5744645143153507855310459,
+                    -0.2634992299855422962484895,
+                    0.2634992299855422962484895,
+                    0.5744645143153507855310459,
+                    0.8185294874300058668603761,
+                    0.9646596061808674528345806,
+                ],
+                vec![
+                    -0.9807852804032304491261822,
+                    -0.8314696123025452370787884,
+                    -0.5555702330196022247428308,
+                    -0.1950903220161282678482849,
+                    0.1950903220161282678482849,
+                    0.5555702330196022247428308,
+                    0.8314696123025452370787884,
+                    0.9807852804032304491261822,
+                ],
+                vec![
+                    0.1950903220161282678482849,
+                    0.5555702330196022247428308,
+                    0.8314696123025452370787884,
+                    0.9807852804032304491261822,
+                    0.9807852804032304491261822,
+                    0.8314696123025452370787884,
+                    0.5555702330196022247428308,
+                    0.1950903220161282678482849,
+                ],
+                vec![
+                    0.0869637112843634643432660,
+                    0.1630362887156365356567340,
+                    0.1630362887156365356567340,
+                    0.0869637112843634643432660,
+                    0.0869637112843634643432660,
+                    0.1630362887156365356567340,
+                    0.1630362887156365356567340,
+                    0.0869637112843634643432660,
+                ],
+            ),
+            9 => (
+                vec![
+                    -0.9710282199223060261836893,
+                    -0.8503863747508400503582112,
+                    -0.6452980455813291706201889,
+                    -0.3738447061866471744516959,
+                    0.0,
+                    0.3738447061866471744516959,
+                    0.6452980455813291706201889,
+                    0.8503863747508400503582112,
+                    0.9710282199223060261836893,
+                ],
+                vec![
+                    -0.9848077530122080593667430,
+                    -0.8660254037844386467637232,
+                    -0.6427876096865393263226434,
+                    -0.3420201433256687330440996,
+                    0.0,
+                    0.3420201433256687330440996,
+                    0.6427876096865393263226434,
+                    0.8660254037844386467637232,
+                    0.9848077530122080593667430,
+                ],
+                vec![
+                    0.1736481776669303488517166,
+                    0.5,
+                    0.7660444431189780352023927,
+                    0.9396926207859083840541093,
+                    1.0,
+                    0.9396926207859083840541093,
+                    0.7660444431189780352023927,
+                    0.5,
+                    0.1736481776669303488517166,
+                ],
+                vec![
+                    0.0718567803956129706617061,
+                    0.1406780075747310300960863,
+                    0.1559132614878706270409275,
+                    0.1115519505417853722012801,
+                    0.04,
+                    0.1115519505417853722012801,
+                    0.1559132614878706270409275,
+                    0.1406780075747310300960863,
+                    0.0718567803956129706617061,
+                ],
+            ),
+            10 => (
+                vec![
+                    -0.9762632447087885713212574,
+                    -0.8770602345636481685478274,
+                    -FRAC_1_SQRT_2,
+                    -0.4803804169063914437972190,
+                    -0.2165873427295972057980989,
+                    0.2165873427295972057980989,
+                    0.4803804169063914437972190,
+                    FRAC_1_SQRT_2,
+                    0.8770602345636481685478274,
+                    0.9762632447087885713212574,
+                ],
+                vec![
+                    -0.9876883405951377261900402,
+                    -0.8910065241883678623597096,
+                    -FRAC_1_SQRT_2,
+                    -0.4539904997395467915604084,
+                    -0.1564344650402308690101053,
+                    0.1564344650402308690101053,
+                    0.4539904997395467915604084,
+                    FRAC_1_SQRT_2,
+                    0.8910065241883678623597096,
+                    0.9876883405951377261900402,
+                ],
+                vec![
+                    0.1564344650402308690101053,
+                    0.4539904997395467915604084,
+                    FRAC_1_SQRT_2,
+                    0.8910065241883678623597096,
+                    0.9876883405951377261900402,
+                    0.9876883405951377261900402,
+                    0.8910065241883678623597096,
+                    FRAC_1_SQRT_2,
+                    0.4539904997395467915604084,
+                    0.1564344650402308690101053,
+                ],
+                vec![
+                    0.0592317212640472718785660,
+                    0.1196571676248416170103229,
+                    0.1422222222222222222222222,
+                    0.1196571676248416170103229,
+                    0.0592317212640472718785660,
+                    0.0592317212640472718785660,
+                    0.1196571676248416170103229,
+                    0.1422222222222222222222222,
+                    0.1196571676248416170103229,
+                    0.0592317212640472718785660,
+                ],
+            ),
+            _ => unreachable!("validated to [1, 10] at the call site"),
         }
     }
-
-    fn gauss_legendre_2d(n: usize) -> Vec<CubaturePoint> {
-        let mut points = Vec::new();
-        let w = 1.0 / ((n * n) as Float);
-
-        for i in 0..n {
-            let y = Self::gauss_legendre_point(i, n);
-            for j in 0..n {
-                let z = Self::gauss_legendre_point(j, n);
-                let r = (y * y + z * z).sqrt();
-                if r <= 1.0 {
-                    points.push(CubaturePoint { y, z, w });
-                }
-            }
-        }
-
-        // Normalize weights
-        if !points.is_empty() {
-            let total: Float = points.iter().map(|p| p.w).sum();
-            for p in &mut points {
-                p.w /= total;
-            }
-        }
-
-        points
-    }
-
-    fn gauss_legendre_point(i: usize, n: usize) -> Float {
-        let x = (((2 * i + 1) as Float) * PI) / ((2 * n + 1) as Float);
-        x.cos() * (4.0 / ((2 * n + 1) as Float)).sqrt()
-    }
-}
-
-/// Cubature point for disk integration
-#[derive(Debug, Clone)]
-struct CubaturePoint {
-    y: Float,
-    z: Float,
-    w: Float,
 }
 
 impl Grid for TurbineCubatureGrid {
@@ -384,6 +485,13 @@ impl Grid for TurbineCubatureGrid {
     }
     fn average_method(&self) -> AveragingMethod {
         AveragingMethod::SimpleCubature
+    }
+    // The default impl indexes z_sorted[[0, ti, 0, 1]], which assumes the
+    // TurbineGrid's (n_grid, n_grid) rotor layout; the cubature grid's z
+    // axis has length 1 and its points sit off-hub. The true hub heights
+    // are the turbine coordinate z values.
+    fn hub_heights(&self) -> Array1 {
+        self.turbine_coordinates.column(2).to_owned()
     }
     fn sorted_indices(&self) -> &Array2 {
         &self.sorted_indices
