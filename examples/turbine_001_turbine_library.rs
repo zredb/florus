@@ -1,4 +1,4 @@
-//! Example: Reference Turbines
+﻿//! Example: Reference Turbines
 //!
 //! This example demonstrates the reference turbines available in the turbine library.
 //! For each turbine, it shows the power and thrust coefficient curves.
@@ -40,7 +40,7 @@ fn main() -> Result<()> {
 
     // Run simulation and get results
     fmodel.run()?;
-    let powers = fmodel.get_turbine_powers();
+    let powers = fmodel.get_turbine_powers()?;
 
     for (i, ws) in wind_speeds.iter().enumerate() {
         let power_kw = powers[[i, 0]] / 1000.0;
@@ -65,12 +65,12 @@ fn main() -> Result<()> {
     // Get baseline power (0 deg yaw)
     fmodel.set_yaw_angles(ndarray::arr2(&[[0.0]]))?;
     fmodel.run()?;
-    let baseline_power = fmodel.get_turbine_powers()[[0, 0]];
+    let baseline_power = fmodel.get_turbine_powers()?[[0, 0]];
 
     for yaw in &yaw_angles_test {
         fmodel.set_yaw_angles(ndarray::arr2(&[[*yaw]]))?;
         fmodel.run()?;
-        let power = fmodel.get_turbine_powers()[[0, 0]];
+        let power = fmodel.get_turbine_powers()?[[0, 0]];
         let power_loss_pct = (1.0 - power / baseline_power) * 100.0;
 
         println!(

@@ -1,4 +1,4 @@
-use florus::{Array1, FlorisModel};
+﻿use florus::{Array1, FlorisModel};
 use ndarray::Axis;
 
 fn main() -> florus::Result<()> {
@@ -17,8 +17,8 @@ fn main() -> florus::Result<()> {
 
     fmodel.run()?;
 
-    let turbine_powers = fmodel.get_turbine_powers() / 1000.0;
-    let farm_power = fmodel.get_farm_power() / 1000.0;
+    let turbine_powers = fmodel.get_turbine_powers()? / 1000.0;
+    let farm_power = fmodel.get_farm_power()? / 1000.0;
 
     println!("The turbine power matrix should be of dimensions 4 (n_findex) X 2 (n_turbines)");
     // Print the full array similar to Python's numpy output

@@ -1,4 +1,4 @@
-/// Example 5: Getting Turbine and Farm Power
+﻿/// Example 5: Getting Turbine and Farm Power
 ///
 /// After setting the FlorisModel and running, the next step is typically to get the power output
 /// of the turbines. FLORIS has several methods for getting power:
@@ -52,14 +52,14 @@ fn main() -> florus::Result<()> {
     fmodel.run()?;
 
     // Get the turbine powers
-    let turbine_powers = fmodel.get_turbine_powers();
+    let turbine_powers = fmodel.get_turbine_powers()?;
 
     // Turbines powers will have shape (n_findex, n_turbines) where n_findex is the number of unique
     // wind conditions and n_turbines is the number of turbines in the farm
     println!("Turbine power has shape {:?}", turbine_powers.shape());
 
     // It is also possible to get the farm power directly
-    let farm_power = fmodel.get_farm_power();
+    let farm_power = fmodel.get_farm_power()?;
 
     // Farm power has length n_findex, and is the sum of the turbine powers
     println!("Farm power has shape {:?}", farm_power.shape());
@@ -76,7 +76,7 @@ fn main() -> florus::Result<()> {
 
     // It's possible to get these powers with wake losses disabled
     fmodel.run_no_wake()?;
-    let farm_power_no_wake = fmodel.get_farm_power();
+    let farm_power_no_wake = fmodel.get_farm_power()?;
 
     // Calculate and print wake losses for a sample condition
     let sample_idx = 20; // Middle of the sweep
@@ -136,11 +136,11 @@ fn main() -> florus::Result<()> {
     fmodel_rose.run()?;
 
     // Use reshaped methods to match Python output format
-    let turbine_powers = fmodel_rose.get_turbine_powers_rose();
+    let turbine_powers = fmodel_rose.get_turbine_powers_rose()?;
 
     println!("Shape of turbine powers: {:?}", turbine_powers.shape());
 
-    let farm_power = fmodel_rose.get_farm_power_rose();
+    let farm_power = fmodel_rose.get_farm_power_rose()?;
 
     println!("Shape of farm power: {:?}", farm_power.shape());
 

@@ -57,6 +57,11 @@ pub struct TurbineParameters {
     /// the turbine YAML defines controller_dependent_turbine_parameters and a
     /// loadable cp_ct_data_file (Python power_thrust_table["cp_ct_data"]).
     pub controller_dependent: Option<ControllerDependentParams>,
+    /// Floating-tilt interpolation table (Python `Turbine.tilt_interp`,
+    /// turbine.py:642-648): tilt angle vs rotor-average wind speed, built
+    /// only when the turbine type sets `correct_cp_ct_for_tilt: true`.
+    /// Below the table the tilt is 0.0; above it the last table value.
+    pub tilt_interp: Option<LookupTable>,
 }
 
 /// Fully resolved parameters for the controller-dependent (TUM) operation
@@ -122,6 +127,35 @@ impl<'a> TurbineContext<'a> {
         self.cubature_weights
             .map(|w| crate::types::Array1::from_iter(w.iter().copied()))
     }
+
+    /// Effective tilt for one (findex, turbine) pair, mirroring Python's
+    /// `compute_tilt_angles_for_floating_turbines` +
+    /// `np.where(correct_cp_ct_for_tilt, ...)` (rotor_velocity.py:28-52,
+    /// operation_models.py:254-261): when the turbine requests the
+    /// correction and a floating-tilt table exists, the tilt is interpolated
+    /// from the given velocity; otherwise the static tilt is kept. Note the
+    /// interpolation REPLACES the static tilt (Python passes the interp
+    /// result, not a blend), and only the linear-in-range part is shared
+    /// with `interp1d`; the table's two-sided fills handle the ends.
+    pub fn effective_tilt(
+        &self,
+        params: &TurbineParameters,
+        fi: usize,
+        ti: usize,
+        velocity: Float,
+        static_tilt: Float,
+    ) -> Float {
+        let correct = self
+            .correct_cp_ct_for_tilt
+            .map(|c| c[[fi, ti]])
+            .unwrap_or(false);
+        if correct {
+            if let Some(interp) = &params.tilt_interp {
+                return interp.interpolate(velocity);
+            }
+        }
+        static_tilt
+    }
 }
 
 /// Base trait for all turbine operation models
@@ -158,7 +192,7 @@ impl Clone for Box<dyn OperationModel> {
 pub const POWER_SETPOINT_DEFAULT: Float = 1e12;
 pub const POWER_SETPOINT_DISABLED: Float = 0.001;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LookupTable {
     pub keys: Array1,
     pub values: Array1,
@@ -166,6 +200,13 @@ pub struct LookupTable {
     /// `interp1d(..., fill_value=..., bounds_error=False)` (Bug #28):
     /// 0.0 for power tables, 0.0001 for thrust tables.
     pub fill_value: Float,
+    /// Optional two-sided fills, matching Python's
+    /// `interp1d(..., fill_value=(low, high), bounds_error=False)` used for
+    /// the floating-tilt interpolation (turbine.py:643-648):
+    /// below the table -> 0.0 tilt, above -> the last tilt angle.
+    /// `None` falls back to `fill_value` on the respective side.
+    pub fill_value_low: Option<Float>,
+    pub fill_value_high: Option<Float>,
 }
 
 pub type PowerTable = LookupTable;
@@ -181,11 +222,11 @@ impl LookupTable {
         }
 
         if wind_speed <= ws[0] {
-            return self.fill_value;
+            return self.fill_value_low.unwrap_or(self.fill_value);
         }
 
         if wind_speed >= ws[n - 1] {
-            return self.fill_value;
+            return self.fill_value_high.unwrap_or(self.fill_value);
         }
 
         // 二分查找插值区间 [lo, hi]，满足 ws[lo] <= wind_speed <= ws[hi]

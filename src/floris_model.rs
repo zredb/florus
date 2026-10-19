@@ -1,6 +1,6 @@
 use crate::core::turbines::cp_ct_table::TableConditions;
 use crate::core::turbines::operation_models::{POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED};
-use crate::core::{Core, Farm, FlowField, Grid, State, TurbineGrid};
+use crate::core::{Core, Farm, FlowField, State, TurbineGrid};
 use crate::floris_config::{FlorisConfig, SolverConfig};
 use crate::types::{Array1, Array2, Array3, Array4, Float};
 use crate::utilities::{cosd, load_yaml};
@@ -155,11 +155,11 @@ impl FlorisModel {
     ///
     /// // Run with wake effects
     /// model.run()?;
-    /// let power_with_wake = model.get_farm_power();
+    /// let power_with_wake = model.get_farm_power()?;
     ///
     /// // Run without wake effects
     /// model.run_no_wake()?;
-    /// let power_without_wake = model.get_farm_power();
+    /// let power_without_wake = model.get_farm_power()?;
     ///
     /// println!("Wake loss: {} W", power_without_wake - power_with_wake);
     /// # Ok(())
@@ -201,14 +201,103 @@ impl FlorisModel {
         Ok(())
     }
 
-    /// Get turbine powers based on calculated velocities
+    /// Calculates the power at each turbine in the wind farm (Watts), routed
+    /// through the operation model exactly like Python's `get_turbine_powers()`
+    /// (`floris_model.py:554-570` → `turbine.py:power()` → the configured
+    /// operation model). Power setpoints are applied inside the model, so
+    /// disabled turbines (near-zero setpoints) report zero power.
     ///
-    /// This implementation matches Python FLORIS's CosineLossTurbine.power() method:
-    /// 1. Uses cubic-mean for rotor average velocity
-    /// 2. Applies air density correction  
-    /// 3. Applies yaw cosine correction
-    /// 4. Uses power curve interpolation directly from cp_ct_table
-    pub fn get_turbine_powers(&self) -> Array2 {
+    /// # Errors
+    /// - If `run()` has not been called since the last state change; Python
+    ///   raises the equivalent RuntimeError from `_get_turbine_powers`.
+    /// - Multi-dimensional Cp/Ct fleets fall back to the legacy inline
+    ///   estimate (`get_turbine_powers_legacy`): Python routes those through
+    ///   a separate `turbine.py` branch that FLORUS has not ported.
+    pub fn get_turbine_powers(&self) -> crate::Result<Array2> {
+        // Python _get_turbine_powers: "Can't compute turbine powers without
+        // first running `FlorisModel.run()`." (state must be USED)
+        if !self.core.state.converged {
+            bail!("Can't compute turbine powers without first running `FlorisModel::run()`.");
+        }
+
+        let multi_dim = self.core.farm.turbines.iter().any(|t| {
+            matches!(
+                t.turbine_type.power_thrust_table.cp_ct_table,
+                crate::core::turbines::cp_ct_table::CpCtTable::MultiDimensional(_)
+            )
+        });
+        if multi_dim {
+            log::warn!(
+                "Multi-dimensional Cp/Ct tables detected: get_turbine_powers falls back to \
+                 the legacy inline estimate (operation-model dispatch unavailable)."
+            );
+            return Ok(self.get_turbine_powers_legacy());
+        }
+
+        let farm = &self.core.farm;
+        let flow_field = &self.core.flow_field;
+
+        // Python turbine.py:power() defaults: average_method="cubic-mean" with
+        // no cubature weights — the grid's averaging does NOT feed the power
+        // path (verified against Python 2026-10-14; see tests/cross_validation_wake.rs
+        // `compute_powers_cubature`).
+        let n_findex = flow_field.u_sorted.shape()[0];
+        let turbulence_intensities = {
+            let ti = &flow_field.turbulence_intensity_field_sorted;
+            if ti.shape().len() == 4 && ti.shape()[0] == n_findex && ti.shape()[1] > 0 {
+                Some(ti)
+            } else {
+                None
+            }
+        };
+        let powers_sorted = farm.power(
+            &flow_field.u_sorted,
+            flow_field.air_density,
+            Some(&farm.yaw_angles_sorted),
+            Some(&farm.tilt_angles_sorted),
+            turbulence_intensities,
+            Some(&farm.power_setpoints_sorted),
+            Some(&farm.awc_modes_sorted),
+            Some(&farm.awc_amplitudes_sorted),
+            crate::core::rotor_velocity::AveragingMethod::CubicMean,
+            None,
+        )?;
+
+        Ok(self.unsort_to_layout(&powers_sorted))
+    }
+
+    /// Reorder a (n_findex, n_turbines) sorted-order result back to the
+    /// user's layout order. Python returns layout-order arrays directly
+    /// (`flow_field.u` is unsorted); FLORUS computes on sorted views, so
+    /// results must be mapped through `grid.unsorted_indices`.
+    fn unsort_to_layout(&self, sorted: &Array2) -> Array2 {
+        let n_findex = sorted.shape()[0];
+        let n_turbines = sorted.shape()[1];
+
+        let Some(grid) = self.core.grid.as_ref() else {
+            return sorted.clone();
+        };
+        let Some(unsorted_indices) = grid.unsorted_indices() else {
+            return sorted.clone();
+        };
+
+        let mut out = Array2::zeros((n_findex, n_turbines));
+        for fi in 0..n_findex {
+            for ti in 0..n_turbines {
+                let pos = unsorted_indices[[fi, ti]] as usize;
+                out[[fi, ti]] = sorted[[fi, pos]];
+            }
+        }
+        out
+    }
+
+    /// Legacy inline power estimate over the UNSORTED velocity field:
+    /// cubic-mean rotor average, density/yaw/tilt cosine corrections, Cp
+    /// table lookup and a post-hoc power-setpoint clamp. Superseded by
+    /// `get_turbine_powers` (operation-model route); kept as the fallback
+    /// for multi-dimensional Cp/Ct fleets, which the operation-model
+    /// dispatch does not support.
+    fn get_turbine_powers_legacy(&self) -> Array2 {
         let n_findex = self.core.flow_field.n_findex;
         let n_turbines = self.core.farm.n_turbines();
         let yaw_angles = &self.core.farm.yaw_angles;
@@ -298,25 +387,25 @@ impl FlorisModel {
     }
 
     /// Get farm power
-    pub fn get_farm_power(&self) -> Array1 {
-        let powers = self.get_turbine_powers();
+    pub fn get_farm_power(&self) -> crate::Result<Array1> {
+        let powers = self.get_turbine_powers()?;
         let mut farm_power = Array1::zeros(self.core.flow_field.n_findex);
 
         for i in 0..self.core.flow_field.n_findex {
             farm_power[i] = powers.row(i).sum();
         }
 
-        farm_power
+        Ok(farm_power)
     }
 
     /// Get turbine powers reshaped for WindRose mode
     ///
     /// Returns powers in shape (n_wind_directions, n_wind_speeds, n_turbines)
     /// Only works when wind_data_info is available (set via set_wind_conditions_with_rose)
-    pub fn get_turbine_powers_rose(&self) -> Array3 {
-        let powers = self.get_turbine_powers();
+    pub fn get_turbine_powers_rose(&self) -> crate::Result<Array3> {
+        let powers = self.get_turbine_powers()?;
 
-        if let Some(ref wind_info) = self.core.wind_data_info {
+        Ok(if let Some(ref wind_info) = self.core.wind_data_info {
             // Reshape from (n_findex, n_turbines) to (n_wind_directions, n_wind_speeds, n_turbines)
             let n_wind_dirs = wind_info.n_wind_directions;
             let n_wind_speeds = wind_info.n_wind_speeds;
@@ -346,17 +435,17 @@ impl FlorisModel {
                 }
             }
             reshaped
-        }
+        })
     }
 
     /// Get farm power reshaped for WindRose mode
     ///
     /// Returns powers in shape (n_wind_directions, n_wind_speeds)
     /// Only works when wind_data_info is available (set via set_wind_conditions_with_rose)
-    pub fn get_farm_power_rose(&self) -> Array2 {
-        let farm_power = self.get_farm_power();
+    pub fn get_farm_power_rose(&self) -> crate::Result<Array2> {
+        let farm_power = self.get_farm_power()?;
 
-        if let Some(ref wind_info) = self.core.wind_data_info {
+        Ok(if let Some(ref wind_info) = self.core.wind_data_info {
             // Reshape from (n_findex,) to (n_wind_directions, n_wind_speeds)
             let n_wind_dirs = wind_info.n_wind_directions;
             let n_wind_speeds = wind_info.n_wind_speeds;
@@ -379,7 +468,7 @@ impl FlorisModel {
                 reshaped[[i, 0]] = power;
             }
             reshaped
-        }
+        })
     }
 
     /// Compute the expected (mean) power of each turbine
@@ -418,7 +507,7 @@ impl FlorisModel {
     /// ```
     pub fn get_expected_turbine_powers(&self, freq: Option<Array1>) -> crate::Result<Array1> {
         // Get turbine powers: shape (n_findex, n_turbines)
-        let turbine_powers = self.get_turbine_powers();
+        let turbine_powers = self.get_turbine_powers()?;
         let n_findex = self.core.flow_field.n_findex;
         let n_turbines = self.core.farm.n_turbines();
 
@@ -511,7 +600,7 @@ impl FlorisModel {
         }
 
         // Get turbine powers and apply weights
-        let turbine_powers = self.get_turbine_powers();
+        let turbine_powers = self.get_turbine_powers()?;
 
         let weights = if let Some(w) = turbine_weights {
             if w.shape() != [n_findex, n_turbines] {
@@ -606,7 +695,7 @@ impl FlorisModel {
         };
 
         // Calculate weighted farm power for each findex
-        let farm_power = self.get_farm_power();
+        let farm_power = self.get_farm_power()?;
 
         // Multiply power by values and sum
         let mut expected_value = 0.0;
@@ -624,43 +713,124 @@ impl FlorisModel {
 
     /// Get axial induction factors for all turbines
     ///
+    /// Routes through the configured operation model using the solved
+    /// rotor velocities, the grid's averaging method and cubature weights —
+    /// mirroring Python `get_turbine_ais` (floris_model.py:1017-1036), which
+    /// passes `average_method=grid.average_method,
+    /// cubature_weights=grid.cubature_weights` into `farm.axial_induction`.
+    ///
     /// # Returns
     /// Array of shape `(n_findex, n_turbines)` containing axial induction factors.
     ///
-    /// # Note
-    /// Currently returns a simplified implementation. Full implementation would require
-    /// calling the axial_induction function from the turbine module.
+    /// # Errors
+    /// Bubbles up operation-model errors (e.g. multi-dimensional Cp/Ct
+    /// tables, which the operation-model dispatch does not support).
     pub fn get_turbine_ais(&self) -> crate::Result<Array2> {
-        let n_findex = self.core.flow_field.n_findex;
-        let n_turbines = self.core.farm.n_turbines();
+        let farm = &self.core.farm;
+        let flow_field = &self.core.flow_field;
 
-        // Simplified implementation: estimate AI from power coefficient
-        // In full implementation, this would call axial_induction() function
-        let mut ais = Array2::zeros((n_findex, n_turbines));
+        let Some(grid) = self.core.grid.as_ref() else {
+            anyhow::bail!("Grid not initialized; call run() first");
+        };
 
-        for fi in 0..n_findex {
-            for ti in 0..n_turbines {
-                // Simplified: assume typical AI range based on operating condition
-                // Real implementation would use thrust_coefficient and other parameters
-                let velocity = self.core.flow_field.u_sorted[[fi, ti, 0, 0]];
-                let ref_velocity = self.core.flow_field.wind_speeds[fi];
-
-                if ref_velocity > 0.0 {
-                    // Rough estimate: AI ~ 1/3 for optimal operation
-                    let ratio = velocity / ref_velocity;
-                    ais[[fi, ti]] = (1.0 - ratio).max(0.0).min(0.5);
-                }
+        let n_findex = flow_field.u_sorted.shape()[0];
+        let turbulence_intensities = {
+            let ti = &flow_field.turbulence_intensity_field_sorted;
+            if ti.shape().len() == 4 && ti.shape()[0] == n_findex && ti.shape()[1] > 0 {
+                Some(ti)
+            } else {
+                None
             }
-        }
+        };
+        let ais_sorted = farm.axial_induction(
+            &flow_field.u_sorted,
+            flow_field.air_density,
+            Some(&farm.yaw_angles_sorted),
+            Some(&farm.tilt_angles_sorted),
+            turbulence_intensities,
+            Some(&farm.power_setpoints_sorted),
+            Some(&farm.awc_modes_sorted),
+            Some(&farm.awc_amplitudes_sorted),
+            grid.average_method(),
+            grid.cubature_weights(),
+        )?;
 
-        Ok(ais)
+        Ok(self.unsort_to_layout(&ais_sorted))
     }
 
     /// Get thrust coefficients at turbine locations
     ///
+    /// Routes through the configured operation model using the solved
+    /// rotor velocities, the grid's averaging method and cubature weights —
+    /// mirroring Python `get_turbine_thrust_coefficients`
+    /// (floris_model.py:1038-1057), which passes
+    /// `average_method=grid.average_method,
+    /// cubature_weights=grid.cubature_weights` into
+    /// `farm.thrust_coefficient`. Waked turbines therefore report their
+    /// local Ct (not the freestream value the legacy estimate produced).
+    ///
     /// # Returns
     /// Array of shape `(n_findex, n_turbines)` containing thrust coefficients.
+    ///
+    /// # Note
+    /// Falls back to the legacy freestream-table estimate when the
+    /// operation-model dispatch is unavailable (multi-dimensional Cp/Ct
+    /// tables), matching the pre-operation-model behavior with a warning.
     pub fn get_turbine_cts(&self) -> Array2 {
+        let farm = &self.core.farm;
+        let flow_field = &self.core.flow_field;
+
+        let op_model_route = (|| -> crate::Result<Array2> {
+            let grid = self
+                .core
+                .grid
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Grid not initialized; call run() first"))?;
+
+            let n_findex = flow_field.u_sorted.shape()[0];
+            if n_findex == 0 {
+                anyhow::bail!("flow field not solved; call run() first");
+            }
+            let turbulence_intensities = {
+                let ti = &flow_field.turbulence_intensity_field_sorted;
+                if ti.shape().len() == 4 && ti.shape()[0] == n_findex && ti.shape()[1] > 0 {
+                    Some(ti)
+                } else {
+                    None
+                }
+            };
+            let cts_sorted = farm.thrust_coefficient(
+                &flow_field.u_sorted,
+                flow_field.air_density,
+                Some(&farm.yaw_angles_sorted),
+                Some(&farm.tilt_angles_sorted),
+                turbulence_intensities,
+                Some(&farm.power_setpoints_sorted),
+                Some(&farm.awc_modes_sorted),
+                Some(&farm.awc_amplitudes_sorted),
+                grid.average_method(),
+                grid.cubature_weights(),
+            )?;
+            Ok(self.unsort_to_layout(&cts_sorted))
+        })();
+
+        match op_model_route {
+            Ok(cts) => cts,
+            Err(e) => {
+                log::warn!(
+                    "get_turbine_thrust_coefficients fell back to the legacy freestream \
+                     estimate: {e:#}"
+                );
+                self.get_turbine_cts_legacy()
+            }
+        }
+    }
+
+    /// Legacy Ct estimate: freestream (hub-reference) wind speed table
+    /// lookup, ignoring wakes, yaw/tilt corrections and the operation
+    /// model. Superseded by the operation-model route in
+    /// `get_turbine_cts`; kept as the multi-dimensional-table fallback.
+    fn get_turbine_cts_legacy(&self) -> Array2 {
         let n_findex = self.core.flow_field.n_findex;
         let n_turbines = self.core.farm.n_turbines();
         let mut ct_array = Array2::zeros((n_findex, n_turbines));
@@ -1782,10 +1952,14 @@ impl FlorisModel {
     }
 
     /// Calculate Annual Energy Production (AEP)
-    pub fn get_farm_aep(&self, wind_data: &dyn WindData, hours_per_year: Float) -> Float {
+    pub fn get_farm_aep(
+        &self,
+        wind_data: &dyn WindData,
+        hours_per_year: Float,
+    ) -> crate::Result<Float> {
         let n_conditions = wind_data.n_conditions();
         let frequencies = wind_data.frequencies();
-        let powers = self.get_turbine_powers();
+        let powers = self.get_turbine_powers()?;
 
         let mut total_energy = 0.0;
 
@@ -1795,17 +1969,17 @@ impl FlorisModel {
             total_energy += power * freq * hours_per_year;
         }
 
-        total_energy
+        Ok(total_energy)
     }
 
     /// Calculate AEP using uniform frequencies (1/N for each condition)
     ///
     /// This is useful for layout optimization when you want to compare
     /// layouts using the same set of wind conditions.
-    pub fn get_farm_aep_uniform(&self, hours_per_year: Float) -> Float {
+    pub fn get_farm_aep_uniform(&self, hours_per_year: Float) -> crate::Result<Float> {
         let n_conditions = self.core.flow_field.n_findex;
         let frequency = 1.0 / n_conditions as Float;
-        let powers = self.get_turbine_powers();
+        let powers = self.get_turbine_powers()?;
 
         let mut total_energy = 0.0;
 
@@ -1814,17 +1988,17 @@ impl FlorisModel {
             total_energy += power * frequency * hours_per_year;
         }
 
-        total_energy
+        Ok(total_energy)
     }
 
     /// Get Annual Value Production (AVP)
     ///
     /// Returns the total value-weighted energy production.
     /// If no value table is available, returns AEP.
-    pub fn get_farm_avp(&self) -> Float {
+    pub fn get_farm_avp(&self) -> crate::Result<Float> {
         // Simple implementation: return farm power as a proxy for value
         // In a full implementation, this would multiply by value factors
-        self.get_farm_power().sum()
+        Ok(self.get_farm_power()?.sum())
     }
 
     /// Get velocity at each turbine
@@ -1843,11 +2017,9 @@ impl FlorisModel {
         velocities
     }
 
-    /// Sample flow velocities at arbitrary points using trilinear interpolation.
-    ///
-    /// This method extracts wind speed values at user-specified (x, y, z) coordinates
-    /// by performing trilinear interpolation on the computed flow field grid.
-    /// This provides smoother and more accurate results compared to nearest-neighbor.
+    /// Sample the flow velocity at arbitrary points, solving the wake AT the
+    /// points for ALL wind conditions (Python `sample_flow_at_points` ->
+    /// `core.solve_for_points`, floris_model.py:1386-1404).
     ///
     /// # Arguments
     /// * `points_x` - x-coordinates of sampling points (in meters, inertial frame)
@@ -1855,12 +2027,15 @@ impl FlorisModel {
     /// * `points_z` - z-coordinates of sampling points (in meters, height above ground)
     ///
     /// # Returns
-    /// Array1 containing velocity values at each specified point.
-    /// Uses the first findex (wind condition) from the simulation.
+    /// Array of shape `(n_findex, n_points)` containing the velocity at each
+    /// point for each wind condition.
     ///
     /// # Errors
-    /// Returns an error if the simulation has not been run (grid is not initialized),
-    /// or if the point is outside the grid bounds.
+    /// - `turbopark` is rejected (Python refuses it too); `cc` and
+    ///   `empirical_gauss` are rejected until their full-flow solver variants
+    ///   are ported.
+    /// - The points must share the model's wind directions; call `set()` to
+    ///   change conditions before sampling.
     ///
     /// # Examples
     ///
@@ -1882,57 +2057,19 @@ impl FlorisModel {
         points_x: &[f64],
         points_y: &[f64],
         points_z: &[f64],
-    ) -> crate::Result<Array1> {
-        // Ensure simulation has been run
-        let grid = self
-            .grid()
-            .ok_or_else(|| anyhow::anyhow!("Must call run() before sampling flow"))?;
-
-        let core = self.core();
-        let u_field = &core.flow_field.u; // Shape: [findex, turbine, y, z]
-        let x_coords = grid.x_sorted_inertial_frame(); // Shape: [findex, turbine, y, z]
-        let y_coords = grid.y_sorted_inertial_frame();
-        let z_coords = grid.z_sorted_inertial_frame();
-
-        if x_coords.shape().len() != 4 {
-            bail!("Grid coordinates must be 4D arrays");
-        }
-
-        let n_findex = x_coords.shape()[0];
-        if n_findex == 0 {
-            bail!("Grid has no findex entries");
-        }
-
-        // Use first findex for sampling
-        let findex = 0;
-
-        // Sample each point using trilinear interpolation
-        let mut velocities = Vec::with_capacity(points_x.len());
-        for i in 0..points_x.len() {
-            let u = Self::trilinear_interpolate(
-                points_x[i],
-                points_y[i],
-                points_z[i],
-                x_coords,
-                y_coords,
-                z_coords,
-                u_field,
-                findex,
-            )?;
-            velocities.push(u);
-        }
-
-        Ok(Array1::from_vec(velocities))
+    ) -> crate::Result<Array2> {
+        let (velocities, _ti) = self.core.solve_for_points(points_x, points_y, points_z)?;
+        Ok(velocities)
     }
 
-    /// Sample turbulence intensity at arbitrary points using trilinear interpolation.
+    /// Sample the turbulence intensity at arbitrary points, solving the wake
+    /// AT the points for ALL wind conditions (Python `sample_ti_at_points`,
+    /// floris_model.py:1406-1423: it solves on the points grid and returns
+    /// `turbulence_intensity_field_sorted[:, :, 0, 0]`).
     ///
-    /// Similar to `sample_flow_at_points`, but extracts turbulence intensity values
-    /// instead of wind speed. Uses trilinear interpolation for smooth results.
-    ///
-    /// # Note
-    /// Currently returns ambient turbulence intensity as the TI field calculation
-    /// is not fully implemented in the solver. Wake-added TI will be added in future updates.
+    /// Unlike the pre-fix implementation, which returned the constant
+    /// ambient TI, this returns the wake-added TI field produced by the
+    /// solver's turbulence model at each point.
     ///
     /// # Arguments
     /// * `points_x` - x-coordinates of sampling points (in meters, inertial frame)
@@ -1940,182 +2077,20 @@ impl FlorisModel {
     /// * `points_z` - z-coordinates of sampling points (in meters, height above ground)
     ///
     /// # Returns
-    /// Array1 containing turbulence intensity values at each specified point.
-    /// Uses the first findex (wind condition) from the simulation.
+    /// Array of shape `(n_findex, n_points)` containing the turbulence
+    /// intensity at each point for each wind condition.
     ///
     /// # Errors
-    /// Returns an error if the simulation has not been run (grid is not initialized).
+    /// Same conditions as `sample_flow_at_points`.
     pub fn sample_ti_at_points(
         &self,
         points_x: &[f64],
         points_y: &[f64],
         points_z: &[f64],
-    ) -> crate::Result<Array1> {
-        // Ensure simulation has been run
-        let _grid = self
-            .grid()
-            .ok_or_else(|| anyhow::anyhow!("Must call run() before sampling flow"))?;
-
-        let core = self.core();
-
-        // Get ambient turbulence intensity from flow field config
-        // Note: The full TI field calculation (including wake-added turbulence)
-        // is not yet fully implemented. For now, we return the ambient TI.
-        let ambient_ti = if !core.flow_field.turbulence_intensities.is_empty() {
-            core.flow_field.turbulence_intensities[0]
-        } else {
-            0.06 // Default fallback value
-        };
-
-        // Return ambient TI for all points
-        // TODO: Implement full wake-added TI calculation in the solver
-        let ti_values = vec![ambient_ti; points_x.len()];
-
-        Ok(Array1::from_vec(ti_values))
+    ) -> crate::Result<Array2> {
+        let (_velocities, ti) = self.core.solve_for_points(points_x, points_y, points_z)?;
+        Ok(ti)
     }
-
-    /// Perform trilinear interpolation to extract a value at an arbitrary point.
-    ///
-    /// This function finds the enclosing grid cell around the target point and
-    /// performs trilinear interpolation using the 8 corner values.
-    ///
-    /// # Arguments
-    /// * `x`, `y`, `z` - Target coordinates in inertial frame
-    /// * `x_coords`, `y_coords`, `z_coords` - Grid coordinate arrays (4D: [findex, turbine, y, z])
-    /// * `field` - The scalar field to interpolate from (e.g., u velocity or TI)
-    /// * `findex` - Which findex slice to use
-    ///
-    /// # Returns
-    /// Interpolated value at the target point
-    ///
-    /// # Errors
-    /// Returns an error if the point is outside the grid bounds
-    fn trilinear_interpolate(
-        x: f64,
-        y: f64,
-        z: f64,
-        x_coords: &Array4,
-        y_coords: &Array4,
-        z_coords: &Array4,
-        field: &Array4,
-        findex: usize,
-    ) -> crate::Result<f64> {
-        let n_turbines = x_coords.shape()[1];
-        let n_y = x_coords.shape()[2];
-        let n_z = x_coords.shape()[3];
-
-        // Find the enclosing grid cell by searching for the closest grid point
-        // then checking neighbors to find the cell that contains our point
-        let (t_idx, y_idx, z_idx) =
-            Self::find_nearest_grid_point(x, y, z, x_coords, y_coords, z_coords, findex);
-
-        // Get the coordinates of the nearest point
-        let x0 = x_coords[[findex, t_idx, y_idx, z_idx]];
-        let y0 = y_coords[[findex, t_idx, y_idx, z_idx]];
-        let z0 = z_coords[[findex, t_idx, y_idx, z_idx]];
-
-        // For a proper trilinear interpolation, we need to find the 8 corners
-        // of the cell containing our point. Since the grid structure is complex
-        // (organized by turbine), we'll use a simplified approach:
-        // Find the local grid spacing and interpolate within the cell
-
-        // Estimate grid spacing from neighboring points
-        let dx = if t_idx > 0 {
-            (x_coords[[findex, t_idx, y_idx, z_idx]] - x_coords[[findex, t_idx - 1, y_idx, z_idx]])
-                .abs()
-        } else if t_idx < n_turbines - 1 {
-            (x_coords[[findex, t_idx + 1, y_idx, z_idx]] - x_coords[[findex, t_idx, y_idx, z_idx]])
-                .abs()
-        } else {
-            100.0 // Default spacing
-        };
-
-        let dy = if y_idx > 0 {
-            (y_coords[[findex, t_idx, y_idx, z_idx]] - y_coords[[findex, t_idx, y_idx - 1, z_idx]])
-                .abs()
-        } else if y_idx < n_y - 1 {
-            (y_coords[[findex, t_idx, y_idx + 1, z_idx]] - y_coords[[findex, t_idx, y_idx, z_idx]])
-                .abs()
-        } else {
-            50.0 // Default spacing
-        };
-
-        let dz = if z_idx > 0 {
-            (z_coords[[findex, t_idx, y_idx, z_idx]] - z_coords[[findex, t_idx, y_idx, z_idx - 1]])
-                .abs()
-        } else if z_idx < n_z - 1 {
-            (z_coords[[findex, t_idx, y_idx, z_idx + 1]] - z_coords[[findex, t_idx, y_idx, z_idx]])
-                .abs()
-        } else {
-            30.0 // Default spacing
-        };
-
-        // Calculate normalized coordinates within the cell (0 to 1)
-        // We assume the nearest point is at the center of a cell of size dx*dy*dz
-        let xd = ((x - x0) / dx + 0.5).clamp(0.0, 1.0);
-        let yd = ((y - y0) / dy + 0.5).clamp(0.0, 1.0);
-        let zd = ((z - z0) / dz + 0.5).clamp(0.0, 1.0);
-
-        // For simplicity and robustness with the turbine-based grid structure,
-        // we'll use the nearest neighbor value weighted by distance
-        // This is a practical compromise given the complex grid organization
-        let value = field[[findex, t_idx, y_idx, z_idx]];
-
-        Ok(value)
-    }
-
-    /// Find the nearest grid point to a given (x, y, z) coordinate.
-    ///
-    /// Uses Euclidean distance to find the closest grid point across all turbines
-    /// and their associated y-z grids.
-    ///
-    /// # Arguments
-    /// * `x`, `y`, `z` - Target coordinates in inertial frame
-    /// * `x_coords`, `y_coords`, `z_coords` - Grid coordinate arrays (4D: [findex, turbine, y, z])
-    /// * `findex` - Which findex slice to search in
-    ///
-    /// # Returns
-    /// Tuple of (turbine_index, y_index, z_index) for the nearest grid point
-    fn find_nearest_grid_point(
-        x: f64,
-        y: f64,
-        z: f64,
-        x_coords: &Array4,
-        y_coords: &Array4,
-        z_coords: &Array4,
-        findex: usize,
-    ) -> (usize, usize, usize) {
-        let n_turbines = x_coords.shape()[1];
-        let n_y = x_coords.shape()[2];
-        let n_z = x_coords.shape()[3];
-
-        let mut min_dist_sq = f64::INFINITY;
-        let mut best_t = 0;
-        let mut best_y = 0;
-        let mut best_z = 0;
-
-        // Search all grid points for this findex
-        for t in 0..n_turbines {
-            for jy in 0..n_y {
-                for jz in 0..n_z {
-                    let dx = x_coords[[findex, t, jy, jz]] - x;
-                    let dy = y_coords[[findex, t, jy, jz]] - y;
-                    let dz = z_coords[[findex, t, jy, jz]] - z;
-                    let dist_sq = dx * dx + dy * dy + dz * dz;
-
-                    if dist_sq < min_dist_sq {
-                        min_dist_sq = dist_sq;
-                        best_t = t;
-                        best_y = jy;
-                        best_z = jz;
-                    }
-                }
-            }
-        }
-
-        (best_t, best_y, best_z)
-    }
-
     /// Apply operating setpoints to the floris object.
     ///
     /// This function sets various operational parameters for turbines including yaw angles,

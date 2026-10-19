@@ -39,7 +39,9 @@ pub struct Farm {
     pub ref_tilts: Array1,
     pub ref_tilts_sorted: Array2,
     pub correct_cp_ct_for_tilt: Vec<bool>,
-    pub correct_cp_ct_for_tilt_sorted: Array2,
+    /// Per-(findex, sorted position) request for the floating-tilt Cp/Ct
+    /// correction (Python `farm.correct_cp_ct_for_tilt_sorted`, farm.py:354).
+    pub correct_cp_ct_for_tilt_sorted: ndarray::Array2<bool>,
     /// Per-findex sort order: `sorted_indices[[fi, i]]` is the layout index of
     /// the turbine at sorted position `i` for findex `fi` (Python's
     /// `turbine_type_map_sorted` dispatch key).
@@ -140,7 +142,7 @@ impl Farm {
             ref_tilts: Array1::zeros(n_turbines),
             ref_tilts_sorted: Array2::zeros((1, n_turbines)),
             correct_cp_ct_for_tilt: vec![false; n_turbines],
-            correct_cp_ct_for_tilt_sorted: Array2::zeros((1, n_turbines)),
+            correct_cp_ct_for_tilt_sorted: ndarray::Array2::from_elem((1, n_turbines), false),
             // Identity order until initialize()/expand_farm_properties() sets
             // the per-findex sort order.
             sorted_indices: {
@@ -320,11 +322,11 @@ impl Farm {
             }
             sorted
         };
-        let sort_bool_array1_for_findex = |arr: &Vec<bool>, fi: usize| -> Array1 {
-            let mut sorted = Array1::zeros(n_turbines);
+        let sort_bool_array1_for_findex = |arr: &Vec<bool>, fi: usize| -> ndarray::Array1<bool> {
+            let mut sorted = ndarray::Array1::<bool>::from_elem(n_turbines, false);
             for new_i in 0..n_turbines {
                 let old_i = sorted_coord_indices[[fi, new_i]] as usize;
-                sorted[new_i] = if arr[old_i] { 1.0 } else { 0.0 }; // 将bool转换为f64
+                sorted[new_i] = arr[old_i];
             }
             sorted
         };
@@ -373,7 +375,8 @@ impl Farm {
         }
 
         // Expand and sort correct_cp_ct_for_tilt
-        self.correct_cp_ct_for_tilt_sorted = Array2::zeros((n_findex, n_turbines));
+        self.correct_cp_ct_for_tilt_sorted =
+            ndarray::Array2::from_elem((n_findex, n_turbines), false);
         for fi in 0..n_findex {
             let sorted = sort_bool_array1_for_findex(&self.correct_cp_ct_for_tilt, fi);
             for ti in 0..n_turbines {
@@ -725,6 +728,7 @@ impl Farm {
                 awc_amplitudes,
                 average_method,
                 cubature_weights,
+                Some(&self.correct_cp_ct_for_tilt_sorted),
             )?;
 
             for fi in 0..n_findex {
@@ -780,6 +784,7 @@ impl Farm {
                 awc_amplitudes,
                 average_method,
                 cubature_weights,
+                Some(&self.correct_cp_ct_for_tilt_sorted),
             )?;
 
             for fi in 0..n_findex {
@@ -835,6 +840,7 @@ impl Farm {
                 awc_amplitudes,
                 average_method,
                 cubature_weights,
+                Some(&self.correct_cp_ct_for_tilt_sorted),
             )?;
 
             for fi in 0..n_findex {

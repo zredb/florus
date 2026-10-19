@@ -1,4 +1,4 @@
-use crate::floris_model::FlorisModel;
+﻿use crate::floris_model::FlorisModel;
 use crate::types::{Array1, Array2, Float};
 use ndarray::{Array, Axis};
 use std::f64::consts::PI;
@@ -234,7 +234,7 @@ pub fn compute_farm_revenue(fmodel: &FlorisModel) -> anyhow::Result<Array1> {
         anyhow::bail!("FlorisModel must be run before computing farm revenue");
     }
 
-    let farm_power = fmodel.get_farm_power();
+    let farm_power = fmodel.get_farm_power()?;
     let revenue = farm_power.mapv(|p| p * 1.0);
 
     Ok(revenue)
@@ -304,7 +304,7 @@ pub fn find_a_to_satisfy_target_voc_per_mw(
         anyhow::bail!("FlorisModel must be run before finding A for target cost/MW/findex");
     }
 
-    let farm_power = fmodel.get_farm_power();
+    let farm_power = fmodel.get_farm_power()?;
 
     let farm_voc = compute_farm_voc(
         fmodel,

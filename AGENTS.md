@@ -84,12 +84,17 @@ src/
 
 ## Known Limitations
 
-- `get_turbine_powers()` bypasses the operation model for power calculation (uses inline Cp lookup). Power setpoint clamping is applied post-hoc.
-- `get_turbine_thrust_coefficients()` uses `wind_speeds[fi]` (freestream) not rotor-averaged velocity, and doesn't go through the operation model.
-- Floating-tilt correction (`compute_tilt_angles_for_floating_turbines` + `correct_cp_ct_for_tilt`) is not wired into operation models: Python applies it inside each model's `thrust_coefficient()` (e.g. controller_dependent_operation_model.py:262-269), Rust passes `correct_cp_ct_for_tilt: None`. Only affects floating turbines with tilt interpolation; fixed-bottom turbines are unaffected (`np.where(correct_cp_ct_for_tilt, ...)` keeps the original tilt).
-- Disabled turbines via `set_operation(disable_turbines=...)` set power to 0; the solver DOES see the (near-zero) setpoint in Ct/AI since the Bug #35 wiring, but disable does not itself trigger wake re-computation (call `run()` after `set_operation`).
-- `sample_flow_at_points()` only samples at findex=0 — loop through wind directions individually for multi-condition sampling.
-- `sample_ti_at_points()` returns constant inflow TI — the turbulence field isn't populated after wake solving.
+- **Multi-dimensional Cp/Ct tables** (e.g. `iea_15MW_multi_dim_cp_ct.yaml`): the operation-model dispatch (`Turbine::power/thrust_coefficient/axial_induction`) supports only 1-D `power`/`thrust_coefficient` curves. `get_turbine_powers()` falls back to the legacy inline estimate (with a warning) for such fleets; `get_turbine_ais()` returns an error. Python routes multi-dim tables through a separate `turbine.py` branch that is not ported.
+- Disabled turbines via `set_operation(disable_turbines=...)` set power to 0; the solver DOES see the (near-zero) setpoint in Ct/AI since the Bug #35 wiring, but disable does not itself trigger wake re-computation (call `run()` after `set_operation` — Python requires the same). Query APIs now refuse stale state: `get_turbine_powers()` errors with Python's "without first running" message after any state-invalidating change.
+- `solve_for_points`/`sample_flow_at_points`/`sample_ti_at_points` support the sequential-model family only; `cc` and `empirical_gauss` full-flow solver variants are not ported (sampling errors for those models; `turbopark` is refused exactly like Python).
+- `get_operation_models()` is a placeholder using hardcoded Ct thresholds, not the operation models' state.
 - `TurbineCubatureGrid`'s `average_method` (`"simple-cubature"`) + `cubature_weights` feed **only** the solver's thrust/axial-induction path (Python `core/solver.py`). `get_turbine_powers()` still averages with the cubic-mean default — Python `_get_turbine_powers` does not forward the grid's averaging to `power()`; do not wire the cubature weights into the power path (verified against Python: gauss_cubature_grid upstream power 1745305.95 W from cubic-mean vs 1735364.46 W from simple-cubature).
+
+## Query API semantics (fixed 2026-10, cross-validated in `tests/cross_validation_query_apis.rs`)
+
+- `get_turbine_powers()` routes through the operation model over the SOLVED field with the cubic-mean default (Python `floris_model.py:554-570`), returns layout-order `(n_findex, n_turbines)` in Watts and a `Result` (state check mirrors Python's RuntimeError).
+- `get_turbine_thrust_coefficients()` / `get_turbine_ais()` route through `farm.thrust_coefficient` / `farm.axial_induction` with the grid's averaging method + cubature weights, then unsort to layout order (Python `floris_model.py:1017-1057`).
+- Floating tilt: `correct_cp_ct_for_tilt` + `floating_tilt_table` are wired into cosine-loss power (interp at the post-density/yaw effective velocity), cosine-loss & controller-dependent thrust (interp at the uncorrected rotor average), and axial induction. Only `cosine-loss` and `controller-dependent` use the interp — matching Python. Test turbine: `nrel_5MW_floating`.
+- `sample_flow_at_points` / `sample_ti_at_points` solve the wake ON the points for ALL findices via `Core::solve_for_points` (PointsGrid + `full_flow_sequential_solver`, Python `core.py:230-266`) and return `(n_findex, n_points)`. The solve runs on a scratch flow field; the model state stays intact (Python clobbers `self.flow_field` instead).
 
 参考的python 代码在:D:\code\florus\floris下

@@ -1,4 +1,4 @@
-//! Example: Setting Yaw Angles and Disabling Turbine
+﻿//! Example: Setting Yaw Angles and Disabling Turbine
 //!
 //! Demonstrates combining yaw control with turbine disabling.
 //! A 3-turbine case with the middle turbine disabled produces the same
@@ -62,8 +62,8 @@ fn main() -> Result<()> {
     fmodel_2.run()?;
     fmodel_3.run()?;
 
-    let p2 = fmodel_2.get_turbine_powers() / 1000.0;
-    let p3 = fmodel_3.get_turbine_powers() / 1000.0;
+    let p2 = fmodel_2.get_turbine_powers()? / 1000.0;
+    let p3 = fmodel_3.get_turbine_powers()? / 1000.0;
 
     println!("Upstream turbine power comparison:");
     println!(

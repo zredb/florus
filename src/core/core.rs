@@ -444,6 +444,108 @@ impl Core {
         Ok(())
     }
 
+    /// Solve the wake at arbitrary points for ALL wind conditions, returning
+    /// `(velocities, turbulence_intensities)` each shaped
+    /// `(n_findex, n_points)` — the `[:, :, 0, 0]` slices of the solved
+    /// fields (Python `core.solve_for_points`, core.py:230-266, and the
+    /// fields `sample_flow_at_points` / `sample_ti_at_points` consume).
+    ///
+    /// Differences from Python: the solve runs on a scratch copy of the flow
+    /// field and the model state is left intact (Python re-initializes
+    /// `self.flow_field` on the points grid, clobbering the main solve
+    /// state) — numerically identical, strictly safer. The `cc` and
+    /// `empirical_gauss` models are rejected until their full-flow solver
+    /// variants are ported; `turbopark` matches Python's explicit refusal.
+    pub fn solve_for_points(
+        &self,
+        points_x: &[f64],
+        points_y: &[f64],
+        points_z: &[f64],
+    ) -> crate::Result<(Array2, Array2)> {
+        let vel_model = self.wake.velocity_model_name.clone();
+
+        // Python core.py:254-258
+        if vel_model == "turbopark" {
+            anyhow::bail!(
+                "solve_for_points is not available for the legacy 'turbopark' model. \
+                 However, it is available for 'turboparkgauss'."
+            );
+        }
+        // Python routes these through full_flow_cc_solver /
+        // full_flow_empirical_gauss_solver (core.py:259-262); those variants
+        // are not yet ported to FLORUS.
+        if vel_model == "cc" || vel_model == "empirical_gauss" {
+            anyhow::bail!(
+                "solve_for_points is not yet supported for the '{}' model in FLORUS \
+                 (full_flow solver not ported); Python FLORIS supports it.",
+                vel_model
+            );
+        }
+
+        // Rotation center: the bounding-box center of the farm — the same
+        // center the internal TurbineGrid (built by full_flow_sequential_solver
+        // from farm.coordinates()) rotates about, and the same one the main
+        // turbine grids store. Passing it explicitly keeps the points in the
+        // farm's rotated frame (Python passes the turbine grid's centers,
+        // core.py:246-247). No prior run() is required, matching Python,
+        // because the solve happens on a scratch flow field.
+        let coords = self.farm.coordinates();
+        let x_min = coords
+            .column(0)
+            .iter()
+            .cloned()
+            .fold(f64::INFINITY, f64::min);
+        let x_max = coords
+            .column(0)
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
+        let y_min = coords
+            .column(1)
+            .iter()
+            .cloned()
+            .fold(f64::INFINITY, f64::min);
+        let y_max = coords
+            .column(1)
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
+        let x_center = Some((x_min + x_max) / 2.0);
+        let y_center = Some((y_min + y_max) / 2.0);
+
+        let points_grid = PointsGrid::new(
+            Array1::from_iter(points_x.iter().copied()),
+            Array1::from_iter(points_y.iter().copied()),
+            Array1::from_iter(points_z.iter().copied()),
+            self.flow_field.wind_directions.clone(),
+            x_center,
+            y_center,
+        )?;
+
+        // Solve on a scratch copy; the main solve state stays intact.
+        let mut points_flow_field = self.flow_field.clone();
+        points_flow_field.initialize_flow_field(
+            points_grid.grid_shape(),
+            points_grid.z_sorted(),
+            &points_grid.hub_heights(),
+        );
+
+        full_flow_sequential_solver(&self.farm, &mut points_flow_field, &points_grid, &self.wake)?;
+
+        let n_findex = points_flow_field.u_sorted.shape()[0];
+        let n_points = points_grid.n_turbines();
+        let mut velocities = Array2::zeros((n_findex, n_points));
+        let mut turbulence_intensities = Array2::zeros((n_findex, n_points));
+        for fi in 0..n_findex {
+            for pi in 0..n_points {
+                velocities[[fi, pi]] = points_flow_field.u_sorted[[fi, pi, 0, 0]];
+                turbulence_intensities[[fi, pi]] =
+                    points_flow_field.turbulence_intensity_field_sorted[[fi, pi, 0, 0]];
+            }
+        }
+        Ok((velocities, turbulence_intensities))
+    }
+
     /// Finalize the calculation - unsort values to match user-supplied order
     pub fn finalize(&mut self) {
         if let Some(grid) = self.grid.as_ref() {

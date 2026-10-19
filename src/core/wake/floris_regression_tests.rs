@@ -239,6 +239,12 @@ fn run_solver_and_extract_results(
         &model_manager,
     ).expect("Solver failed");
 
+    // The query APIs guard against stale state (mirroring Python's
+    // RuntimeError unless the model has run). The direct solver call above
+    // bypasses the state machinery, so mark the state explicitly here.
+    model.state.converged = true;
+    model.state.initialized = true;
+
     // Extract results - these are the values Python tests compare
     let velocities = model.flow_field.u_sorted.clone();
     let n_findex = model.flow_field.n_findex;
@@ -264,7 +270,7 @@ fn run_solver_and_extract_results(
     let ct_values = model.get_turbine_thrust_coefficients();
 
     // Get powers
-    let powers = model.get_turbine_powers();
+    let powers = model.get_turbine_powers().expect("get_turbine_powers failed");
 
     // Get axial induction (simplified calculation)
     let axial_inductions = ct_values.mapv(|ct| {

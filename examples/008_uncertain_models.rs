@@ -1,4 +1,4 @@
-/// Example 8: Uncertain Models (Simplified)
+﻿/// Example 8: Uncertain Models (Simplified)
 ///
 /// This example demonstrates the concept of uncertainty modeling in FLORIS.
 /// Note: Full UncertainFlorisModel implementation is not yet available in Rust.
@@ -46,8 +46,8 @@ fn main() -> florus::Result<()> {
     )?;
 
     fmodel.run()?;
-    let turbine_powers_nom = fmodel.get_turbine_powers();
-    let farm_powers_nom = fmodel.get_farm_power();
+    let turbine_powers_nom = fmodel.get_turbine_powers()?;
+    let farm_powers_nom = fmodel.get_farm_power()?;
 
     println!("Nominal case completed.");
     println!("Sample results at WD=270°:");
@@ -108,7 +108,7 @@ fn main() -> florus::Result<()> {
     )?;
 
     fmodel_unc.run()?;
-    let turbine_powers_unc = fmodel_unc.get_turbine_powers();
+    let turbine_powers_unc = fmodel_unc.get_turbine_powers()?;
 
     // Compute weighted average
     let mut t1_power_unc = 0.0;
@@ -164,7 +164,7 @@ fn main() -> florus::Result<()> {
 
     println!("\n========== AEP Calculation ==========");
 
-    let aep_nom = fmodel.get_farm_aep_uniform(8760.0);
+    let aep_nom = fmodel.get_farm_aep_uniform(8760.0)?;
     println!("AEP without uncertainty: {:.2} GWh/year", aep_nom / 1e6);
 
     println!("\nExample 8 completed successfully!");

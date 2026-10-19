@@ -1,4 +1,4 @@
-//! Example: TurboPark Wake Model
+﻿//! Example: TurboPark Wake Model
 //!
 //! This example demonstrates the TurboPark wake model.
 //!
@@ -24,7 +24,7 @@ fn main() -> Result<()> {
             )?;
 
             fmodel.run()?;
-            let powers = fmodel.get_turbine_powers();
+            let powers = fmodel.get_turbine_powers()?;
 
             println!("Results:");
             println!("  T0: {:.2} kW", powers[[0, 0]] / 1000.0);

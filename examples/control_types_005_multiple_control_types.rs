@@ -1,4 +1,4 @@
-//! Example: Peak-Shaving Operation Model
+﻿//! Example: Peak-Shaving Operation Model
 //!
 //! Demonstrates peak-shaving thrust reduction near rated wind speed.
 //!
@@ -27,7 +27,7 @@ fn main() -> Result<()> {
     fmodel_simple.set_wind_data(&ts)?;
     fmodel_simple.set_operation_model("simple")?;
     fmodel_simple.run()?;
-    let powers_simple = fmodel_simple.get_turbine_powers() / 1000.0;
+    let powers_simple = fmodel_simple.get_turbine_powers()? / 1000.0;
     let ct_simple = fmodel_simple.get_turbine_thrust_coefficients();
 
     // Peak-shaving model
@@ -41,7 +41,7 @@ fn main() -> Result<()> {
     fmodel_ps.set_wind_data(&ts2)?;
     fmodel_ps.set_operation_model("peak-shaving")?;
     fmodel_ps.run()?;
-    let powers_ps = fmodel_ps.get_turbine_powers() / 1000.0;
+    let powers_ps = fmodel_ps.get_turbine_powers()? / 1000.0;
     let ct_ps = fmodel_ps.get_turbine_thrust_coefficients();
 
     println!("Upstream turbine (T0) comparison:");

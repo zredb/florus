@@ -40,9 +40,14 @@ fn main() -> Result<()> {
 
         let ti_at_points = fmodel.sample_ti_at_points(&points_x, &points_y, &points_z)?;
 
+        // Returns (n_findex, n_points); the model has a single condition.
         println!(
             "{:<10} | {:<10.4} | {:<10.4} | {:<10.4} | {:<10.4}",
-            wd, ti_at_points[0], ti_at_points[1], ti_at_points[2], ti_at_points[3]
+            wd,
+            ti_at_points[[0, 0]],
+            ti_at_points[[0, 1]],
+            ti_at_points[[0, 2]],
+            ti_at_points[[0, 3]]
         );
     }
 

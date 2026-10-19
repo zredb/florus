@@ -1,4 +1,4 @@
-use super::{YawOptimization, YawOptimizationConfig, YawOptimizationResult};
+﻿use super::{YawOptimization, YawOptimizationConfig, YawOptimizationResult};
 use crate::floris_model::FlorisModel;
 use crate::types::Float;
 use crate::Array2;
@@ -87,7 +87,7 @@ impl YawOptimization for YawOptimizationSR {
 
         fmodel.set_yaw_angles(baseline_yaw_angles.clone())?;
         fmodel.run()?;
-        let _baseline_power = fmodel.get_farm_power().sum();
+        let _baseline_power = fmodel.get_farm_power()?.sum();
 
         let mut yaw_angles = baseline_yaw_angles.clone();
 
@@ -97,7 +97,7 @@ impl YawOptimization for YawOptimizationSR {
                     let yaw_range = self.config.maximum_yaw_angle - self.config.minimum_yaw_angle;
                     let step = yaw_range / self.sr_config.eval_grid_resolution as Float;
 
-                    let mut best_power = fmodel.get_farm_power()[fi];
+                    let mut best_power = fmodel.get_farm_power()?[fi];
                     let mut best_yaw = yaw_angles[[fi, ti]];
 
                     for i in 0..=self.sr_config.eval_grid_resolution {
@@ -107,7 +107,7 @@ impl YawOptimization for YawOptimizationSR {
                         fmodel.set_yaw_angles(yaw_angles.clone())?;
                         fmodel.run()?;
 
-                        let power = fmodel.get_farm_power()[fi];
+                        let power = fmodel.get_farm_power()?[fi];
                         if power > best_power {
                             best_power = power;
                             best_yaw = test_yaw;
@@ -121,11 +121,11 @@ impl YawOptimization for YawOptimizationSR {
 
         fmodel.set_yaw_angles(baseline_yaw_angles.clone())?;
         fmodel.run()?;
-        let baseline_power_verify = fmodel.get_farm_power().sum();
+        let baseline_power_verify = fmodel.get_farm_power()?.sum();
 
         fmodel.set_yaw_angles(yaw_angles.clone())?;
         fmodel.run()?;
-        let optimized_power = fmodel.get_farm_power().sum();
+        let optimized_power = fmodel.get_farm_power()?.sum();
 
         let power_improvement = optimized_power - baseline_power_verify;
         let improvement_percentage = if baseline_power_verify > 0.0 {
@@ -134,7 +134,7 @@ impl YawOptimization for YawOptimizationSR {
             0.0
         };
 
-        let turbine_powers = fmodel.get_turbine_powers();
+        let turbine_powers = fmodel.get_turbine_powers()?;
 
         Ok(YawOptimizationResult {
             yaw_angles,

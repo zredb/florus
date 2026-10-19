@@ -1,4 +1,4 @@
-/// Example 7: Sweeping Variables
+﻿/// Example 7: Sweeping Variables
 ///
 /// Demonstrate methods for sweeping across variables. Wind directions, wind speeds,
 /// turbulence intensities, as well as control inputs are passed as arrays and can be
@@ -41,7 +41,7 @@ fn main() -> florus::Result<()> {
     )?;
 
     fmodel.run()?;
-    let turbine_powers = fmodel.get_turbine_powers();
+    let turbine_powers = fmodel.get_turbine_powers()?;
 
     println!("Wind speed sweep results (first 5):");
     for i in 0..5.min(n_ws) {
@@ -78,7 +78,7 @@ fn main() -> florus::Result<()> {
     )?;
 
     fmodel_wd.run()?;
-    let turbine_powers = fmodel_wd.get_turbine_powers();
+    let turbine_powers = fmodel_wd.get_turbine_powers()?;
 
     println!("Wind direction sweep results (sample):");
     for &wd in &[250.0, 260.0, 270.0, 280.0, 289.0] {
@@ -116,7 +116,7 @@ fn main() -> florus::Result<()> {
     )?;
 
     fmodel_ti.run()?;
-    let turbine_powers = fmodel_ti.get_turbine_powers();
+    let turbine_powers = fmodel_ti.get_turbine_powers()?;
 
     println!("Turbulence intensity sweep results (sample):");
     for &ti in &[0.03, 0.06, 0.10, 0.15, 0.19] {
@@ -163,7 +163,7 @@ fn main() -> florus::Result<()> {
 
     fmodel_yaw.set_yaw_angles(yaw_angles)?;
     fmodel_yaw.run()?;
-    let turbine_powers = fmodel_yaw.get_turbine_powers();
+    let turbine_powers = fmodel_yaw.get_turbine_powers()?;
 
     println!("Yaw angle sweep results:");
     for (i, &yaw) in yaw_angles_upstream.iter().enumerate() {

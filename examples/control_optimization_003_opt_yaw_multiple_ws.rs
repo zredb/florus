@@ -1,4 +1,4 @@
-//! Example: Optimize Yaw for Multiple Wind Speeds
+﻿//! Example: Optimize Yaw for Multiple Wind Speeds
 //!
 //! This example demonstrates yaw optimization across different wind speeds,
 //! showing how optimal yaw angles vary with wind conditions.
@@ -51,7 +51,7 @@ fn main() -> Result<()> {
         // Run baseline (no yaw)
         fmodel.set_yaw_angles(ndarray::arr2(&[[0.0, 0.0, 0.0]]))?;
         fmodel.run()?;
-        let baseline_power = fmodel.get_farm_power()[0];
+        let baseline_power = fmodel.get_farm_power()?[0];
 
         // Note: Full yaw optimization requires YawOptimizationSR implementation
         // For now, demonstrate the concept

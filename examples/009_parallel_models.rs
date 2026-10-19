@@ -1,4 +1,4 @@
-/// Example 9: Parallel Models (Conceptual)
+﻿/// Example 9: Parallel Models (Conceptual)
 ///
 /// This example demonstrates the concept of parallel FLORIS models.
 /// Note: Full ParFlorisModel implementation is not yet available in Rust.
@@ -53,15 +53,15 @@ fn main() -> florus::Result<()> {
 
     println!("  Running model 1...");
     fmodel1.run()?;
-    let powers1 = fmodel1.get_farm_power();
+    let powers1 = fmodel1.get_farm_power()?;
 
     println!("  Running model 2...");
     fmodel2.run()?;
-    let powers2 = fmodel2.get_farm_power();
+    let powers2 = fmodel2.get_farm_power()?;
 
     println!("  Running model 3...");
     fmodel3.run()?;
-    let powers3 = fmodel3.get_farm_power();
+    let powers3 = fmodel3.get_farm_power()?;
 
     // Verify results are identical
     println!("\nVerifying results consistency...");

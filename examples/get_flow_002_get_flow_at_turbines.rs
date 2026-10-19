@@ -41,9 +41,14 @@ fn main() -> Result<()> {
 
         let u_at_points = fmodel.sample_flow_at_points(&points_x, &points_y, &points_z)?;
 
+        // Returns (n_findex, n_points); the model has a single condition.
         println!(
             "{:<10} | {:<10.2} | {:<10.2} | {:<10.2} | {:<10.2}",
-            wd, u_at_points[0], u_at_points[1], u_at_points[2], u_at_points[3]
+            wd,
+            u_at_points[[0, 0]],
+            u_at_points[[0, 1]],
+            u_at_points[[0, 2]],
+            u_at_points[[0, 3]]
         );
     }
 

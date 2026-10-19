@@ -1,4 +1,4 @@
-mod common;
+﻿mod common;
 
 use florus::floris_config::{
     CombinationModelConfig, DeflectionModelConfig, FarmConfig, FlorisConfig, FlowFieldConfig,
@@ -133,7 +133,9 @@ fn debug_power_calculation() {
     }
 
     println!("\n=== POWER CALCULATION ===");
-    let powers = model.get_turbine_powers();
+    let powers = model
+        .get_turbine_powers()
+        .expect("get_turbine_powers failed");
     println!("powers shape: {:?}", powers.shape());
     println!("powers[fi=0]: {:?}", powers.row(0).to_vec());
     println!("powers[fi=1]: {:?}", powers.row(1).to_vec());

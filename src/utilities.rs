@@ -310,6 +310,24 @@ pub fn rotate_coordinates_rel_west(
     wind_directions: &Array1,
     coordinates: &Array2,
 ) -> Result<(Array2, Array2, Array2, Array2, Array2)> {
+    rotate_coordinates_rel_west_with_centers(wind_directions, coordinates, None, None)
+}
+
+/// Rotate coordinates to the wind-aligned (west) frame, optionally about an
+/// explicit center (Python `rotate_coordinates_rel_west`'s
+/// `x_center_of_rotation` / `y_center_of_rotation` arguments, utilities.py).
+///
+/// The center matters when mixing grids in one rotated frame: a `PointsGrid`
+/// built over sample points must rotate about the SAME center as the farm
+/// solve (`core.solve_for_points` passes the turbine grid's centers,
+/// core.py:246-247), otherwise relative turbine/point positions drift.
+/// `None` falls back to the bounding-box center of the given coordinates.
+pub fn rotate_coordinates_rel_west_with_centers(
+    wind_directions: &Array1,
+    coordinates: &Array2,
+    x_center_opt: Option<Float>,
+    y_center_opt: Option<Float>,
+) -> Result<(Array2, Array2, Array2, Array2, Array2)> {
     let n_findex = wind_directions.len();
     let n_coords = coordinates.shape()[0];
 
@@ -333,8 +351,8 @@ pub fn rotate_coordinates_rel_west(
         .iter()
         .cloned()
         .fold(f64::NEG_INFINITY, f64::max);
-    let x_center = (x_min + x_max) / 2.0;
-    let y_center = (y_min + y_max) / 2.0;
+    let x_center = x_center_opt.unwrap_or((x_min + x_max) / 2.0);
+    let y_center = y_center_opt.unwrap_or((y_min + y_max) / 2.0);
 
     // Calculate the difference in given wind direction from 270 / West
     let wind_deviation_from_west = wind_delta(wind_directions.view());

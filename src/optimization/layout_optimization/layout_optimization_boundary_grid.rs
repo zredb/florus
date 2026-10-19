@@ -1,4 +1,4 @@
-//! Layout Optimization Boundary Grid Module
+﻿//! Layout Optimization Boundary Grid Module
 //!
 //! Provides grid-based layout optimization within specified boundaries.
 //! This module corresponds to layout_optimization_boundary_grid.py in Python FLORIS v4.6.
@@ -323,9 +323,9 @@ impl LayoutOptimizer for LayoutOptimizationBoundaryGrid {
         }
 
         if self.config.base.use_value {
-            fmodel.get_farm_avp()
+            fmodel.get_farm_avp().unwrap_or(0.0)
         } else {
-            fmodel.get_farm_aep_uniform(8760.0)
+            fmodel.get_farm_aep_uniform(8760.0).unwrap_or(0.0)
         }
     }
 
@@ -448,9 +448,9 @@ impl LayoutOptimizer for LayoutOptimizationMixedInteger {
         }
 
         if self.config.base.use_value {
-            fmodel.get_farm_avp()
+            fmodel.get_farm_avp().unwrap_or(0.0)
         } else {
-            fmodel.get_farm_aep_uniform(8760.0)
+            fmodel.get_farm_aep_uniform(8760.0).unwrap_or(0.0)
         }
     }
 

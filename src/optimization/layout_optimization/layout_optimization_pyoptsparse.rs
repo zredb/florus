@@ -1,4 +1,4 @@
-//! Layout Optimization PyOptSparse Module
+﻿//! Layout Optimization PyOptSparse Module
 //!
 //! Provides layout optimization using argmin library for constrained optimization.
 //! This corresponds to layout_optimization_pyoptsparse.py in Python FLORIS v4.6,
@@ -205,9 +205,9 @@ impl LayoutOptimizer for LayoutOptimizationPyOptSparse {
         }
 
         if self.config.use_value {
-            fmodel.get_farm_avp()
+            fmodel.get_farm_avp().unwrap_or(0.0)
         } else {
-            fmodel.get_farm_aep_uniform(8760.0)
+            fmodel.get_farm_aep_uniform(8760.0).unwrap_or(0.0)
         }
     }
 
@@ -356,9 +356,9 @@ impl LayoutOptimizer for LayoutOptimizationGoldenSection {
         }
 
         if self.config.use_value {
-            fmodel.get_farm_avp()
+            fmodel.get_farm_avp().unwrap_or(0.0)
         } else {
-            fmodel.get_farm_aep_uniform(8760.0)
+            fmodel.get_farm_aep_uniform(8760.0).unwrap_or(0.0)
         }
     }
 

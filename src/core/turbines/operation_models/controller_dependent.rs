@@ -960,6 +960,7 @@ impl ControllerDependentTurbine {
         params: &TurbineParameters,
         ctx: &TurbineContext,
         apply_density_correction: bool,
+        apply_tilt_interp: bool,
     ) -> crate::Result<(Array2, Array2, Array2, Array2, Array2)> {
         let cd = params
             .controller_dependent
@@ -979,7 +980,7 @@ impl ControllerDependentTurbine {
         let n_turbines = ctx.n_turbines();
 
         // Python sign convention: negative tilt creates tower clearance
-        let tilt_negated = -tilt_angles.clone();
+        let mut tilt_negated = -tilt_angles.clone();
 
         // rotor average + air-density correction (power path only; see
         // `prepare` docs — the Python thrust path skips it)
@@ -1000,6 +1001,23 @@ impl ControllerDependentTurbine {
             };
             for ti in 0..n_turbines {
                 rotor_eff[[fi, ti]] = rotor_avg[[fi, ti]] * density_factor;
+            }
+        }
+
+        // Python thrust_coefficient (controller_dependent_operation_model.py:
+        // 250-269): after the sign flip, the tilt of turbines requesting the
+        // correction is REPLACED by the floating-tilt interpolation at the
+        // UNCORRECTED rotor-average velocity (the interp output overrides the
+        // negated static tilt). The power path does NOT apply this — its
+        // kwargs swallow `tilt_interp` (the Python power() signature has no
+        // tilt handling), so `apply_tilt_interp` is false there.
+        if apply_tilt_interp {
+            for fi in 0..n_findex {
+                for ti in 0..n_turbines {
+                    let static_tilt = tilt_negated[[fi, ti]];
+                    tilt_negated[[fi, ti]] =
+                        ctx.effective_tilt(params, fi, ti, rotor_avg[[fi, ti]], static_tilt);
+                }
             }
         }
 
@@ -1151,7 +1169,7 @@ impl OperationModel for ControllerDependentTurbine {
             .yaw_angles
             .ok_or_else(|| anyhow::anyhow!("Yaw angles required for ControllerDependentTurbine"))?;
 
-        let prepared = ControllerDependentTurbine::prepare(params, ctx, true)?;
+        let prepared = ControllerDependentTurbine::prepare(params, ctx, true, false)?;
         let (p, p0) = ControllerDependentTurbine::solve_pair(
             params,
             &prepared,
@@ -1228,7 +1246,7 @@ impl OperationModel for ControllerDependentTurbine {
         // Python thrust_coefficient: air_density := ref BEFORE the rotor
         // density correction (a no-op), so the trajectory sees the raw
         // rotor-average velocity (lines 280-298).
-        let prepared = ControllerDependentTurbine::prepare(params, ctx, false)?;
+        let prepared = ControllerDependentTurbine::prepare(params, ctx, false, true)?;
 
         // Python clips the yawed Ct (line 330) but not the unyawed one
         // (line 356), and uses the fsolve return regardless of convergence.

@@ -1,4 +1,4 @@
-use super::{TrapezoidBounds, YawOptimization, YawOptimizationConfig, YawOptimizationResult};
+﻿use super::{TrapezoidBounds, YawOptimization, YawOptimizationConfig, YawOptimizationResult};
 use crate::floris_model::FlorisModel;
 use crate::types::Float;
 use crate::Array2;
@@ -77,11 +77,11 @@ impl YawOptimization for YawOptimizationGeometric {
             .unwrap_or_else(|| Array2::zeros((n_findex, n_turbines)));
         fmodel.set_yaw_angles(baseline_yaw_angles.clone())?;
         fmodel.run()?;
-        let baseline_power = fmodel.get_farm_power().sum();
+        let baseline_power = fmodel.get_farm_power()?.sum();
 
         fmodel.set_yaw_angles(yaw_angles.clone())?;
         fmodel.run()?;
-        let optimized_power = fmodel.get_farm_power().sum();
+        let optimized_power = fmodel.get_farm_power()?.sum();
 
         let power_improvement = optimized_power - baseline_power;
         let improvement_percentage = if baseline_power > 0.0 {
@@ -90,7 +90,7 @@ impl YawOptimization for YawOptimizationGeometric {
             0.0
         };
 
-        let turbine_powers = fmodel.get_turbine_powers();
+        let turbine_powers = fmodel.get_turbine_powers()?;
 
         Ok(YawOptimizationResult {
             yaw_angles,

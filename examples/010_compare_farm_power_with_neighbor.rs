@@ -1,4 +1,4 @@
-/// Example 10: Compare Farm Power with Neighboring Farm
+﻿/// Example 10: Compare Farm Power with Neighboring Farm
 ///
 /// This example demonstrates how to compare farm power production with and without
 /// neighboring turbines. In Python FLORIS, this is done using turbine_weights to
@@ -57,7 +57,7 @@ fn main() -> florus::Result<()> {
     // Calculate base case
     println!("\nRunning base case...");
     fmodel.run()?;
-    let farm_power_base = fmodel.get_farm_power();
+    let farm_power_base = fmodel.get_farm_power()?;
 
     println!("Base farm power at sample wind directions:");
     for &wd in &[0.0, 90.0, 180.0, 270.0] {
@@ -126,7 +126,7 @@ fn main() -> florus::Result<()> {
     fmodel_neighbor.run()?;
 
     // Get turbine powers for all 8 turbines
-    let turbine_powers_all = fmodel_neighbor.get_turbine_powers();
+    let turbine_powers_all = fmodel_neighbor.get_turbine_powers()?;
 
     // Sum only the base farm turbines (first 4)
     let mut farm_power_with_neighbor = Array1::zeros(n_wd);

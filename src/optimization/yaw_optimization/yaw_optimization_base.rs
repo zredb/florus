@@ -1,4 +1,4 @@
-use crate::floris_model::FlorisModel;
+﻿use crate::floris_model::FlorisModel;
 use crate::types::{Array2, Float};
 
 /// Result of yaw optimization
@@ -210,7 +210,7 @@ pub fn simple_yaw_optimization(
         .unwrap_or_else(|| Array2::zeros((n_findex, n_turbines)));
     fmodel.set_yaw_angles(baseline_yaw_angles.clone())?;
     fmodel.run()?;
-    let _baseline_power = fmodel.get_farm_power().sum();
+    let _baseline_power = fmodel.get_farm_power()?.sum();
 
     let mut yaw_angles = baseline_yaw_angles.clone();
 
@@ -236,7 +236,7 @@ pub fn simple_yaw_optimization(
 
     for fi in 0..n_findex {
         let mut iteration = 0;
-        let mut prev_power = fmodel.get_farm_power()[fi];
+        let mut prev_power = fmodel.get_farm_power()?[fi];
         let mut converged = false;
 
         while iteration < max_optimization_iterations && !converged {
@@ -253,12 +253,12 @@ pub fn simple_yaw_optimization(
                 yaw_angles[[fi, ti]] = yaw_plus;
                 fmodel.set_yaw_angles(yaw_angles.clone())?;
                 fmodel.run()?;
-                let power_plus = fmodel.get_farm_power()[fi];
+                let power_plus = fmodel.get_farm_power()?[fi];
 
                 yaw_angles[[fi, ti]] = yaw_minus;
                 fmodel.set_yaw_angles(yaw_angles.clone())?;
                 fmodel.run()?;
-                let power_minus = fmodel.get_farm_power()[fi];
+                let power_minus = fmodel.get_farm_power()?[fi];
 
                 let gradient = (power_plus - power_minus) / (2.0 * delta_yaw);
                 let learning_rate = 2.0 * weight;
@@ -273,7 +273,7 @@ pub fn simple_yaw_optimization(
 
             fmodel.set_yaw_angles(yaw_angles.clone())?;
             fmodel.run()?;
-            let current_power = fmodel.get_farm_power()[fi];
+            let current_power = fmodel.get_farm_power()?[fi];
 
             if (current_power - prev_power).abs() < convergence_tolerance * prev_power.abs() {
                 converged = true;
@@ -286,11 +286,11 @@ pub fn simple_yaw_optimization(
 
     fmodel.set_yaw_angles(baseline_yaw_angles.clone())?;
     fmodel.run()?;
-    let baseline_power_verify = fmodel.get_farm_power().sum();
+    let baseline_power_verify = fmodel.get_farm_power()?.sum();
 
     fmodel.set_yaw_angles(yaw_angles.clone())?;
     fmodel.run()?;
-    let optimized_power = fmodel.get_farm_power().sum();
+    let optimized_power = fmodel.get_farm_power()?.sum();
 
     let power_improvement = optimized_power - baseline_power_verify;
     let improvement_percentage = if baseline_power_verify > 0.0 {
@@ -299,7 +299,7 @@ pub fn simple_yaw_optimization(
         0.0
     };
 
-    let turbine_powers = fmodel.get_turbine_powers();
+    let turbine_powers = fmodel.get_turbine_powers()?;
 
     Ok(YawOptimizationResult {
         yaw_angles,

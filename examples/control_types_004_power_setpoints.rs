@@ -1,4 +1,4 @@
-//! Example: Helix Active Wake Mixing
+﻿//! Example: Helix Active Wake Mixing
 //!
 //! Demonstrates helix AWC on upstream turbines in a 4-turbine farm.
 //!
@@ -39,7 +39,7 @@ fn main() -> Result<()> {
     )?;
     fmodel.run()?;
 
-    let powers = fmodel.get_turbine_powers() / 1000.0;
+    let powers = fmodel.get_turbine_powers()? / 1000.0;
     println!("With helix AWC (amplitude=2.5 deg on T0):");
     println!("  T0: {:.2} kW", powers[[0, 0]]);
     println!("  T1: {:.2} kW", powers[[0, 1]]);
@@ -65,7 +65,7 @@ fn main() -> Result<()> {
 
         fmodel.set_operation(None, None, Some(modes), Some(amps), None, None)?;
         fmodel.run()?;
-        let p = fmodel.get_turbine_powers() / 1000.0;
+        let p = fmodel.get_turbine_powers()? / 1000.0;
         println!(
             "{:<20.1} | {:<15.2} | {:<15.2} | {:<15.2}",
             amp,

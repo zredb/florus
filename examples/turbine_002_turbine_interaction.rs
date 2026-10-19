@@ -1,4 +1,4 @@
-//! Example: Multiple Turbine Types
+﻿//! Example: Multiple Turbine Types
 //!
 //! This example uses an input file where multiple turbine types are defined.
 //! The first two turbines are the NREL 5MW, and the third turbine is the IEA 10MW.
@@ -31,7 +31,7 @@ fn main() -> Result<()> {
     fmodel.run()?;
 
     // Get turbine powers
-    let powers = fmodel.get_turbine_powers();
+    let powers = fmodel.get_turbine_powers()?;
 
     println!("Turbine Powers:");
     for ti in 0..powers.ncols() {

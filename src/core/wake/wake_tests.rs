@@ -484,8 +484,13 @@ mod power_calculation_tests {
 
         assert!(result.is_ok());
 
+        // Direct solver call bypasses the state machinery; mark the state so
+        // the query APIs accept the solved fields (mirrors run()).
+        model.state.converged = true;
+        model.state.initialized = true;
+
         // Calculate powers
-        let powers = model.get_turbine_powers();
+        let powers = model.get_turbine_powers().expect("get_turbine_powers failed");
         assert_eq!(powers.len(), 2);
 
         // Both turbines should produce power
@@ -537,8 +542,13 @@ mod power_calculation_tests {
 
         assert!(result.is_ok());
 
-        let farm_power = model.get_farm_power();
-        let powers = model.get_turbine_powers();
+        // Direct solver call bypasses the state machinery; mark the state so
+        // the query APIs accept the solved fields (mirrors run()).
+        model.state.converged = true;
+        model.state.initialized = true;
+
+        let farm_power = model.get_farm_power().expect("get_farm_power failed");
+        let powers = model.get_turbine_powers().expect("get_turbine_powers failed");
 
         let calculated_farm_power = powers.row(0).sum();
         assert!(

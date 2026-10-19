@@ -1,4 +1,4 @@
-//! Example: Custom Turbine Configuration
+﻿//! Example: Custom Turbine Configuration
 //!
 //! This example demonstrates how to work with different turbine configurations
 //! and shows the characteristics of various reference turbines.
@@ -50,7 +50,7 @@ fn main() -> Result<()> {
     fmodel.set_wind_conditions(ws_array, wd_array, ti_array)?;
     fmodel.run()?;
 
-    let powers = fmodel.get_turbine_powers();
+    let powers = fmodel.get_turbine_powers()?;
 
     println!("Wind Speed (m/s) | Power (kW)     | Cp (approx)");
     println!("-----------------|----------------|------------");

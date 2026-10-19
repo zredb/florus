@@ -1,4 +1,4 @@
-use florus::floris_model::FlorisModel;
+﻿use florus::floris_model::FlorisModel;
 use florus::types::{Array1, Float};
 use ndarray::Array;
 
@@ -35,7 +35,9 @@ fn debug_u_field_after_run() {
 
     fmodel.run().unwrap();
 
-    let powers = fmodel.get_turbine_powers();
+    let powers = fmodel
+        .get_turbine_powers()
+        .expect("get_turbine_powers failed");
     println!("Powers: {:?}", powers);
 
     let flow_field = fmodel.flow_field();

@@ -1,4 +1,4 @@
-//! Example: Disabling Turbines
+﻿//! Example: Disabling Turbines
 //!
 //! Demonstrates shutting down specific turbines during simulation using
 //! the "mixed" operation model.
@@ -36,7 +36,7 @@ fn main() -> Result<()> {
     fmodel.set_operation(None, None, None, None, None, Some(disable_turbines))?;
     fmodel.run()?;
 
-    let turbine_powers = fmodel.get_turbine_powers() / 1000.0;
+    let turbine_powers = fmodel.get_turbine_powers()? / 1000.0;
     let effective_wind_speeds = fmodel.turbine_average_velocities();
 
     println!("Turbine Powers (kW):");

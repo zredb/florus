@@ -833,6 +833,101 @@ def generate_wind_data_values(output_dir: Path) -> None:
 # Main
 # =============================================================================
 
+def generate_query_apis_values(output_dir: Path) -> None:
+    """Golden values for the post-solve query/sample APIs:
+
+    - `get_turbine_thrust_coefficients` / `get_turbine_ais`: the
+      operation-model route over the SOLVED rotor velocities (waked, yawed),
+      which replaced FLORUS's old freestream-table / heuristic estimates.
+    - `sample_flow_at_points` / `sample_ti_at_points`: the wake solve ON the
+      sample points for ALL findices (core.solve_for_points), replacing
+      FLORUS's old first-findex trilinear/nearest-neighbor hack and the
+      constant-ambient-TI stub.
+    - The floating-tilt Cp/Ct correction (`correct_cp_ct_for_tilt` +
+      `floating_tilt_table`) through the cosine-loss power/thrust paths and
+      the solver's Ct/AI chain (nrel_5MW_floating test turbine).
+    """
+
+    D = 126.0
+
+    print("\n  Generating gauss_yawed_query_apis (Ct/AI + sampling)...")
+    try:
+        fmodel = create_floris_model(
+            velocity_model="gauss",
+            deflection_model="gauss",
+            combination_model="fls",
+            turbulence_model="crespo_hernandez",
+            yaw_angles=[[5.0, 0.0, 0.0]] * N_FINDEX,
+        )
+        fmodel.run()
+
+        # Sample points in the inertial frame: between turbines, laterally
+        # offset, above hub, at a turbine, and downstream of the farm —
+        # locations the old first-findex trilinear approach could not
+        # handle faithfully.
+        points_x = [2.5 * D, 5.0 * D, 5.0 * D, 7.5 * D, 10.0 * D, 15.0 * D]
+        points_y = [0.0, 0.5 * D, -0.5 * D, 0.0, 0.0, 1.0 * D]
+        points_z = [90.0, 90.0, 90.0, 120.0, 90.0, 60.0]
+
+        results = {
+            "turbine_powers": fmodel.get_turbine_powers().tolist(),
+            "turbine_thrust_coefficients": fmodel.get_turbine_thrust_coefficients().tolist(),
+            "turbine_axial_inductions": fmodel.get_turbine_ais().tolist(),
+            "sample_points_x": points_x,
+            "sample_points_y": points_y,
+            "sample_points_z": points_z,
+            "sample_velocities": fmodel.sample_flow_at_points(
+                np.array(points_x), np.array(points_y), np.array(points_z)
+            ).tolist(),
+            "sample_tis": fmodel.sample_ti_at_points(
+                np.array(points_x), np.array(points_y), np.array(points_z)
+            ).tolist(),
+            "config": {
+                "velocity_model": "gauss",
+                "deflection_model": "gauss",
+                "combination_model": "fls",
+                "turbulence_model": "crespo_hernandez",
+                "turbine_type": "nrel_5MW",
+                "yawed": True,
+            },
+        }
+
+        save_json(results, output_dir / "query_apis" / "gauss_yawed_query_apis.json")
+
+    except Exception as e:
+        print(f"    ERROR: {e}")
+
+    print("\n  Generating floating_tilt (correct_cp_ct_for_tilt)...")
+    try:
+        fmodel = create_floris_model(
+            velocity_model="gauss",
+            deflection_model="gauss",
+            combination_model="fls",
+            turbulence_model="crespo_hernandez",
+            turbine_type="nrel_5MW_floating",
+        )
+        fmodel.run()
+
+        results = {
+            "turbine_powers": fmodel.get_turbine_powers().tolist(),
+            "turbine_thrust_coefficients": fmodel.get_turbine_thrust_coefficients().tolist(),
+            "turbine_axial_inductions": fmodel.get_turbine_ais().tolist(),
+            "config": {
+                "velocity_model": "gauss",
+                "deflection_model": "gauss",
+                "combination_model": "fls",
+                "turbulence_model": "crespo_hernandez",
+                "turbine_type": "nrel_5MW_floating",
+                "yawed": False,
+            },
+        }
+
+        save_json(results, output_dir / "query_apis" / "floating_tilt.json")
+
+    except Exception as e:
+        print(f"    ERROR: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Generate golden values for FLORUS-FLORIS cross-validation"
@@ -846,7 +941,7 @@ def main():
     parser.add_argument(
         "--category", "-c",
         type=str,
-        choices=["wake", "api", "operation", "wind_data", "all"],
+        choices=["wake", "api", "operation", "wind_data", "query_apis", "all"],
         default="all",
         help="Category of tests to generate (default: all)"
     )
@@ -875,6 +970,9 @@ def main():
     
     if args.category in ["wind_data", "all"]:
         generate_wind_data_values(output_dir)
+
+    if args.category in ["query_apis", "all"]:
+        generate_query_apis_values(output_dir)
     
     print("\n" + "=" * 60)
     print("Golden value generation complete!")

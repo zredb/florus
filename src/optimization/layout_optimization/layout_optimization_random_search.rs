@@ -1,4 +1,4 @@
-//! Layout Optimization Random Search Module
+﻿//! Layout Optimization Random Search Module
 //!
 //! Provides random search layout optimization using genetic algorithm-like approach.
 //! This module corresponds to layout_optimization_random_search.py in Python FLORIS v4.6.
@@ -189,9 +189,9 @@ impl LayoutOptimizer for LayoutOptimizationRandomSearch {
         }
 
         if self.config.use_value {
-            fmodel.get_farm_avp()
+            fmodel.get_farm_avp().unwrap_or(0.0)
         } else {
-            fmodel.get_farm_aep_uniform(8760.0)
+            fmodel.get_farm_aep_uniform(8760.0).unwrap_or(0.0)
         }
     }
 

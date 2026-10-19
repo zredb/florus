@@ -1,4 +1,4 @@
-use crate::floris_model::FlorisModel;
+﻿use crate::floris_model::FlorisModel;
 use crate::optimization::YawAngleBounds;
 use crate::types::Float;
 use crate::Array2;
@@ -140,12 +140,12 @@ pub fn optimize_yaw_single_findex(
         yaw_angles[[findex, ti]] = yaw_plus;
         fmodel.set_yaw_angles(yaw_angles.clone())?;
         fmodel.run()?;
-        let power_plus = fmodel.get_farm_power()[findex];
+        let power_plus = fmodel.get_farm_power()?[findex];
 
         yaw_angles[[findex, ti]] = yaw_minus;
         fmodel.set_yaw_angles(yaw_angles.clone())?;
         fmodel.run()?;
-        let power_minus = fmodel.get_farm_power()[findex];
+        let power_minus = fmodel.get_farm_power()?[findex];
 
         let gradient = (power_plus - power_minus) / (2.0 * delta_yaw);
         let learning_rate = 2.0 * weight;

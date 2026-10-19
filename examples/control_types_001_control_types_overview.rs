@@ -1,4 +1,4 @@
-//! Example: Simple-Derating Control
+﻿//! Example: Simple-Derating Control
 //!
 //! Demonstrates the simple-derating operation model in FLORUS.
 //! The simple-derating model allows specifying a power setpoint for each turbine,
@@ -28,7 +28,7 @@ fn main() -> Result<()> {
     fmodel.set_wind_conditions(wind_speeds, wind_directions, turbulence_intensities)?;
 
     fmodel.run()?;
-    let turbine_powers_orig = fmodel.get_turbine_powers();
+    let turbine_powers_orig = fmodel.get_turbine_powers()?;
 
     println!("Baseline (no derating):");
     println!(
@@ -54,7 +54,7 @@ fn main() -> Result<()> {
 
     fmodel.set_operation(None, Some(power_setpoints.clone()), None, None, None, None)?;
     fmodel.run()?;
-    let turbine_powers_derated = fmodel.get_turbine_powers();
+    let turbine_powers_derated = fmodel.get_turbine_powers()?;
 
     println!("\nWith derating (power setpoints applied to both turbines):");
     println!(
@@ -82,7 +82,7 @@ fn main() -> Result<()> {
 
     fmodel.set_operation(None, Some(power_setpoints_avail), None, None, None, None)?;
     fmodel.run()?;
-    let turbine_powers_avail = fmodel.get_turbine_powers();
+    let turbine_powers_avail = fmodel.get_turbine_powers()?;
 
     println!("\nAvailable power at downstream turbine (unlimited setpoint):");
     println!(

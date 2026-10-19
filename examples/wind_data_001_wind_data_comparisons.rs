@@ -1,4 +1,4 @@
-//! Example: Wind Data Comparisons
+﻿//! Example: Wind Data Comparisons
 //!
 //! This example demonstrates different wind data objects and their usage.
 //! Shows TimeSeries, WindRose, and how to use them with FlorisModel.
@@ -43,7 +43,7 @@ fn main() -> Result<()> {
     fmodel.set_wind_data(&time_series)?;
     fmodel.run()?;
 
-    let powers = fmodel.get_turbine_powers();
+    let powers = fmodel.get_turbine_powers()?;
     println!("\n   Farm Power by Condition:");
     for i in 0..n_conditions {
         let farm_power: f64 = powers.row(i).sum();
@@ -61,7 +61,7 @@ fn main() -> Result<()> {
     )?;
 
     fmodel.run()?;
-    let powers = fmodel.get_turbine_powers();
+    let powers = fmodel.get_turbine_powers()?;
 
     println!("   Condition: WD=270°, WS=8.0 m/s, TI=0.06");
     println!("   Turbine Powers:");
@@ -83,7 +83,7 @@ fn main() -> Result<()> {
     fmodel.set_wind_conditions(wind_speeds_sweep.clone(), wd_array, ti_array)?;
     fmodel.run()?;
 
-    let powers = fmodel.get_turbine_powers();
+    let powers = fmodel.get_turbine_powers()?;
 
     println!("   Wind Direction: 270° (constant)");
     println!("   Wind Speed vs Farm Power:");

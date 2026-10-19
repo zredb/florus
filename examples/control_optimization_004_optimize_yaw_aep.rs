@@ -1,4 +1,4 @@
-//! Example: Optimize Yaw for AEP (Annual Energy Production)
+﻿//! Example: Optimize Yaw for AEP (Annual Energy Production)
 //!
 //! This example demonstrates yaw optimization to maximize annual energy production
 //! using a wind rose with multiple wind directions, speeds, and frequencies.
@@ -52,7 +52,7 @@ fn main() -> Result<()> {
         ndarray::arr1(&[0.06]),
     )?;
     fmodel.run()?;
-    let baseline_power = fmodel.get_farm_power()[0];
+    let baseline_power = fmodel.get_farm_power()?[0];
 
     println!("Example (single condition):");
     println!("  Wind: 8 m/s @ 270°, TI=0.06");

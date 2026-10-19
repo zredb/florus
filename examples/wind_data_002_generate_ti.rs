@@ -1,4 +1,4 @@
-//! Example: TI Generation Methods
+﻿//! Example: TI Generation Methods
 //!
 //! Demonstrates generating turbulence intensity using different methods.
 //!
@@ -110,7 +110,7 @@ fn main() -> Result<()> {
             Array1::from_vec(vec![ti_val]),
         )?;
         fmodel.run()?;
-        let p = fmodel.get_turbine_powers();
+        let p = fmodel.get_turbine_powers()?;
         println!(
             "{:<10.1} | {:<10.1} | {:<10.4}",
             ws_val,

@@ -1,4 +1,4 @@
-//! Layout Optimization Scipy Module
+﻿//! Layout Optimization Scipy Module
 //!
 //! Provides scipy-style layout optimization using coordinate descent algorithm.
 //! This module corresponds to layout_optimization_scipy.py in Python FLORIS v4.6.
@@ -129,9 +129,9 @@ impl LayoutOptimizer for LayoutOptimizationScipy {
 
         // Return AEP or AVP using uniform frequencies
         if self.config.use_value {
-            fmodel.get_farm_avp()
+            fmodel.get_farm_avp().unwrap_or(0.0)
         } else {
-            fmodel.get_farm_aep_uniform(8760.0)
+            fmodel.get_farm_aep_uniform(8760.0).unwrap_or(0.0)
         }
     }
 

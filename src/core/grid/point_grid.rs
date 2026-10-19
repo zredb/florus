@@ -1,7 +1,9 @@
 /// Points grid for arbitrary point calculations
 use super::*;
 use crate::types::{Array1, Array2, Array4, Float};
-use crate::utilities::rotate_coordinates_rel_west;
+use crate::utilities::{
+    reverse_rotate_coordinates_rel_west, rotate_coordinates_rel_west_with_centers,
+};
 use ndarray::Array;
 
 #[derive(Debug, Clone)]
@@ -17,11 +19,18 @@ pub struct PointsGrid {
     pub x_sorted_inertial_frame: Array4,
     pub y_sorted_inertial_frame: Array4,
     pub z_sorted_inertial_frame: Array4,
-    pub x_center_of_rotation: Option<Float>,
-    pub y_center_of_rotation: Option<Float>,
+    pub x_center_of_rotation: Array2,
+    pub y_center_of_rotation: Array2,
 }
 
 impl PointsGrid {
+    /// Build a grid over arbitrary sample points (Python `PointsGrid`,
+    /// grid.py:621-668).
+    ///
+    /// `x_center_of_rotation` / `y_center_of_rotation`: the rotation center of
+    /// the FARM solve (Python passes the turbine grid's centers,
+    /// core.py:246-247) so the points and the turbines share one rotated
+    /// frame; `None` falls back to the centroid of the points.
     pub fn new(
         points_x: Array1,
         points_y: Array1,
@@ -42,7 +51,12 @@ impl PointsGrid {
         }
 
         // Rotate coordinates
-        let (x, y, z, _, _) = rotate_coordinates_rel_west(&wind_directions, &point_coordinates)?;
+        let (x, y, z, x_center, y_center) = rotate_coordinates_rel_west_with_centers(
+            &wind_directions,
+            &point_coordinates,
+            x_center_of_rotation,
+            y_center_of_rotation,
+        )?;
 
         // Reshape to grid format
         let x_sorted = x
@@ -55,10 +69,17 @@ impl PointsGrid {
             .clone()
             .into_shape_with_order((n_findex, n_points, 1, 1))?;
 
-        // For inertial frame, just use original coordinates
-        let x_sorted_inertial_frame = x_sorted.clone();
-        let y_sorted_inertial_frame = y_sorted.clone();
-        let z_sorted_inertial_frame = z_sorted.clone();
+        // Inertial (user) frame coordinates via the reverse rotation with the
+        // same centers (Python does the same in the Grid base class).
+        let (x_sorted_inertial_frame, y_sorted_inertial_frame, z_sorted_inertial_frame) =
+            reverse_rotate_coordinates_rel_west(
+                &wind_directions,
+                &x_sorted,
+                &y_sorted,
+                &z_sorted,
+                &x_center,
+                &y_center,
+            )?;
 
         Ok(Self {
             points_x,
@@ -72,8 +93,8 @@ impl PointsGrid {
             x_sorted_inertial_frame,
             y_sorted_inertial_frame,
             z_sorted_inertial_frame,
-            x_center_of_rotation,
-            y_center_of_rotation,
+            x_center_of_rotation: x_center,
+            y_center_of_rotation: y_center,
         })
     }
 }
@@ -119,6 +140,14 @@ impl Grid for PointsGrid {
     }
     fn resolution(&self) -> usize {
         1
+    }
+    // The default impl indexes z_sorted[[0, ti, 0, 1]], which assumes the
+    // TurbineGrid's (n_grid, n_grid) rotor layout; the points grid's z axis
+    // has length 1 and its points sit off-hub. The "hub heights" of the
+    // sample points are simply their z coordinates (used by
+    // FlowField::initialize_flow_field for the reference-height fallback).
+    fn hub_heights(&self) -> Array1 {
+        self.points_z.clone()
     }
     fn as_any(&self) -> &dyn Any {
         self

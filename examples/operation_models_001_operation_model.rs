@@ -1,4 +1,4 @@
-//! Example: Compare Yaw Loss Under Different Operation Models
+﻿//! Example: Compare Yaw Loss Under Different Operation Models
 //!
 //! Demonstrates how different operation models alter power loss to yaw.
 //!
@@ -50,7 +50,7 @@ fn main() -> Result<()> {
 
             fmodel.run()?;
 
-            let powers = fmodel.get_turbine_powers() / 1000.0;
+            let powers = fmodel.get_turbine_powers()? / 1000.0;
 
             let max_power = powers.column(0).fold(0.0_f64, |a, &b| a.max(b));
             let power_at_30 = powers[[n_yaw - 1, 0]];

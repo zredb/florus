@@ -1,4 +1,4 @@
-use super::{YawOptimization, YawOptimizationConfig, YawOptimizationResult};
+﻿use super::{YawOptimization, YawOptimizationConfig, YawOptimizationResult};
 use crate::floris_model::FlorisModel;
 use crate::types::Float;
 use crate::Array2;
@@ -70,7 +70,7 @@ impl YawOptimization for YawOptimizationScipy {
 
         fmodel.set_yaw_angles(baseline_yaw_angles.clone())?;
         fmodel.run()?;
-        let _baseline_power = fmodel.get_farm_power().sum();
+        let _baseline_power = fmodel.get_farm_power()?.sum();
 
         let mut yaw_angles = baseline_yaw_angles.clone();
         let step_size = self.scipy_config.eps;
@@ -108,12 +108,12 @@ impl YawOptimization for YawOptimizationScipy {
                     yaw_angles[[fi, ti]] = yaw_plus;
                     fmodel.set_yaw_angles(yaw_angles.clone())?;
                     fmodel.run()?;
-                    let power_plus = fmodel.get_farm_power()[fi];
+                    let power_plus = fmodel.get_farm_power()?[fi];
 
                     yaw_angles[[fi, ti]] = yaw_minus;
                     fmodel.set_yaw_angles(yaw_angles.clone())?;
                     fmodel.run()?;
-                    let power_minus = fmodel.get_farm_power()[fi];
+                    let power_minus = fmodel.get_farm_power()?[fi];
 
                     let gradient = (power_plus - power_minus) / (2.0 * step_size);
                     let weight = turbine_weights[ti];
@@ -135,11 +135,11 @@ impl YawOptimization for YawOptimizationScipy {
 
         fmodel.set_yaw_angles(baseline_yaw_angles.clone())?;
         fmodel.run()?;
-        let baseline_power_verify = fmodel.get_farm_power().sum();
+        let baseline_power_verify = fmodel.get_farm_power()?.sum();
 
         fmodel.set_yaw_angles(yaw_angles.clone())?;
         fmodel.run()?;
-        let optimized_power = fmodel.get_farm_power().sum();
+        let optimized_power = fmodel.get_farm_power()?.sum();
 
         let power_improvement = optimized_power - baseline_power_verify;
         let improvement_percentage = if baseline_power_verify > 0.0 {
@@ -148,7 +148,7 @@ impl YawOptimization for YawOptimizationScipy {
             0.0
         };
 
-        let turbine_powers = fmodel.get_turbine_powers();
+        let turbine_powers = fmodel.get_turbine_powers()?;
 
         Ok(YawOptimizationResult {
             yaw_angles,
