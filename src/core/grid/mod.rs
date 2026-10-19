@@ -47,9 +47,16 @@ pub trait Grid {
     fn hub_heights(&self) -> Array1 {
         let n_turbines = self.n_turbines();
         let z = self.z_sorted();
+        // Single-point rotor grids (TurbineGrid with grid_resolution == 1)
+        // have a length-1 z axis whose only point sits exactly at the hub
+        // (the disc offsets are zero); index 1 would panic (turbopark_001
+        // example). Multi-point grids keep the historical [0, ti, 0, 1]
+        // entry (the only consumer, FlowField::initialize_flow_field, uses
+        // hub_heights[0] as the reference-height fallback).
+        let j = if z.shape()[3] > 1 { 1 } else { 0 };
         let mut heights = Array1::zeros(n_turbines);
         for ti in 0..n_turbines {
-            heights[ti] = z[[0, ti, 0, 1]];
+            heights[ti] = z[[0, ti, 0, j]];
         }
         heights
     }
