@@ -72,5 +72,7 @@ pub fn optimize_yaw_angles(
         optimized_power: 0.0,
         power_improvement: 0.0,
         improvement_percentage: 0.0,
+        farm_powers_opt: crate::Array1::zeros(0),
+        farm_powers_baseline: crate::Array1::zeros(0),
     }
 }

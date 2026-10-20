@@ -10,6 +10,13 @@ pub struct YawOptimizationResult {
     pub optimized_power: Float,
     pub power_improvement: Float,
     pub improvement_percentage: Float,
+    /// Optimized weighted farm power per condition (Python
+    /// `yaw_opt.farm_power_opt[:]`). Equal to `powers` weighted row sums at
+    /// the optimum, taken from the optimizer's evaluation batch.
+    pub farm_powers_opt: crate::Array1,
+    /// Baseline weighted farm power per condition (Python
+    /// `yaw_opt.farm_power_baseline[:]`, evaluated at `yaw_angles_baseline`).
+    pub farm_powers_baseline: crate::Array1,
 }
 
 impl Default for YawOptimizationResult {
@@ -21,6 +28,8 @@ impl Default for YawOptimizationResult {
             optimized_power: 0.0,
             power_improvement: 0.0,
             improvement_percentage: 0.0,
+            farm_powers_opt: crate::Array1::zeros(0),
+            farm_powers_baseline: crate::Array1::zeros(0),
         }
     }
 }
@@ -30,6 +39,14 @@ impl Default for YawOptimizationResult {
 pub struct YawOptimizationConfig {
     pub minimum_yaw_angle: Float,
     pub maximum_yaw_angle: Float,
+    /// Optional per-(findex, turbine) yaw lower bounds, overriding
+    /// `minimum_yaw_angle` where present (Python `minimum_yaw_angle` accepts
+    /// a scalar or an (n_findex, n_turbines) array — used by the
+    /// neighbor-farm example to freeze the neighboring turbines' yaw).
+    pub minimum_yaw_angle_array: Option<Array2>,
+    /// Optional per-(findex, turbine) yaw upper bounds, overriding
+    /// `maximum_yaw_angle` where present.
+    pub maximum_yaw_angle_array: Option<Array2>,
     pub yaw_angles_baseline: Option<Array2>,
     pub turbine_weights: Option<Vec<Float>>,
     pub exclude_downstream_turbines: bool,
@@ -41,6 +58,8 @@ impl Default for YawOptimizationConfig {
         Self {
             minimum_yaw_angle: 0.0,
             maximum_yaw_angle: 25.0,
+            minimum_yaw_angle_array: None,
+            maximum_yaw_angle_array: None,
             yaw_angles_baseline: None,
             turbine_weights: None,
             exclude_downstream_turbines: true,
@@ -308,6 +327,8 @@ pub fn simple_yaw_optimization(
         optimized_power,
         power_improvement,
         improvement_percentage,
+        farm_powers_opt: crate::Array1::zeros(0),
+        farm_powers_baseline: crate::Array1::zeros(0),
     })
 }
 

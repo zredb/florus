@@ -1,74 +1,89 @@
-//! Example: Optimize yaw with disabled turbines.
+//! Example: Optimizing yaw angles with disabled turbines
 //!
-//! This example demonstrates yaw optimization when some turbines are disabled,
-//! showing how the optimizer adapts to different farm configurations.
+//! This example demonstrates how to optimize yaw angles in FLORUS, when some
+//! turbines are disabled. The example optimization is run using both
+//! YawOptimizerSR and YawOptimizerGeometric, the two yaw optimizers that
+//! support disabling turbines.
+//!
+//! Scenario aligned 1:1 with
+//! examples_control_optimization/008_optimize_yaw_with_disabled_turbines.py.
 
-use florus::optimization::yaw_optimization::{
-    YawOptimization, YawOptimizationConfig, YawOptimizationSR,
-};
-use florus::{FlorisModel, Result, TimeSeries};
-use ndarray::Array1;
+use florus::floris_model::FlorisModel;
+use florus::optimization::yaw_optimization::yaw_optimizer_geometric::YawOptimizationGeometric;
+use florus::optimization::yaw_optimization::yaw_optimizer_sr::YawOptimizationSR;
+use florus::optimization::yaw_optimization::YawOptimization;
+use florus::types::{Array1, Array2, Float};
+use ndarray::Array;
 
-fn main() -> Result<()> {
-    println!("=== Yaw Optimization - With Disabled Turbines ===\n");
+/// numpy-style 2D array print: " [[v v v]\n  [v v v]]"
+fn np_print(yaw: &Array2) -> String {
+    let mut s = String::from(" [");
+    for (i, row) in yaw.outer_iter().enumerate() {
+        if i > 0 {
+            s.push_str("\n  ");
+        }
+        for (j, &v) in row.iter().enumerate() {
+            if j > 0 {
+                s.push(' ');
+            }
+            s.push_str(&format!("{v}"));
+        }
+    }
+    s.push(']');
+    s
+}
 
+fn main() -> anyhow::Result<()> {
+    // Load a 3-turbine model
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
-    // Set layout: 3 turbines aligned
-    let d = 126.0;
-    fmodel.set_layout(
-        &Array1::from_vec(vec![0.0, 5.0 * d, 10.0 * d]),
-        &Array1::from_vec(vec![0.0, 0.0, 0.0]),
+    // Set wind conditions to be the same for two cases
+    fmodel.set_wind_conditions(
+        Array1::from_vec(vec![8.0, 8.0]),
+        Array1::from_vec(vec![270.0, 270.0]),
+        Array1::from_vec(vec![0.06, 0.06]),
     )?;
+    fmodel.run()?;
 
-    // Set wind conditions
-    let time_series = TimeSeries::new(
-        Array1::from_vec(vec![270.0]),
-        Array1::from_vec(vec![8.0]),
-        Array1::from_vec(vec![0.06]),
-    )?;
-    fmodel.set_wind_data(&time_series)?;
-
-    println!("Configuration:");
-    println!("  - Turbines: 3 (aligned in x-direction)");
-    println!("  - Wind direction: 270°");
-    println!("  - Wind speed: 8.0 m/s\n");
-
-    // Test 1: All turbines enabled
-    println!("Test 1: All turbines enabled");
-    // Note: disable_turbines method not yet implemented, all turbines are enabled by default
-
-    let config = YawOptimizationConfig {
-        minimum_yaw_angle: -30.0,
-        maximum_yaw_angle: 30.0,
-        ..Default::default()
-    };
-
+    // First run the case where all turbines are active and print results
     let mut yaw_opt = YawOptimizationSR::new();
-    let result = yaw_opt.optimize(&mut fmodel, Some(config))?;
+    let df_opt = yaw_opt.optimize(&mut fmodel, None)?;
+    println!(
+        "Serial Refine optimized yaw angles (all turbines active) [deg]:\n{}",
+        np_print(&df_opt.yaw_angles)
+    );
 
-    println!("  Baseline power: {:.0} W", result.baseline_power);
-    println!("  Optimized power: {:.0} W", result.optimized_power);
-    println!("  Improvement: {:.2}%\n", result.improvement_percentage);
+    let mut yaw_opt = YawOptimizationGeometric::new();
+    let df_opt = yaw_opt.optimize(&mut fmodel, None)?;
+    println!(
+        "\nGeometric optimized yaw angles (all turbines active) [deg]:\n{}",
+        np_print(&df_opt.yaw_angles)
+    );
 
-    // Test 2: Middle turbine disabled
-    // TODO: Implement disable_turbines method in FlorisModel
-    println!("Test 2: Middle turbine (T1) disabled - SKIPPED");
-    println!("  Note: disable_turbines() method not yet implemented");
-    println!("  This feature requires setting turbine power setpoints to 0\n");
+    // Disable turbines (different pattern for each of the two cases)
+    // First case: disable the middle turbine
+    // Second case: disable the front turbine
+    fmodel.set_operation_model("mixed")?;
+    let disable = ndarray::Array2::<bool>::from_shape_fn((2, 3), |(i, j)| {
+        (i == 0 && j == 1) || (i == 1 && j == 0)
+    });
+    fmodel.set_operation(None, None, None, None, None, Some(disable))?;
+    fmodel.run()?;
 
-    // let mut yaw_opt = YawOptimizationSR::new();
-    // let result = yaw_opt.optimize(&mut fmodel, Some(config))?;
-    //
-    // println!("  Baseline power: {:.0} W", result.baseline_power);
-    // println!("  Optimized power: {:.0} W", result.optimized_power);
-    // println!("  Improvement: {:.2}%\n", result.improvement_percentage);
+    // Rerun optimizations and print results
+    let mut yaw_opt = YawOptimizationSR::new();
+    let df_opt = yaw_opt.optimize(&mut fmodel, None)?;
+    println!(
+        "\nSerial Refine optimized yaw angles (some turbines disabled) [deg]:\n{}",
+        np_print(&df_opt.yaw_angles)
+    );
 
-    println!("=== Optimization Complete ===");
-    println!("\nKey observations:");
-    println!("  - Disabling upstream turbine changes wake patterns");
-    println!("  - Optimizer adapts yaw angles accordingly");
-    println!("  - Power improvement varies with configuration");
+    let mut yaw_opt = YawOptimizationGeometric::new();
+    let df_opt = yaw_opt.optimize(&mut fmodel, None)?;
+    println!(
+        "\nGeometric optimized yaw angles (some turbines disabled) [deg]:\n{}",
+        np_print(&df_opt.yaw_angles)
+    );
 
     Ok(())
 }

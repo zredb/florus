@@ -1670,6 +1670,17 @@ impl FlorisModel {
 
         // Use Farm's method to ensure both yaw_angles and yaw_angles_sorted are updated
         self.core.farm.set_yaw_angles(yaw_angles);
+
+        // Mark the model uninitialized so the next run() re-initializes the
+        // domain, which re-sorts the yaw angles into the solver's sorted
+        // order (Farm::initialize). Without this the solver would keep the
+        // previously sorted array, applying the yaw angles to the wrong
+        // turbines whenever the sort order differs from the layout order
+        // (Python FlorisModel.set() resets core.state to UNINITIALIZED,
+        // floris_model.py:398).
+        self.core.state.initialized = false;
+        self.core.farm.state.initialized = false;
+
         Ok(())
     }
 
@@ -1963,13 +1974,19 @@ impl FlorisModel {
 
     /// Calculate Annual Energy Production (AEP)
     ///
-    /// Mirrors Python `get_farm_AEP` (floris_model.py:1001-1015 →
+    /// Mirrors Python `get_farm_AEP` (floris_model.py:827-873 ->
     /// `get_expected_farm_value`):
     /// - a per-condition frequency column (shape `(n_findex, 1)`, e.g.
     ///   TimeSeries / WindRose via `unpack_freq`) weights each condition's
     ///   FARM power;
     /// - a per-turbine frequency table (shape `(n_findex, n_turbines)`,
     ///   WindRoseByTurbine) weights each turbine's power individually.
+    ///
+    /// # Arguments
+    /// * `turbine_weights` - Optional per-turbine weights (Python
+    ///   `turbine_weights`): turbines of a neighboring farm can be given a
+    ///   weight of 0 so they contribute to the wakes but not to the
+    ///   objective. `None` weights every turbine equally.
     ///
     /// # Errors
     /// - the model must have been run for the same wind data (`run()` after
@@ -1978,6 +1995,16 @@ impl FlorisModel {
         &self,
         wind_data: &dyn WindData,
         hours_per_year: Float,
+    ) -> crate::Result<Float> {
+        self.get_farm_aep_weighted(wind_data, hours_per_year, None)
+    }
+
+    /// AEP with per-turbine weights (Python `get_farm_AEP(turbine_weights=...)`).
+    pub fn get_farm_aep_weighted(
+        &self,
+        wind_data: &dyn WindData,
+        hours_per_year: Float,
+        turbine_weights: Option<&[Float]>,
     ) -> crate::Result<Float> {
         // Python's unpack_freq: aligned with the unpacked condition set
         // (zero-frequency bins excluded for WindRose unless
@@ -2000,14 +2027,20 @@ impl FlorisModel {
         if freq.shape()[1] == 1 {
             // Per-condition frequency: weight the farm power of each findex
             for i in 0..n_findex {
-                expected += freq[[i, 0]] * powers.row(i).sum();
+                let mut farm_power = 0.0;
+                for ti in 0..n_turbines {
+                    let w = turbine_weights.map(|tw| tw[ti]).unwrap_or(1.0);
+                    farm_power += w * powers[[i, ti]];
+                }
+                expected += freq[[i, 0]] * farm_power;
             }
         } else {
             // Per-turbine frequency (WindRoseByTurbine): weight each
             // turbine's power (Python get_expected_farm_value's 2D branch)
             for i in 0..n_findex {
                 for ti in 0..n_turbines {
-                    expected += freq[[i, ti]] * powers[[i, ti]];
+                    let w = turbine_weights.map(|tw| tw[ti]).unwrap_or(1.0);
+                    expected += freq[[i, ti]] * w * powers[[i, ti]];
                 }
             }
         }
