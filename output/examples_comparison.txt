@@ -5040,3 +5040,86 @@ y: [86.87443034723935, 9.296579384862525, 491.44495188394717, 973.593324383032, 
 --- PYTHON STDOUT ---
 
 
+====================================================================================================
+PORTED EXAMPLES (Bug #42): wind resource grid (WRG)
+====================================================================================================
+[1/61] EXAMPLE: wind_resource_grid_001_wind_resource_grid  vs  001_wind_rose_wrg.py
+--- RUST STDOUT ---
+WindResourceGrid with 2 x 3 grid points, min x: 0, min y: 0, grid size: 1000, 12 sectors
+Wind directions in file: [0.0, 30.0, 60.0, 90.0, 120.0, 150.0, 180.0, 210.0, 240.0, 270.0, 300.0, 330.0], shape=[12], strides=[1], layout=CFcf (0xf), const ndim=1
+Wind directions: [0.0, 30.0, 60.0, 90.0, 120.0, 150.0, 180.0, 210.0, 240.0, 270.0, 300.0, 330.0], shape=[12], strides=[1], layout=CFcf (0xf), const ndim=1
+Wind speeds: [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0], shape=[26], strides=[1], layout=CFcf (0xf), const ndim=1
+ti_table rows: 12
+y =      0: wind speed bins 26, frequency sum 1.000000, peak ws bin 25
+y =    500: wind speed bins 26, frequency sum 1.000000, peak ws bin 25
+y =   1000: wind speed bins 26, frequency sum 1.000000, peak ws bin 25
+y =   1500: wind speed bins 26, frequency sum 1.000000, peak ws bin 25
+y =   2000: wind speed bins 26, frequency sum 1.000000, peak ws bin 25
+
+--- PYTHON STDOUT ---
+D:\code\florus\floris\floris\wind_data.py:3088: RuntimeWarning: invalid value encountered in power
+  exponent = -((x / a) ** k)
+D:\code\florus\floris\floris\wind_data.py:3088: RuntimeWarning: invalid value encountered in power
+  exponent = -((x / a) ** k)
+D:\code\florus\floris\floris\wind_data.py:3088: RuntimeWarning: invalid value encountered in power
+  exponent = -((x / a) ** k)
+D:\code\florus\floris\floris\wind_data.py:3088: RuntimeWarning: invalid value encountered in power
+  exponent = -((x / a) ** k)
+D:\code\florus\floris\floris\wind_data.py:3088: RuntimeWarning: invalid value encountered in power
+  exponent = -((x / a) ** k)
+D:\code\florus\floris\examples\examples_wind_resource_grid\001_wind_rose_wrg.py:44: UserWarning: No artists with labels found to put in legend.  Note that artists whose label start with an underscore are ignored when legend() is called with no argument.
+  ax.legend().set_visible(False)
+D:\code\florus\floris\floris\wind_data.py:3088: RuntimeWarning: invalid value encountered in power
+  exponent = -((x / a) ** k)
+D:\code\florus\floris\floris\wind_data.py:3088: RuntimeWarning: invalid value encountered in power
+  exponent = -((x / a) ** k)
+D:\code\florus\floris\floris\wind_data.py:3088: RuntimeWarning: invalid value encountered in power
+  exponent = -((x / a) ** k)
+D:\code\florus\floris\floris\wind_data.py:3088: RuntimeWarning: invalid value encountered in power
+  exponent = -((x / a) ** k)
+D:\code\florus\floris\floris\wind_data.py:3088: RuntimeWarning: invalid value encountered in power
+  exponent = -((x / a) ** k)
+D:\code\florus\floris\examples\examples_wind_resource_grid\001_wind_rose_wrg.py:73: UserWarning: No artists with labels found to put in legend.  Note that artists whose label start with an underscore are ignored when legend() is called with no argument.
+  ax.legend().set_visible(False)
+WindResourceGrid with 2 x 3 grid points, min x: 0.0, min y: 0.0, grid size: 1000.0, z: 0.0, h: 90.0, 12 sectors
+Wind directions in file: [  0.  30.  60.  90. 120. 150. 180. 210. 240. 270. 300. 330.]
+Wind directions: [  0.  30.  60.  90. 120. 150. 180. 210. 240. 270. 300. 330.]
+Wind speeds: [ 0.  1.  2.  3.  4.  5.  6.  7.  8.  9. 10. 11. 12. 13. 14. 15. 16. 17.
+ 18. 19. 20. 21. 22. 23. 24. 25.]
+ti_table: 0.06
+
+[2/61] EXAMPLE: wind_resource_grid_002_wrg_from_file  vs  002_set_floris_with_wrg.py
+--- RUST STDOUT ---
+=====================================
+Expected turbine powers: [3143994.0892901835, 3129121.821998916, 3143994.089290184], shape=[3], strides=[1], layout=CFcf (0xf), const ndim=1
+Expected farm power: 9417110.00057929
+Sum of expected turbine powers: 9417110.000579283
+
+--- PYTHON STDOUT ---
+D:\code\florus\floris\floris\wind_data.py:3088: RuntimeWarning: invalid value encountered in power
+  exponent = -((x / a) ** k)
+D:\code\florus\floris\floris\core\flow_field.py:169: UserWarning: 'where' used without 'out', expect unitialized memory in output. If this is intentional, use out=None.
+  * np.power(
+D:\code\florus\floris\floris\core\wake_deflection\gauss.py:327: RuntimeWarning: invalid value encountered in divide
+  val = 2 * (avg_v - v_core) / (v_top + v_bottom)
+D:\code\florus\floris\floris\core\wake_deflection\gauss.py:160: RuntimeWarning: invalid value encountered in divide
+  C0 = 1 - u0 / freestream_velocity
+D:\code\florus\floris\floris\core\wake_velocity\gauss.py:80: RuntimeWarning: invalid value encountered in divide
+  sigma_z0 = rotor_diameter_i * 0.5 * np.sqrt(uR / (u_initial + u0))
+WindResourceGrid with 2 x 3 grid points, min x: 0.0, min y: 0.0, grid size: 1000.0, z: 0.0, h: 90.0, 12 sectors
+Wind directions in file: [  0.  30.  60.  90. 120. 150. 180. 210. 240. 270. 300. 330.]
+Wind directions: [  0.  30.  60.  90. 120. 150. 180. 210. 240. 270. 300. 330.]
+Wind speeds: [ 0.  1.  2.  3.  4.  5.  6.  7.  8.  9. 10. 11. 12. 13. 14. 15. 16. 17.
+ 18. 19. 20. 21. 22. 23. 24. 25.]
+ti_table: 0.06
+=====================================
+=====================================
+Expected turbine powers: [2280015.29955901 2272352.87711173 2324102.91346193]
+Expected farm power: 6876471.090132672
+Sum of expected turbine powers: 6876471.0901326705
+=====================================
+Expected turbine powers:
+All wind roses: [2280015.29955901 2272352.87711173 2324102.91346193]
+First wind rose (1st power matches): (2280015.299559007), 2246402.363523383, 2280814.6536016096)
+Last wind rose (Last power matches): 2323303.559419334, 2289690.62338371, (2324102.9134619324)
+

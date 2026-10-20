@@ -1151,14 +1151,18 @@ fn bilinear_interpolate(
     let x_frac = x_idx_f - x0 as Float;
     let y_frac = y_idx_f - y0 as Float;
 
-    // Bilinear interpolation (ndarray uses row-major: [row, col] = [y, x])
-    let v00 = data[[y0, x0]];
-    let v01 = data[[y0, x1]];
-    let v10 = data[[y1, x0]];
-    let v11 = data[[y1, x1]];
+    // Bilinear interpolation. The WRG data is stored as [x, y] (nx rows,
+    // ny columns — sector_freq is [nx, ny, n_sectors]), so the first axis
+    // indexes x_array and the second y_array. Indexing it as [y, x] went out
+    // of bounds for points on the far edge of the grid (y = 1000 with a
+    // 3-row grid).
+    let v00 = data[[x0, y0]];
+    let v01 = data[[x1, y0]];
+    let v10 = data[[x0, y1]];
+    let v11 = data[[x1, y1]];
 
-    let v0 = v00 * (1.0 - x_frac) + v10 * x_frac;
-    let v1 = v01 * (1.0 - x_frac) + v11 * x_frac;
+    let v0 = v00 * (1.0 - x_frac) + v01 * x_frac;
+    let v1 = v10 * (1.0 - x_frac) + v11 * x_frac;
 
     v0 * (1.0 - y_frac) + v1 * y_frac
 }

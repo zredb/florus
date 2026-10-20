@@ -1,49 +1,56 @@
-//! Example: WRG from File
+//! Example: Set a FLORIS model with a wind resource grid (WRG)
 //!
-//! This example demonstrates loading WRG data from file.
+//! This example applies a WRG to a FLORIS model: the wind roses of the WRG
+//! are generated for each turbine of the layout and applied as the model's
+//! wind data.
 //!
-//! Corresponds to: examples_wind_resource_grid/002_wrg_from_file.py
+//! Scenario aligned 1:1 with
+//! examples_wind_resource_grid/002_set_floris_with_wrg.py.
+//!
+//! Known gap: the WRG parser does not yet reproduce Python's per-turbine
+//! wind roses (the Rust file is read with a different grid-point layout),
+//! so the expected powers differ from Python's. The grid metadata, the
+//! Weibull-based frequency construction and the layout application are
+//! implemented; the remaining difference is in the file parsing.
 
-use florus::Result;
+use florus::floris_model::FlorisModel;
+use florus::types::Array1;
+use florus::wind_data::WindRoseWRG;
 
-fn main() -> Result<()> {
-    println!("=== WRG from File ===\n");
+fn main() -> anyhow::Result<()> {
+    // Read the WRG file
+    let mut wind_rose_wrg = WindRoseWRG::new("examples/inputs/wrg_example.wrg", None, None, None)?;
 
-    println!("Loading WRG Files:\\n");
+    // Use 2 m/s steps and a fixed TI of 7% for all wind directions
+    wind_rose_wrg.set_wind_speeds(Array1::from_iter((0..13).map(|i| i as f64 * 2.0)));
+    wind_rose_wrg.set_ti_table(0.07);
 
-    println!("WRG File Format:");
-    println!("  - Text-based format");
-    println!("  - Human-readable header");
-    println!("  - Binary or ASCII data section");
-    println!("  - File extension: .wrg\\n");
+    // Select a turbine layout: a line of turbines along the diagonals of the
+    // WRG grid
+    let layout_x = Array1::from_vec(vec![0.0, 500.0, 1000.0]);
+    let layout_y = Array1::from_vec(vec![0.0, 1000.0, 2000.0]);
 
-    println!("File Structure:");
-    println!("  1. Header:");
-    println!("     - Grid definition (lat/lon bounds)");
-    println!("     - Resolution and dimensions");
-    println!("     - Height levels");
-    println!("     - Data format specification\\n");
+    // Set the turbine layout in the WindRoseWRG object; the wind roses are
+    // generated for each turbine
+    wind_rose_wrg.set_layout(layout_x.clone(), layout_y.clone())?;
 
-    println!("  2. Data Section:");
-    println!("     - Wind speed Weibull parameters");
-    println!("     - Direction frequencies");
-    println!("     - TI values");
-    println!("     - Organized by grid point\\n");
+    // Apply the wind_rose_wrg to a FLORIS model
+    let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
+    fmodel.set_layout(&layout_x, &layout_y)?;
+    fmodel.set_wind_data(&wind_rose_wrg)?;
+    fmodel.run()?;
 
-    println!("Parsing Steps:");
-    println!("  1. Read and parse header");
-    println!("  2. Extract grid geometry");
-    println!("  3. Read data for each grid point");
-    println!("  4. Validate data integrity");
-    println!("  5. Convert to internal format\\n");
+    // Run the model and get the expected turbine powers and farm power
+    let expected_turbine_powers = fmodel.get_expected_turbine_powers(None)?;
+    let expected_farm_power = fmodel.get_expected_farm_power(None, None)?;
 
-    println!("Usage in FLORUS:");
-    println!("  - Interpolate to turbine locations");
-    println!("  - Apply heterogeneous inflow");
-    println!("  - Calculate site-specific AEP");
-    println!("  - Optimize layout\\n");
+    println!("=====================================");
+    println!("Expected turbine powers: {:?}", expected_turbine_powers);
+    println!("Expected farm power: {}", expected_farm_power);
+    println!(
+        "Sum of expected turbine powers: {}",
+        expected_turbine_powers.sum()
+    );
 
-    println!("=== Example Complete ===");
-    println!("Note: Requires WRG file parser implementation.");
     Ok(())
 }
