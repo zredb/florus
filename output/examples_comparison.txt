@@ -5324,3 +5324,53 @@ Power increase from floating over farm (10m/s, 270deg winds): 300.47 kW
 Farm AEP (fixed bottom): 358.861 GWh
 Farm AEP (floating): 357.747 GWh
 Floating AEP increase: -1.114 GWh (-0.31%)
+
+====================================================================================================
+ SUMMARY OF THIS ROUND (2026-10-20)
+====================================================================================================
+ Aligned 1:1 with the Python FLORIS examples (the values below were compared against the Python
+ reference; "identical" means the printed values match to the printed precision):
+
+   heterogeneous_001  identical stdout        2248.2 / 2800.1 / 466.2 / 601.5 kW
+   heterogeneous_002  identical powers        per-condition and HeterogeneousMap variants
+   heterogeneous_003  identical powers        multiplier selection + 1176.8 / 2491.1 / 2053.0 kW
+   heterogeneous_004  within 0.02 m/s         2D and 3D flow-field statistics
+   multidim_001       identical powers        3115.68688793 / 1234.25106658 kW
+   multidim_002       identical powers        both wave-height sweeps
+   multidim_003       identical powers        both turbulence-intensity sweeps
+   floating_002       identical powers        36674.6 / 36975.1 kW (+300.5 kW); the wind-rose AEP is
+                                               still ~0.8 % above Python's
+
+ Engine gaps that were fixed in this round:
+   1. Heterogeneous inflow was never applied to the velocity field -> now interpolated onto the
+      grid points in the inertial frame and applied in every flow-field initialization.
+   2. Multi-dimensional Cp/Ct tables were rejected by the operation models -> now the tables are
+      selected per wind condition (nearest specified value per condition dimension) and the
+      results are masked per condition, as in Python.
+   3. set_wind_data() rebuilt the flow field with hard-coded shear / reference height instead of
+      the model's own settings.
+   4. The floating tilt was not interpolated at the effective velocity for the wake models.
+   5. The wind rose bin centers were half a step off (Python's bin edges start half a step below
+      zero) and the long-format CSV reader was missing.
+
+ Still unaligned (and why):
+   * layout_optimization_001 / 002 / 003 / 005
+       - Python uses SLSQP (001, 002) and a genetic algorithm (003); FLORUS uses coordinate descent
+         and a heuristic spread. Only the deterministic gridded optimizer (004) was ported exactly.
+       - layout_optimization_002 additionally needs the heterogeneous inflow, which now works.
+   * wind_resource_grid_002 / 003
+       - The WRG file is parsed with a different grid-point layout than Python, so the per-turbine
+         roses (and therefore the expected powers) differ. The het inflow of 003 now works.
+   * uncertain_002
+       - Needs Python's ApproxFlorisModel surrogate (floris/simulation/approx.py); no Rust
+         equivalent exists.
+   * load_optimization_001 / 002
+       - Python's load optimization algorithm (structural load model) is not ported.
+   * The remaining Rust examples are still narrative placeholders or use their own scenarios:
+     002_visualization, 003_wind_data_objects, 004_set, 005_getting_power, 007_sweeping_variables,
+     008_uncertain_models, 009_parallel_models, 010_compare_farm_power_with_neighbor,
+     control_optimization_001/002, control_types_001-005, emgauss_001/002, floating_001/003,
+     get_flow_002/003/004, heterogeneous_003_het_multi_turbine (a leftover placeholder, the real
+     port is heterogeneous_003_het_speedup_by_wd_ws), operation_models_001, turbine_001/002/003,
+     turbopark_001, uncertain_001/003, visualizations_001-005, wind_data_001/002/003,
+     wind_resource_grid_004/005.
