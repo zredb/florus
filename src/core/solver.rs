@@ -1706,13 +1706,29 @@ pub fn empirical_gauss_solver(
         // Per-findex source-turbine quantities. Python computes tilt via
         // calculate_tilt_for_eff_velocities, which for non-floating turbines
         // (no tilt interpolation) returns tilt_angles_sorted unchanged.
+        // The floating tilt is interpolated at the rotor average velocity of
+        // the (waked) flow field (Python solver.py:1305-1311).
+        let average_velocities = {
+            let velocities_dyn = flow_field.u_sorted.view().into_dyn().to_owned();
+            let cubature_weights = grid
+                .cubature_weights()
+                .map(|w| Array1::from_iter(w.iter().copied()));
+            crate::core::rotor_velocity::average_velocity(
+                &velocities_dyn,
+                None,
+                &grid.average_method(),
+                cubature_weights.as_ref(),
+            )?
+        };
+        let tilt_angles = farm.calculate_tilt_for_eff_velocities(&average_velocities);
+
         let mut yaw_arr = Array1::zeros(n_findex);
         let mut tilt_arr = Array1::zeros(n_findex);
         let mut ct_arr = Array1::zeros(n_findex);
         let mut a_arr = Array1::zeros(n_findex);
         for fi in 0..n_findex {
             yaw_arr[fi] = farm.yaw_angles_sorted[[fi, i]];
-            tilt_arr[fi] = farm.tilt_angles_sorted[[fi, i]];
+            tilt_arr[fi] = tilt_angles[[fi, i]];
             ct_arr[fi] = ct_all[[fi, i]];
             a_arr[fi] = a_all[[fi, i]];
         }

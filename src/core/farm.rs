@@ -1,4 +1,4 @@
-﻿use crate::core::turbines::operation_models::POWER_SETPOINT_DEFAULT;
+use crate::core::turbines::operation_models::POWER_SETPOINT_DEFAULT;
 use crate::core::turbines::turbine_type::TurbineType;
 use crate::core::{AveragingMethod, State, Turbine, TurbineGrid};
 use crate::types::{Array1, Array2, Float, NumericDict};
@@ -185,6 +185,40 @@ impl Farm {
         self.construct_turbine_ref_tilts();
         self.construct_turbine_correct_cp_ct_for_tilt();
         Ok(())
+    }
+
+    /// Compute the tilt angles of the floating turbines at the given rotor
+    /// average velocities (Python `farm.calculate_tilt_for_eff_velocities`,
+    /// farm.py:427-434).
+    ///
+    /// The result is in the sorted order (like `tilt_angles_sorted`): the
+    /// floating tilt is interpolated at the local rotor average velocity,
+    /// while the turbines without a tilt interpolation keep their tilt angle.
+    pub fn calculate_tilt_for_eff_velocities(&self, average_velocities: &Array2) -> Array2 {
+        let n_findex = average_velocities.shape()[0];
+        let n_turbines = average_velocities.shape()[1];
+        let mut tilt_angles = Array2::zeros((n_findex, n_turbines));
+
+        for fi in 0..n_findex {
+            for si in 0..n_turbines {
+                // The sorted position maps to the layout index of the turbine
+                let layout_index = if self.sorted_indices.shape()[0] == 1 {
+                    self.sorted_indices[[0, si]] as usize
+                } else {
+                    self.sorted_indices[[fi, si]] as usize
+                };
+                let Some(turbine) = self.turbines.get(layout_index) else {
+                    continue;
+                };
+                let tilt = match turbine.tilt_interp() {
+                    Some(interp) => interp.interpolate(average_velocities[[fi, si]]),
+                    None => self.tilt_angles_sorted[[fi, si]],
+                };
+                tilt_angles[[fi, si]] = tilt;
+            }
+        }
+
+        tilt_angles
     }
 
     pub fn initialize(&mut self, sorted_coord_indices: &Array2) {
@@ -549,14 +583,6 @@ impl Farm {
         let awc_frequencies = Array2::zeros((n_findex, n_turbines));
         self.set_awc_frequencies(awc_frequencies);
         self.awc_frequencies_sorted = Array2::zeros((n_findex, n_turbines));
-    }
-
-    pub fn calculate_tilt_for_eff_velocities(
-        &self,
-        _rotor_effective_velocities: &Array2,
-    ) -> Array2 {
-        // 简单实现，实际需要根据有效速度计算倾斜角度
-        Array2::zeros((1, self.n_turbines()))
     }
 
     pub fn finalize(&mut self, unsorted_indices: &Array2) {

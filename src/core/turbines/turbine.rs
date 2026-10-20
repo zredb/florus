@@ -37,6 +37,28 @@ impl Turbine {
     /// only supports the 1-D `power`/`thrust_coefficient` curves (Python
     /// turbine.py routes multi-dim tables through a separate branch that
     /// FLORUS has not ported yet).
+    /// The floating tilt interpolation table of this turbine, if any.
+    ///
+    /// Python `Turbine.tilt_interp` (turbine.py:642-648): built only when the
+    /// turbine type requests the tilt correction. interp1d semantics: linear
+    /// in range; below the first wind speed -> 0.0; above the last -> the
+    /// last tilt angle.
+    pub fn tilt_interp(&self) -> Option<crate::core::turbines::operation_models::LookupTable> {
+        if !self.turbine_type.correct_cp_ct_for_tilt {
+            return None;
+        }
+        self.turbine_type.floating_tilt_table.as_ref().map(|t| {
+            let last_tilt = t.tilt_angle[t.tilt_angle.len() - 1];
+            crate::core::turbines::operation_models::LookupTable {
+                keys: t.wind_speed.clone(),
+                values: t.tilt_angle.clone(),
+                fill_value: 0.0,
+                fill_value_low: Some(0.0),
+                fill_value_high: Some(last_tilt),
+            }
+        })
+    }
+
     fn operation_model_parameters(&self) -> crate::Result<TurbineParameters> {
         self.operation_model_parameters_with_tables(None)
     }
@@ -85,22 +107,8 @@ impl Turbine {
 
         // Floating-tilt interpolation table (Python `Turbine.tilt_interp`,
         // turbine.py:642-648): built only when the turbine type requests the
-        // tilt correction. interp1d semantics: linear in range; below the
-        // first wind speed -> 0.0; above the last -> the last tilt angle.
-        let tilt_interp = if self.turbine_type.correct_cp_ct_for_tilt {
-            self.turbine_type.floating_tilt_table.as_ref().map(|t| {
-                let last_tilt = t.tilt_angle[t.tilt_angle.len() - 1];
-                crate::core::turbines::operation_models::LookupTable {
-                    keys: t.wind_speed.clone(),
-                    values: t.tilt_angle.clone(),
-                    fill_value: 0.0,
-                    fill_value_low: Some(0.0),
-                    fill_value_high: Some(last_tilt),
-                }
-            })
-        } else {
-            None
-        };
+        // tilt correction.
+        let tilt_interp = self.tilt_interp();
 
         // Create turbine parameters
         Ok(TurbineParameters {

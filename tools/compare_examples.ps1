@@ -27,6 +27,7 @@ $pairs = @(
     @{ Rust = "multidim_001_multi_dimensional_cp_ct"; Py = "examples_multidim/001_multi_dimensional_cp_ct.py"; Cwd = "floris/examples" }
     @{ Rust = "multidim_002_multi_dimensional_cp_ct_2Hs"; Py = "examples_multidim/002_multi_dimensional_cp_ct_2Hs.py"; Cwd = "floris/examples" }
     @{ Rust = "multidim_003_multi_dimensional_cp_ct_TI"; Py = "examples_multidim/003_multi_dimensional_cp_ct_TI.py"; Cwd = "floris/examples" }
+    @{ Rust = "floating_002_floating_vs_fixedbottom_farm"; Py = "examples_floating/002_floating_vs_fixedbottom_farm.py"; Cwd = "floris/examples" }
 )
 
 $python = "floris\.venv\Scripts\python.exe"

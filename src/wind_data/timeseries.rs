@@ -164,6 +164,18 @@ impl TimeSeries {
     ///
     /// Aggregates time series into wind rose bins.
     pub fn to_wind_rose(&self, wd_step: Float, ws_step: Float) -> WindRose {
+        self.to_wind_rose_with_weights(wd_step, ws_step, None)
+    }
+
+    /// Aggregate the time series into wind rose bins, optionally weighting
+    /// the frequency of every time step (Python
+    /// `TimeSeries.to_WindRose(bin_weights=...)`).
+    pub fn to_wind_rose_with_weights(
+        &self,
+        wd_step: Float,
+        ws_step: Float,
+        bin_weights: Option<&Array1>,
+    ) -> WindRose {
         // Aggregate time series into wind rose bins
         let n_wd = (360.0 / wd_step).ceil() as usize;
         let n_ws = (50.0 / ws_step).ceil() as usize; // Max wind speed 50 m/s
@@ -174,21 +186,32 @@ impl TimeSeries {
         let mut count = Array2::zeros((n_wd, n_ws));
 
         for i in 0..self.wind_directions.len() {
-            let wd_idx = ((self.wind_directions[i]) / wd_step).floor() as usize % n_wd;
+            // The wind directions near 360 are wrapped to negative values for
+            // the binning (Python `_wrap_wind_directions_near_360`), and the
+            // bin edges start half a step below zero.
+            let mut wd = self.wind_directions[i];
+            if wd >= 360.0 - wd_step / 2.0 {
+                wd -= 360.0;
+            }
+            let wd_idx = ((wd + wd_step / 2.0) / wd_step).floor() as usize;
+            let wd_idx = if n_wd == 0 { 0 } else { wd_idx % n_wd };
             let ws_idx = (self.wind_speeds[i] / ws_step).floor() as usize;
             let ws_idx = ws_idx.min(n_ws - 1);
+            let weight = bin_weights.map(|w| w[i]).unwrap_or(1.0);
 
-            freq_table[[wd_idx, ws_idx]] += 1.0;
-            ws_sum[[wd_idx, ws_idx]] += self.wind_speeds[i];
-            ti_sum[[wd_idx, ws_idx]] += self.turbulence_intensities[i];
-            count[[wd_idx, ws_idx]] += 1.0;
+            freq_table[[wd_idx, ws_idx]] += weight;
+            ws_sum[[wd_idx, ws_idx]] += self.wind_speeds[i] * weight;
+            ti_sum[[wd_idx, ws_idx]] += self.turbulence_intensities[i] * weight;
+            count[[wd_idx, ws_idx]] += weight;
         }
 
         let mut wind_speeds = Array1::zeros(n_ws);
         let mut ti_table = Array2::zeros((n_wd, n_ws));
 
         for j in 0..n_ws {
-            wind_speeds[j] = (j as Float + 0.5) * ws_step;
+            // The bin centers follow Python's edges (which start half a step below zero):
+            // the center of the j-th bin is j * ws_step
+            wind_speeds[j] = j as Float * ws_step;
             for i in 0..n_wd {
                 if count[[i, j]] > 0.0 {
                     ti_table[[i, j]] = ti_sum[[i, j]] / count[[i, j]];
@@ -204,7 +227,9 @@ impl TimeSeries {
             }
         }
 
-        let wind_directions: Array1 = (0..n_wd).map(|i| (i as Float + 0.5) * wd_step).collect();
+        // The wind direction bin centers are multiples of the step (Python:
+        // the edges start half a step below zero)
+        let wind_directions: Array1 = (0..n_wd).map(|i| i as Float * wd_step).collect();
 
         WindRose {
             wind_directions,
@@ -247,7 +272,9 @@ impl TimeSeries {
             count[[wd_idx, ws_idx, ti_idx]] += 1.0;
         }
 
-        let wind_directions: Array1 = (0..n_wd).map(|i| (i as Float + 0.5) * wd_step).collect();
+        // The wind direction bin centers are multiples of the step (Python:
+        // the edges start half a step below zero)
+        let wind_directions: Array1 = (0..n_wd).map(|i| i as Float * wd_step).collect();
 
         let wind_speeds: Array1 = (0..n_ws).map(|i| (i as Float + 0.5) * ws_step).collect();
 

@@ -2193,3 +2193,131 @@ mod tests {
         assert_eq!(filtered.len(), 3);
     }
 }
+
+impl WindRose {
+    /// Read a long-formatted CSV file into a wind rose (Python
+    /// `WindRose.read_csv_long`).
+    ///
+    /// Every row of the file holds a wind speed, a wind direction and the
+    /// frequency of that combination. The frequencies are normalized and the
+    /// rows are binned with the steps derived from the unique values.
+    ///
+    /// `ti_col_or_value` is either the name of the turbulence intensity
+    /// column or a constant value for all rows.
+    pub fn read_csv_long(
+        file_path: &str,
+        ws_col: &str,
+        wd_col: &str,
+        freq_col: Option<&str>,
+        ti_col_or_value: TiColumnOrValue,
+        sep: char,
+    ) -> anyhow::Result<WindRose> {
+        let mut rdr = csv::ReaderBuilder::new()
+            .delimiter(sep as u8)
+            .flexible(true)
+            .from_path(file_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read '{file_path}': {e}"))?;
+
+        let headers = rdr
+            .headers()
+            .map_err(|e| anyhow::anyhow!("Failed to read the headers of '{file_path}': {e}"))?
+            .clone();
+
+        let column_index = |name: &str| -> anyhow::Result<usize> {
+            headers
+                .iter()
+                .position(|h| h.trim() == name)
+                .ok_or_else(|| anyhow::anyhow!("Column {name} not found in the CSV file"))
+        };
+        let ws_index = column_index(ws_col)?;
+        let wd_index = column_index(wd_col)?;
+        let freq_index = match freq_col {
+            Some(name) => Some(column_index(name)?),
+            None => None,
+        };
+        let ti_index = match &ti_col_or_value {
+            TiColumnOrValue::Column(name) => Some(column_index(name)?),
+            TiColumnOrValue::Value(_) => None,
+        };
+
+        let mut wind_directions: Vec<Float> = Vec::new();
+        let mut wind_speeds: Vec<Float> = Vec::new();
+        let mut turbulence_intensities: Vec<Float> = Vec::new();
+        let mut frequencies: Vec<Float> = Vec::new();
+
+        for record in rdr.records() {
+            let record = record.map_err(|e| anyhow::anyhow!("Invalid CSV record: {e}"))?;
+            let parse = |index: usize| -> anyhow::Result<Float> {
+                record
+                    .get(index)
+                    .and_then(|v| v.trim().parse::<Float>().ok())
+                    .ok_or_else(|| anyhow::anyhow!("Invalid value in the CSV file"))
+            };
+            wind_directions.push(parse(wd_index)?);
+            wind_speeds.push(parse(ws_index)?);
+            turbulence_intensities.push(match (&ti_col_or_value, ti_index) {
+                (TiColumnOrValue::Value(value), _) => *value,
+                (_, Some(index)) => parse(index)?,
+                _ => 0.06,
+            });
+            frequencies.push(match freq_index {
+                Some(index) => parse(index)?,
+                None => 1.0,
+            });
+        }
+
+        // Normalize the frequencies
+        let total: Float = frequencies.iter().sum();
+        if total > 0.0 {
+            for value in &mut frequencies {
+                *value /= total;
+            }
+        }
+
+        // The steps follow from the unique values
+        let mut unique_wd: Vec<Float> = wind_directions.clone();
+        unique_wd.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        unique_wd.dedup();
+        let mut unique_ws: Vec<Float> = wind_speeds.clone();
+        unique_ws.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        unique_ws.dedup();
+        if unique_wd.len() < 2 || unique_ws.len() < 2 {
+            anyhow::bail!("The CSV file must contain at least two wind directions and wind speeds");
+        }
+        let wd_step = unique_wd[1] - unique_wd[0];
+        let ws_step = unique_ws[1] - unique_ws[0];
+
+        let time_series = super::TimeSeries::new(
+            Array1::from_vec(wind_directions),
+            Array1::from_vec(wind_speeds),
+            Array1::from_vec(turbulence_intensities),
+        )?;
+        Ok(time_series.to_wind_rose_with_weights(
+            wd_step,
+            ws_step,
+            Some(&Array1::from_vec(frequencies)),
+        ))
+    }
+}
+
+/// The turbulence intensity of a long-formatted wind rose CSV file: either a
+/// column name or a constant value.
+#[derive(Debug, Clone)]
+pub enum TiColumnOrValue {
+    /// The name of the turbulence intensity column
+    Column(String),
+    /// A constant turbulence intensity for every row
+    Value(Float),
+}
+
+impl From<&str> for TiColumnOrValue {
+    fn from(value: &str) -> Self {
+        TiColumnOrValue::Column(value.to_string())
+    }
+}
+
+impl From<Float> for TiColumnOrValue {
+    fn from(value: Float) -> Self {
+        TiColumnOrValue::Value(value)
+    }
+}

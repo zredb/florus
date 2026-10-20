@@ -5128,7 +5128,7 @@ Last wind rose (Last power matches): 2323303.559419334, 2289690.62338371, (23241
 ====================================================================================================
 
 ----------------------------------------------------------------------------------------------------
-[1/7] EXAMPLE: heterogeneous_001_heterogeneous_inflow  vs  examples_heterogeneous/001_heterogeneous_inflow_single.py
+[1/8] EXAMPLE: heterogeneous_001_heterogeneous_inflow  vs  examples_heterogeneous/001_heterogeneous_inflow_single.py
 ----------------------------------------------------------------------------------------------------
 --- RUST STDOUT ---
 Turbine 0 power = 2248.2 kW
@@ -5142,7 +5142,7 @@ Turbine 2 power = 466.2 kW
 Turbine 3 power = 601.5 kW
 
 ----------------------------------------------------------------------------------------------------
-[2/7] EXAMPLE: heterogeneous_002_het_map_from_file  vs  examples_heterogeneous/002_heterogeneous_using_wind_data.py
+[2/8] EXAMPLE: heterogeneous_002_het_map_from_file  vs  examples_heterogeneous/002_heterogeneous_using_wind_data.py
 ----------------------------------------------------------------------------------------------------
 --- RUST STDOUT ---
 Per-condition speed multipliers:
@@ -5164,7 +5164,7 @@ Speed multipliers are defined for 4 points and 2 wind conditions.
 280.0  1.0  1.35  1.0  1.35
 
 ----------------------------------------------------------------------------------------------------
-[3/7] EXAMPLE: heterogeneous_003_het_speedup_by_wd_ws  vs  examples_heterogeneous/003_heterogeneous_speedup_by_wd_and_ws.py
+[3/8] EXAMPLE: heterogeneous_003_het_speedup_by_wd_ws  vs  examples_heterogeneous/003_heterogeneous_speedup_by_wd_and_ws.py
 ----------------------------------------------------------------------------------------------------
 --- RUST STDOUT ---
 Condition 0 (wd 275.0 deg, ws 7.0 m/s): multipliers [1.00, 1.00, 1.00, 1.00, 1.00]
@@ -5177,7 +5177,7 @@ Turbine powers [kW]:
 
 
 ----------------------------------------------------------------------------------------------------
-[4/7] EXAMPLE: heterogeneous_004_het_with_wind_rose  vs  examples_heterogeneous/004_heterogeneous_2d_and_3d.py
+[4/8] EXAMPLE: heterogeneous_004_het_with_wind_rose  vs  examples_heterogeneous/004_heterogeneous_2d_and_3d.py
 ----------------------------------------------------------------------------------------------------
 --- RUST STDOUT ---
 2D heterogeneous inflow (from the input file):
@@ -5202,7 +5202,7 @@ Spanwise profile (500 m downstream):
 
 
 ----------------------------------------------------------------------------------------------------
-[5/7] EXAMPLE: multidim_001_multi_dimensional_cp_ct  vs  examples_multidim/001_multi_dimensional_cp_ct.py
+[5/8] EXAMPLE: multidim_001_multi_dimensional_cp_ct  vs  examples_multidim/001_multi_dimensional_cp_ct.py
 ----------------------------------------------------------------------------------------------------
 --- RUST STDOUT ---
 
@@ -5258,7 +5258,7 @@ The turbine power matrix should be of dimensions 9 WD/WS X 2 Turbines
 Shape:  (9, 2)
 
 ----------------------------------------------------------------------------------------------------
-[6/7] EXAMPLE: multidim_002_multi_dimensional_cp_ct_2Hs  vs  examples_multidim/002_multi_dimensional_cp_ct_2Hs.py
+[6/8] EXAMPLE: multidim_002_multi_dimensional_cp_ct_2Hs  vs  examples_multidim/002_multi_dimensional_cp_ct_2Hs.py
 ----------------------------------------------------------------------------------------------------
 --- RUST STDOUT ---
 Wind speeds [m/s]:
@@ -5273,7 +5273,7 @@ Turbine 2 power [kW]:
 
 
 ----------------------------------------------------------------------------------------------------
-[7/7] EXAMPLE: multidim_003_multi_dimensional_cp_ct_TI  vs  examples_multidim/003_multi_dimensional_cp_ct_TI.py
+[7/8] EXAMPLE: multidim_003_multi_dimensional_cp_ct_TI  vs  examples_multidim/003_multi_dimensional_cp_ct_TI.py
 ----------------------------------------------------------------------------------------------------
 --- RUST STDOUT ---
 TI = 0.06:
@@ -5286,3 +5286,41 @@ TI = 0.10:
   turbine 2 power [kW]: 48.3 77.6 106.9 136.2 153.9 45.1 0.0 5.9 30.6 56.1 82.7 109.3 136.0 162.9 189.8 216.8 243.6 269.9 296.2 322.8 358.3 397.4 436.1 470.8 505.6 540.2 574.5 608.7 643.0 679.5 722.7 766.0 809.2 852.4 895.6 938.9 982.2 1025.4 1068.7 1118.9 1171.2 1223.6 1276.0 1328.4 1380.9 1433.3 1485.8 1538.2 1599.1 1660.6 1722.4 1784.3 1846.1 1909.6 1975.2 2040.9 2115.6 2191.3 2292.7 2397.5 2562.8 2667.0 2705.6 2856.2 2982.3 3106.2 3240.5 3372.5 3497.2 3615.0 3740.2 3865.7 3990.1 4113.2 4237.6 4362.0 4485.7 4609.2 4738.2 4866.3 4991.1 5120.9 5277.8 5440.7 5606.1 5934.3 6567.2 8142.5 9846.4 10688.4 11460.3 12299.7 13174.0 13898.7 14545.6 14740.7 14939.9 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0 15000.0
 --- PYTHON STDOUT ---
 
+
+----------------------------------------------------------------------------------------------------
+[8/8] EXAMPLE: floating_002_floating_vs_fixedbottom_farm  vs  examples_floating/002_floating_vs_fixedbottom_farm.py
+----------------------------------------------------------------------------------------------------
+--- RUST STDOUT ---
+Turbine positions and powers:
+   x [m]    y [m]     fixed [kW]  floating [kW] difference [kW]
+       0        0         3417.8         3377.2        -40.6
+     630        0         1343.1         1385.7         42.5
+    1260        0         1457.0         1486.0         29.0
+    1890        0         1469.1         1493.6         24.5
+    2520        0         1481.7         1501.3         19.6
+       0      630         3417.8         3377.2        -40.6
+     630      630         1343.1         1385.7         42.5
+    1260      630         1457.0         1486.0         29.0
+    1890      630         1469.1         1493.6         24.5
+    2520      630         1481.7         1501.3         19.6
+       0     1260         3417.8         3377.2        -40.6
+     630     1260         1343.1         1385.7         42.5
+    1260     1260         1457.0         1486.0         29.0
+    1890     1260         1469.1         1493.6         24.5
+    2520     1260         1481.7         1501.3         19.6
+       0     1890         3417.8         3377.2        -40.6
+     630     1890         1343.1         1385.7         42.5
+    1260     1890         1457.0         1486.0         29.0
+    1890     1890         1469.1         1493.6         24.5
+    2520     1890         1481.7         1501.3         19.6
+Farm power fixed bottom: 36674.6 kW
+Farm power floating:     36975.1 kW
+Difference:              300.5 kW (0.82%)
+Farm AEP (fixed bottom): 361.868 GWh
+Farm AEP (floating): 360.653 GWh
+Floating AEP increase: -1.215 GWh (-0.34%)
+--- PYTHON STDOUT ---
+Power increase from floating over farm (10m/s, 270deg winds): 300.47 kW
+Farm AEP (fixed bottom): 358.861 GWh
+Farm AEP (floating): 357.747 GWh
+Floating AEP increase: -1.114 GWh (-0.31%)
