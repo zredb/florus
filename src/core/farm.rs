@@ -662,6 +662,17 @@ impl Farm {
         self.layout_x = layout_x.clone();
         self.layout_y = layout_y.clone();
 
+        // Turbine count of the operation arrays BEFORE the rebuild — they
+        // are sized to the old layout and must be reset when the count
+        // changes, or expand_farm_properties indexes out of bounds
+        // (exposed by the get_flow_001 example: a 4-turbine layout set on a
+        // 3-turbine config).
+        let old_op_turbines = if self.yaw_angles.is_empty() {
+            n_turbines
+        } else {
+            self.yaw_angles.dim().1
+        };
+
         // 更新turbine_types以适应新的布局
         if self.turbines.len() == 1 {
             let single_type = self.turbines[0].clone();
@@ -679,6 +690,23 @@ impl Farm {
         self.construct_turbine_tsrs();
         self.construct_turbine_ref_tilts();
         self.construct_turbine_correct_cp_ct_for_tilt();
+
+        // Reset the operation arrays (yaw/tilt/setpoints/AWC) to their
+        // reference defaults when the turbine count changed — consistent
+        // with set_layout recreating the Farm's operation state.
+        if old_op_turbines != n_turbines {
+            let n_findex = if self.yaw_angles.is_empty() {
+                1
+            } else {
+                self.yaw_angles.dim().0
+            };
+            self.set_yaw_angles_to_ref_yaw(n_findex);
+            self.set_tilt_to_ref_tilt(n_findex);
+            self.set_power_setpoints_to_ref_power(n_findex);
+            self.set_awc_modes_to_ref_mode(n_findex);
+            self.set_awc_amplitudes_to_ref_amp(n_findex);
+            self.set_awc_frequencies_to_ref_freq(n_findex);
+        }
 
         Ok(())
     }

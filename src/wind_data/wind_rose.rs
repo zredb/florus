@@ -848,17 +848,9 @@ impl WindData for WindRose {
         let wind_speeds_unpack = filter(&self.get_ws_flat());
         let ti_table_unpack = filter(&self.get_ti_flat());
 
-        // Rebuild 2D frequency/value tables from the mask (masked-out bins set to 0) so the
-        // returned tables keep their (n_dir, n_ws) shape.
+        // Grid shape (kept for the value table below).
         let n_dir = self.wind_directions.len();
         let n_ws = self.wind_speeds.len();
-        let freq_2d = Array2::from_shape_fn((n_dir, n_ws), |(i, j)| {
-            if keep[i * n_ws + j] {
-                self.freq_table[[i, j]]
-            } else {
-                0.0
-            }
-        });
 
         let value_2d = match &self.value_table {
             Some(vt) => Array2::from_shape_fn((n_dir, n_ws), |(i, j)| {
@@ -870,6 +862,19 @@ impl WindData for WindRose {
             }),
             None => Array2::from_elem((n_dir, n_ws), 1.0),
         };
+
+        // Frequency aligned with the unpacked condition set: flattened and
+        // filtered by the keep mask (Python WindRose.unpack, wind_data.py:
+        // 1380-1419 — `unpack_freq` feeds get_farm_AEP and must line up
+        // with n_findex, not the (n_dir, n_ws) table). Shape (n_kept, 1).
+        let kept: Vec<Float> = self
+            .get_freq_flat()
+            .iter()
+            .zip(keep.iter())
+            .filter_map(|(&f, &k)| if k { Some(f) } else { None })
+            .collect();
+        let n_kept = kept.len();
+        let freq_2d = Array2::from_shape_vec((n_kept, 1), kept).unwrap();
 
         (
             wind_directions_unpack,
@@ -1825,7 +1830,12 @@ mod tests {
         assert!(!wd_unpack.is_empty());
         assert!(!ws_unpack.is_empty());
         assert!(!ti_unpack.is_empty());
-        assert_eq!(freq_2d.shape(), &[2, 2]);
+        // unpack_freq contract (Python WindRose.unpack, wind_data.py:1380-1419):
+        // the frequency is FLATTENED and filtered by the non-zero mask, shape
+        // (n_kept, 1), aligned with the unpacked conditions (4 kept bins here).
+        assert_eq!(freq_2d.shape(), &[4, 1]);
+        let kept_sum: Float = freq_2d.sum();
+        assert!((kept_sum - 1.0).abs() < 1e-10);
         assert_eq!(value_2d.shape(), &[2, 2]);
         assert!(het_config.x.is_empty()); // No heterogeneous map
     }

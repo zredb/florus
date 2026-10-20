@@ -1,15 +1,27 @@
-/// Example 6: Getting Expected Power and AEP
-///
-/// The expected power of a farm is computed by multiplying the power output of the farm by the
-/// frequency of each findex. This is done by the `get_expected_farm_power` method. The expected
-/// AEP (Annual Energy Production) is computed by multiplying the expected power by the number of
-/// hours in a year.
-///
-/// If wind data with frequencies is provided to the model, the expected power and AEP
-/// can be computed directly. If not, a frequency table must be passed into these functions.
-use florus::{Array1, FlorisModel};
+//! Example 6: Getting Expected Power and AEP
+//!
+//! The expected power of a farm is computed by multiplying the power output
+//! of the farm by the frequency of each findex. The expected AEP (annual
+//! energy production) is the expected power multiplied by the hours in a
+//! year. With a wind_data object set on the model, the AEP is computed
+//! directly from the wind data's frequency table.
+//!
+//! Scenario aligned 1:1 with 006_get_farm_aep.py:
+//! - a 3-turbine row (5 D spacing) on gch.yaml;
+//! - a TimeSeries of 365 * 24 conditions drawn from numpy's
+//!   default_rng(0) (vendored as examples/inputs/timeseries_seed0.csv so the
+//!   exact same inflow is reproduced);
+//! - a WindRose from examples/inputs/wind_rose.csv (same file as
+//!   floris/examples/inputs/wind_rose.csv; Python loads it via
+//!   `WindRose.read_csv_long(..., freq_col="freq_val", ti_col_or_value=0.06)`).
 
-fn main() -> florus::Result<()> {
+use florus::wind_data::{TimeSeries, WindRose};
+use florus::{FlorisModel, Result};
+use ndarray::{Array1, Array2};
+use std::collections::BTreeMap;
+use std::io::BufRead;
+
+fn main() -> Result<()> {
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
     // Set to a 3-turbine layout
@@ -19,131 +31,155 @@ fn main() -> florus::Result<()> {
         &Array1::from_vec(vec![0.0, 0.0, 0.0]),
     )?;
 
-    println!("Layout: 3 turbines in a row");
-    println!("  Positions: [0, {:.*}, {:.*}] m", 1, 5.0 * d, 1, 10.0 * d);
+    // Using TimeSeries ======================================================
 
-    //////////////////////////////////////////////////
-    // Using uniform frequency (TimeSeries-like)
-    //////////////////////////////////////////////////
+    // Time series with time steps = 365 * 24 (same draw as numpy
+    // default_rng(0): wind_directions ~ U(0, 360), wind_speeds ~ U(5, 25)).
+    let (wind_directions, wind_speeds) =
+        read_timeseries_csv("examples/inputs/timeseries_seed0.csv")?;
+    let n = wind_directions.len();
+    let turbulence_intensities = Array1::from_elem(n, 0.06);
 
-    // Create a simple set of conditions
-    let wind_speeds = vec![8.0, 9.0, 10.0];
-    let wind_directions = vec![270.0, 270.0, 270.0];
-    let turbulence_intensities = vec![0.06, 0.06, 0.06];
-    let n_conditions = wind_speeds.len();
+    let time_series = TimeSeries::new(wind_directions, wind_speeds, turbulence_intensities)?;
 
-    fmodel.set_wind_conditions(
-        Array1::from_vec(wind_speeds.clone()),
-        Array1::from_vec(wind_directions.clone()),
-        Array1::from_vec(turbulence_intensities),
-    )?;
-
-    println!("\n========== Uniform Frequency Case ==========");
-    println!("Number of conditions: {}", n_conditions);
-
-    // Run the model
+    // Set the wind data, run, and get the AEP
+    fmodel.set_wind_data(&time_series)?;
     fmodel.run()?;
 
-    // With uniform frequency, each condition has equal weight
-    let uniform_freq = vec![1.0 / n_conditions as f64; n_conditions];
+    let aep = fmodel.get_farm_aep(&time_series, 8760.0)?;
+    // Equivalent to passing the frequency table explicitly (Python:
+    // get_farm_AEP(freq=time_series.unpack_freq()))
+    let aep_b = fmodel.get_farm_aep(&time_series, 8760.0)?;
 
-    let expected_farm_power =
-        fmodel.get_expected_farm_power(Some(Array1::from_vec(uniform_freq.clone())), None)?;
+    println!("AEP from time series: {aep}, and re-computed AEP: {aep_b}");
 
-    // Calculate AEP: expected power (kW) * hours per year
-    let hours_per_year = 365.0 * 24.0;
-    let aep = expected_farm_power * hours_per_year;
+    // Using WindRose ========================================================
 
-    println!(
-        "Expected farm power: {:.2} kW",
-        expected_farm_power / 1000.0
-    );
-    println!("AEP: {:.2} MWh/year", aep / 1e6);
-    println!("AEP: {:.3} GWh/year", aep / 1e9);
+    let wind_rose = read_wind_rose_csv("examples/inputs/wind_rose.csv", 0.06)?;
 
-    //////////////////////////////////////////////////
-    // Using WindRose-like conditions with frequencies
-    //////////////////////////////////////////////////
+    let n_wd = wind_rose.wind_directions.len();
+    let n_ws = wind_rose.wind_speeds.len();
 
-    // Create a simple wind rose with 2 directions and 3 speeds
-    let wd_values = vec![270.0, 280.0];
-    let ws_values = vec![8.0, 9.0, 10.0];
+    // Number of zero-frequency bins
+    let n_zeros = wind_rose.freq_table.iter().filter(|&&f| f == 0.0).count();
 
-    let mut rose_wind_directions = Vec::new();
-    let mut rose_wind_speeds = Vec::new();
-    let mut rose_tis = Vec::new();
-    let mut freq_table = Vec::new();
-
-    // Create frequency table (uniform for this example)
-    let n_wd = wd_values.len();
-    let n_ws = ws_values.len();
-    let total_bins = n_wd * n_ws;
-    let uniform_bin_freq = 1.0 / total_bins as f64;
-
-    for &wd in &wd_values {
-        for &ws in &ws_values {
-            rose_wind_directions.push(wd);
-            rose_wind_speeds.push(ws);
-            rose_tis.push(0.06);
-            freq_table.push(uniform_bin_freq);
-        }
-    }
+    // Set the wind rose and run
+    fmodel.set_wind_data(&wind_rose)?;
+    fmodel.run()?;
 
     println!(
-        "Debug: Arrays created - speeds={}, directions={}, tis={}, freq={}",
-        rose_wind_speeds.len(),
-        rose_wind_directions.len(),
-        rose_tis.len(),
-        freq_table.len()
+        "Total number of wind direction and wind speed combination: {}",
+        n_wd * n_ws
     );
+    println!("Number of 0 frequency bins: {n_zeros}");
+    println!("n_findex: {}", fmodel.n_findex());
 
-    fmodel.set_wind_conditions(
-        Array1::from_vec(rose_wind_speeds),
-        Array1::from_vec(rose_wind_directions),
-        Array1::from_vec(rose_tis),
-    )?;
+    // Get the AEP
+    let aep = fmodel.get_farm_aep(&wind_rose, 8760.0)?;
 
-    println!("\n========== WindRose-like Case ==========");
-    println!("Wind directions: {:?}", wd_values);
-    println!("Wind speeds: {:?}", ws_values);
-    println!("Total bins: {} × {} = {}", n_wd, n_ws, total_bins);
-    println!("Frequency per bin: {:.4}", uniform_bin_freq);
+    println!("AEP from wind rose: {:.3} (GWh)", aep / 1e9);
 
-    // Run the model
-    match fmodel.run() {
-        Ok(_) => println!("Model run completed for {} conditions", fmodel.n_findex()),
-        Err(e) => {
-            eprintln!("Error running model: {}", e);
-            return Err(e);
-        }
-    }
-
-    // Get the expected farm power using the frequency table
-    let expected_farm_power =
-        fmodel.get_expected_farm_power(Some(Array1::from_vec(freq_table.clone())), None)?;
-
-    // Calculate AEP
-    let hours_per_year = 365.0 * 24.0;
-    let aep = expected_farm_power * hours_per_year;
-
-    println!("\nAEP from wind rose: {:.3} GWh/year", aep / 1e9);
-
-    // Run the model again without wakes to compute wake losses
+    // Run the model again, without wakes, and compute the wake losses
     fmodel.run_no_wake()?;
 
-    // Get the expected farm power without wake
-    let expected_farm_power_no_wake =
-        fmodel.get_expected_farm_power(Some(Array1::from_vec(freq_table)), None)?;
+    let aep_no_wake = fmodel.get_farm_aep(&wind_rose, 8760.0)?;
 
-    let aep_no_wake = expected_farm_power_no_wake * hours_per_year;
-
-    // Compute the wake losses
     let wake_losses = 100.0 * (aep_no_wake - aep) / aep_no_wake;
 
-    println!("AEP without wakes: {:.3} GWh/year", aep_no_wake / 1e9);
-    println!("Wake losses: {:.2}%", wake_losses);
-
-    println!("\nExample 6 completed successfully!");
+    println!("Wake losses: {wake_losses:.2}%");
 
     Ok(())
+}
+
+/// Read the vendored numpy-seed-0 time series (columns: wd, ws).
+fn read_timeseries_csv(path: &str) -> Result<(Array1<f64>, Array1<f64>)> {
+    let file = std::fs::File::open(path)?;
+    let reader = std::io::BufReader::new(file);
+    let mut wd = Vec::new();
+    let mut ws = Vec::new();
+    for (i, line) in reader.lines().enumerate() {
+        let line = line?;
+        if i == 0 {
+            continue; // header
+        }
+        let mut cols = line.split(',');
+        let a: f64 = cols.next().unwrap_or_default().parse()?;
+        let b: f64 = cols.next().unwrap_or_default().parse()?;
+        wd.push(a);
+        ws.push(b);
+    }
+    Ok((Array1::from_vec(wd), Array1::from_vec(ws)))
+}
+
+/// Replicate Python `WindRose.read_csv_long(..., freq_col=..., ti_col_or_value=0.06)`
+/// for this file's long format: each row is one (ws, wd) combination with a
+/// frequency; frequencies are normalized, then binned onto the unique sorted
+/// (wd, ws) grid.
+fn read_wind_rose_csv(path: &str, ti_value: f64) -> Result<WindRose> {
+    let file = std::fs::File::open(path)?;
+    let reader = std::io::BufReader::new(file);
+
+    // wd, ws, freq per row
+    let mut rows: Vec<(f64, f64, f64)> = Vec::new();
+    for (i, line) in reader.lines().enumerate() {
+        let line = line?;
+        if i == 0 {
+            continue; // header: ws,wd,freq_val
+        }
+        let mut cols = line.split(',');
+        let ws: f64 = cols.next().unwrap_or_default().parse()?;
+        let wd: f64 = cols.next().unwrap_or_default().parse()?;
+        let freq: f64 = cols.next().unwrap_or_default().parse()?;
+        rows.push((wd, ws, freq));
+    }
+
+    // Normalize freq_values (Python wind_data.py:1107-1108)
+    let freq_sum: f64 = rows.iter().map(|r| r.2).sum();
+    for r in rows.iter_mut() {
+        r.2 /= freq_sum;
+    }
+
+    // Unique sorted wind directions and speeds
+    let mut unique_wd: Vec<f64> = rows.iter().map(|r| r.0).collect();
+    unique_wd.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    unique_wd.dedup();
+    let mut unique_ws: Vec<f64> = rows.iter().map(|r| r.1).collect();
+    unique_ws.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    unique_ws.dedup();
+
+    let wd_index: BTreeMap<u64, usize> = unique_wd
+        .iter()
+        .enumerate()
+        .map(|(i, &v)| (v.to_bits(), i))
+        .collect();
+    let ws_index: BTreeMap<u64, usize> = unique_ws
+        .iter()
+        .enumerate()
+        .map(|(i, &v)| (v.to_bits(), i))
+        .collect();
+
+    // Bin the frequencies onto the (wd, ws) grid
+    let n_dir = unique_wd.len();
+    let n_ws = unique_ws.len();
+    let mut freq_table = Array2::<f64>::zeros((n_dir, n_ws));
+    for &(wd, ws, freq) in &rows {
+        let i = *wd_index.get(&wd.to_bits()).unwrap();
+        let j = *ws_index.get(&ws.to_bits()).unwrap();
+        freq_table[[i, j]] += freq;
+    }
+
+    let wind_directions = Array1::from_vec(unique_wd);
+    let wind_speeds = Array1::from_vec(unique_ws);
+    let ti_table = Array2::from_elem((n_dir, n_ws), ti_value);
+
+    Ok(WindRose::new(
+        wind_directions,
+        wind_speeds,
+        ti_table,
+        Some(freq_table),
+        None,
+        false, // compute_zero_freq_occurrence
+        None,
+        None,
+    )?)
 }

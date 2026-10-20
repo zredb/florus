@@ -7,3 +7,6 @@ __pycache__/
 /examples/outputs/*
 output/*.png
 /*.png
+
+output/*
+!output/examples_comparison.txt

@@ -1,80 +1,76 @@
-//! Example: Extract Wind Speed at Turbines
+//! Example: Extract wind speed at turbines
 //!
-//! This example demonstrates how to extract the wind speed at turbine points
-//! from the FLORUS model. Both the u velocities and turbine average velocities
-//! are extracted, then the turbine average is recalculated to show equivalence.
+//! This example demonstrates how to extract the wind speed at the turbine
+//! points from the FLORUS model. Both the u velocities and the turbine
+//! average velocities are grabbed from the model, then the turbine average
+//! is recalculated from the u velocities to show that they are equivalent.
 //!
-//! Corresponds to: examples_get_flow/001_extract_wind_speed_at_turbines.py
+//! Scenario aligned 1:1 with examples_get_flow/001_extract_wind_speed_at_turbines.py
+//! (4-turbine 2 x 2 layout, 1 findex, turbine_grid_points = 3).
 
 use florus::{FlorisModel, Result};
 use ndarray::Array;
 
 fn main() -> Result<()> {
-    println!("=== Extract Wind Speed at Turbines ===\n");
-
     // Initialize the FLORUS model
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
-    // Use default 3-turbine layout from gch.yaml
-    println!("Using default 3-turbine layout from config...\n");
+    // Create a 4-turbine layout (Python: layout_x=[0, 0, 500, 500],
+    // layout_y=[0, 300, 0, 300])
+    fmodel.set_layout(
+        &Array::from_vec(vec![0.0, 0.0, 500.0, 500.0]),
+        &Array::from_vec(vec![0.0, 300.0, 0.0, 300.0]),
+    )?;
 
     // Calculate wake
-    println!("Running simulation...");
     fmodel.run()?;
 
-    // Collect the wind speed at all turbine points
-    // u shape: [n_findex, n_turbines, grid_points_y, grid_points_z]
+    // Collect the wind speed at all the turbine points
     let u_points = fmodel.core().flow_field.u.clone();
 
-    println!("U points shape: {:?}", u_points.shape());
-    println!("  Dimensions: [findex, turbines, grid_y, grid_z]");
-    println!("  For turbine_grid_points=3, this is 1 x 3 x 3 x 3\n");
+    println!("U points is 1 findex x 4 turbines x 3 x 3 points (turbine_grid_points=3)");
+    let s = u_points.shape();
+    println!("({}, {}, {}, {})", s[0], s[1], s[2], s[3]);
 
-    // Get turbine average velocities
-    let turbine_avg_velocities = fmodel.turbine_average_velocities();
-    println!(
-        "Turbine average velocities shape: {:?}",
-        turbine_avg_velocities.shape()
-    );
-    println!("  Dimensions: [findex, turbines]\n");
+    println!("turbine_average_velocities is 1 findex x 4 turbines");
+    let avg = fmodel.turbine_average_velocities();
+    println!("[[{}]]", format_row(&avg));
 
     // Show that one is equivalent to the other following averaging
-    println!("Verification:");
-    println!("  Turbine average velocities are computed by taking the cube root");
-    println!("  of the mean of cubed values across the rotor grid points.\n");
+    println!(
+        "turbine_average_velocities is determined by taking the cube root of mean \
+         of the cubed value across the points "
+    );
+    println!("turbine_average_velocities: [[{}]]", format_row(&avg));
+    let recomputed = recompute_cubic_mean(&u_points);
+    println!("Recomputed:       [[{}]]", format_row(&recomputed));
 
-    // Recompute: cbrt(mean(u^3))
-    let u_cubed = &u_points.mapv(|x| x.powi(3));
-
-    // Mean over axes 2 and 3 (grid_y and grid_z)
-    let mean_u_cubed_axis2 = u_cubed.mean_axis(ndarray::Axis(2)).unwrap();
-    let mean_u_cubed = mean_u_cubed_axis2.mean_axis(ndarray::Axis(2)).unwrap();
-    let recomputed = mean_u_cubed.mapv(|x: f64| x.cbrt());
-
-    println!("  Original turbine_average_velocities:");
-    for (i, val) in turbine_avg_velocities.iter().enumerate() {
-        println!("    Turbine {}: {:.4} m/s", i, val);
-    }
-
-    println!("\n  Recomputed (cbrt(mean(u^3))):");
-    for (i, val) in recomputed.iter().enumerate() {
-        println!("    Turbine {}: {:.4} m/s", i, val);
-    }
-
-    // Verify they match
-    let max_diff: f64 = turbine_avg_velocities
-        .iter()
-        .zip(recomputed.iter())
-        .map(|(a, b)| (a - b).abs())
-        .fold(0.0_f64, |max: f64, diff: f64| max.max(diff));
-
-    println!("\n  Maximum difference: {:.2e} m/s", max_diff);
-    if max_diff < 1e-10 {
-        println!("  ✅ Verification passed! Values match perfectly.");
-    } else {
-        println!("  ⚠️  Warning: Values differ slightly (expected due to numerical precision)");
-    }
-
-    println!("\n=== Example Complete ===");
     Ok(())
+}
+
+fn format_row(avg: &ndarray::Array2<f64>) -> String {
+    // numpy-style float printing: 8 decimals, trailing zeros trimmed
+    // ("4.78455500" -> "4.784555", "7.97368581" kept).
+    avg.iter()
+        .map(|v| {
+            let mut s = format!("{v:.8}");
+            if s.contains('.') {
+                while s.ends_with('0') {
+                    s.pop();
+                }
+                if s.ends_with('.') {
+                    s.pop();
+                }
+            }
+            s
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn recompute_cubic_mean(u: &ndarray::Array4<f64>) -> ndarray::Array2<f64> {
+    let u_cubed = u.mapv(|x: f64| x.powi(3));
+    let mean_axis2 = u_cubed.mean_axis(ndarray::Axis(2)).unwrap();
+    let mean = mean_axis2.mean_axis(ndarray::Axis(2)).unwrap();
+    mean.mapv(|x: f64| x.cbrt())
 }

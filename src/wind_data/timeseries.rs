@@ -293,11 +293,11 @@ impl WindData for TimeSeries {
     }
 
     fn frequencies(&self) -> Array2 {
-        // TimeSeries: each condition has equal frequency (1/n_conditions)
+        // TimeSeries: each condition has equal frequency (1/n_conditions),
+        // shape (n, 1) per the unpack_freq contract.
         let n = self.n_conditions();
         let freq = 1.0 / n as Float;
-        let n_turbines = 3; // Default, will be expanded by farm
-        Array2::from_shape_fn([n, n_turbines], |_| freq)
+        Array2::from_shape_fn([n, 1], |_| freq)
     }
 
     fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig {
@@ -327,8 +327,9 @@ impl WindData for TimeSeries {
         HeterogeneousInflowConfig,
     ) {
         let n = self.n_conditions();
-        // For single turbine, use 2D array with single column
-        let freq = Array2::from_shape_vec((n, 1), vec![1.0; n]).unwrap();
+        // Uniform 1/N frequency per condition (Python TimeSeries.unpack,
+        // wind_data.py); shape (n, 1) per the unpack_freq contract.
+        let freq = Array2::from_shape_vec((n, 1), vec![1.0 / n as Float; n]).unwrap();
         let values = Array2::from_shape_vec((n, 1), self.values.clone().to_vec()).unwrap();
 
         (

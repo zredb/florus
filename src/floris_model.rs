@@ -1137,32 +1137,42 @@ impl FlorisModel {
         self.core.flow_field.reference_wind_height
     }
 
-    /// Get turbine average velocities
+    /// Rotor-average velocity at each turbine, mirroring Python's
+    /// `turbine_average_velocities` property (floris_model.py:1798-1804):
+    /// `average_velocity` over the SOLVED field with the grid's averaging
+    /// method and cubature weights, returned in LAYOUT order.
     ///
-    /// # Returns
-    /// Array of shape `(n_findex, n_turbines)` containing average velocities
-    /// at each turbine rotor.
+    /// Previously this returned the single first rotor-grid-point value in
+    /// sorted order (documented as "simplified"); the example comparison
+    /// (2026-10-19) exposed the divergence from Python.
+    ///
+    /// Returns zeros when the flow field has not been solved yet.
     pub fn turbine_average_velocities(&self) -> Array2 {
         let n_findex = self.core.flow_field.n_findex;
         let n_turbines = self.core.farm.n_turbines();
+        let zeros = Array2::zeros((n_findex, n_turbines));
 
-        // Calculate average velocity from the velocity field
-        // For now, use the center point of the rotor grid
-        let mut avg_vels = Array2::zeros((n_findex, n_turbines));
-
-        // Flow field not yet initialized (run() not called): velocities are zero
+        let Some(grid) = self.core.grid.as_ref() else {
+            return zeros;
+        };
         if self.core.flow_field.u_sorted.is_empty() {
-            return avg_vels;
+            return zeros;
         }
 
-        for fi in 0..n_findex {
-            for ti in 0..n_turbines {
-                // Average over the grid points (simplified: just use center point)
-                avg_vels[[fi, ti]] = self.core.flow_field.u_sorted[[fi, ti, 0, 0]];
-            }
-        }
+        let velocities_dyn = self.core.flow_field.u_sorted.view().into_dyn().to_owned();
+        let cubature_weights: Option<Array1> = grid
+            .cubature_weights()
+            .map(|w| Array1::from_iter(w.iter().copied()));
+        let Ok(avg_sorted) = crate::core::rotor_velocity::average_velocity(
+            &velocities_dyn,
+            None,
+            &grid.average_method(),
+            cubature_weights.as_ref(),
+        ) else {
+            return zeros;
+        };
 
-        avg_vels
+        self.unsort_to_layout(&avg_sorted)
     }
 
     /// Get core reference (immutable)
@@ -1952,24 +1962,57 @@ impl FlorisModel {
     }
 
     /// Calculate Annual Energy Production (AEP)
+    ///
+    /// Mirrors Python `get_farm_AEP` (floris_model.py:1001-1015 →
+    /// `get_expected_farm_value`):
+    /// - a per-condition frequency column (shape `(n_findex, 1)`, e.g.
+    ///   TimeSeries / WindRose via `unpack_freq`) weights each condition's
+    ///   FARM power;
+    /// - a per-turbine frequency table (shape `(n_findex, n_turbines)`,
+    ///   WindRoseByTurbine) weights each turbine's power individually.
+    ///
+    /// # Errors
+    /// - the model must have been run for the same wind data (`run()` after
+    ///   `set_wind_data`); the frequency length must match `n_findex`.
     pub fn get_farm_aep(
         &self,
         wind_data: &dyn WindData,
         hours_per_year: Float,
     ) -> crate::Result<Float> {
-        let n_conditions = wind_data.n_conditions();
-        let frequencies = wind_data.frequencies();
+        // Python's unpack_freq: aligned with the unpacked condition set
+        // (zero-frequency bins excluded for WindRose unless
+        // compute_zero_freq_occurrence).
+        let freq = wind_data.unpack_freq();
         let powers = self.get_turbine_powers()?;
 
-        let mut total_energy = 0.0;
-
-        for i in 0..n_conditions {
-            let power = powers.row(i).sum();
-            let freq = frequencies.row(i).sum();
-            total_energy += power * freq * hours_per_year;
+        let (n_findex, n_turbines) = (powers.shape()[0], powers.shape()[1]);
+        if freq.shape()[0] != n_findex {
+            anyhow::bail!(
+                "wind data frequency length ({}) does not match the model's \
+                 n_findex ({}) — call set_wind_data() and run() with the same \
+                 wind data",
+                freq.shape()[0],
+                n_findex
+            );
         }
 
-        Ok(total_energy)
+        let mut expected = 0.0;
+        if freq.shape()[1] == 1 {
+            // Per-condition frequency: weight the farm power of each findex
+            for i in 0..n_findex {
+                expected += freq[[i, 0]] * powers.row(i).sum();
+            }
+        } else {
+            // Per-turbine frequency (WindRoseByTurbine): weight each
+            // turbine's power (Python get_expected_farm_value's 2D branch)
+            for i in 0..n_findex {
+                for ti in 0..n_turbines {
+                    expected += freq[[i, ti]] * powers[[i, ti]];
+                }
+            }
+        }
+
+        Ok(expected * hours_per_year)
     }
 
     /// Calculate AEP using uniform frequencies (1/N for each condition)
@@ -2001,7 +2044,14 @@ impl FlorisModel {
         Ok(self.get_farm_power()?.sum())
     }
 
-    /// Get velocity at each turbine
+    /// Get velocity samples at each turbine: the FIRST rotor grid point
+    /// (`u[fi, ti, 0, 0]`), in layout order.
+    ///
+    /// # Note
+    /// This is a point sample, NOT a rotor average (there is no Python
+    /// equivalent; Python exposes `turbine_average_velocities` instead —
+    /// see `get_turbine_average_velocities`). Provided for grid-point
+    /// inspection.
     pub fn get_turbine_velocities(&self) -> Array3 {
         let n_findex = self.core.flow_field.n_findex;
         let n_turbines = self.core.farm.n_turbines();
@@ -2010,7 +2060,8 @@ impl FlorisModel {
 
         for fi in 0..n_findex {
             for ti in 0..n_turbines {
-                velocities[[fi, ti, 0]] = self.core.flow_field.u_sorted[[fi, ti, 0, 0]];
+                // Unsorted (layout-order) point sample from flow_field.u
+                velocities[[fi, ti, 0]] = self.core.flow_field.u[[fi, ti, 0, 0]];
             }
         }
 
