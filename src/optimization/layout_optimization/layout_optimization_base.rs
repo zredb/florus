@@ -67,12 +67,37 @@ impl Boundary {
     }
 
     /// Check if a point is inside the boundary
+    ///
+    /// For polygons this matches shapely's `Polygon.contains`, which is
+    /// strict: a point exactly ON the boundary is NOT contained (the
+    /// layout optimizers rely on this to count the turbines that fit
+    /// inside a boundary).
     pub fn contains(&self, x: Float, y: Float) -> bool {
         match self {
             Boundary::Polygon(points) => {
+                let n = points.len();
+                if n < 3 {
+                    return false;
+                }
+
+                // Points on an edge (including vertices) are not "contained"
+                let eps = 1e-9;
+                for i in 0..n {
+                    let (x1, y1) = points[i];
+                    let (x2, y2) = points[(i + 1) % n];
+                    let cross = (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1);
+                    if cross.abs() <= eps {
+                        let within_x = x >= x1.min(x2) - eps && x <= x1.max(x2) + eps;
+                        let within_y = y >= y1.min(y2) - eps && y <= y1.max(y2) + eps;
+                        if within_x && within_y {
+                            return false;
+                        }
+                    }
+                }
+
                 // Ray casting algorithm
                 let mut inside = false;
-                let mut j = points.len() - 1;
+                let mut j = n - 1;
                 for (i, &(xi, yi)) in points.iter().enumerate() {
                     let (xj, yj) = points[j];
                     if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {

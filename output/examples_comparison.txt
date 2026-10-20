@@ -1,4 +1,4 @@
-﻿================================================================================
+================================================================================
  FLORUS (Rust) vs FLORIS (Python) example output comparison
  Generated: 2026-10-19 15:53:10
  Rust examples:    cargo build --release --examples, run from repo root
@@ -4331,4 +4331,712 @@ Number of 0 frequency bins: 545
 n_findex: 1327
 AEP from wind rose: 59.076 (GWh)
 Wake losses: 0.99%
+
+
+====================================================================================================
+PORTED EXAMPLES (Bug #40): side-by-side output after the yaw/layout optimizer ports
+====================================================================================================
+====================================================================================================
+PORTED EXAMPLE: control_optimization_003_opt_yaw_multiple_ws  vs  003_opt_yaw_multiple_ws.py
+  Rust   exit=0  8.17s    Python exit=0  7.43s
+----------------------------------------------------------------------------------------------------
+--- RUST STDOUT ---
+[Serial Refine] Processing pass=0, turbine_depth=0 (0.0%)
+[Serial Refine] Processing pass=0, turbine_depth=1 (16.7%)
+[Serial Refine] Processing pass=0, turbine_depth=2 (33.3%)
+[Serial Refine] Processing pass=1, turbine_depth=0 (50.0%)
+[Serial Refine] Processing pass=1, turbine_depth=1 (66.7%)
+[Serial Refine] Processing pass=1, turbine_depth=2 (83.3%)
+Optimization results:
+      wind_direction  wind_speed  ...  farm_power_opt farm_power_baseline
+0                0.0         2.0  ...    0.000000e+00        0.000000e+00
+1                0.0         3.0  ...    1.089046e+05        1.089046e+05
+2                0.0         4.0  ...    5.273057e+05        5.273057e+05
+3                0.0         5.0  ...    1.199931e+06        1.199931e+06
+4                0.0         6.0  ...    2.191932e+06        2.191932e+06
+...              ...         ...  ...             ...                 ...
+1915           357.0        13.0  ...    1.500000e+07        1.500000e+07
+1916           357.0        14.0  ...    1.500000e+07        1.500000e+07
+1917           357.0        15.0  ...    1.500000e+07        1.500000e+07
+1918           357.0        16.0  ...    1.500000e+07        1.500000e+07
+1919           357.0        17.0  ...    1.500000e+07        1.500000e+07
+
+[1920 rows x 6 columns]
+--- PYTHON STDOUT ---
+[Serial Refine] Processing pass=0, turbine_depth=0 (0.0%)
+[Serial Refine] Processing pass=0, turbine_depth=1 (16.7%)
+[Serial Refine] Processing pass=0, turbine_depth=2 (33.3%)
+[Serial Refine] Processing pass=1, turbine_depth=0 (50.0%)
+[Serial Refine] Processing pass=1, turbine_depth=1 (66.7%)
+[Serial Refine] Processing pass=1, turbine_depth=2 (83.3%)
+Optimization results:
+      wind_direction  wind_speed  ...  farm_power_opt farm_power_baseline
+0                0.0         2.0  ...    0.000000e+00        0.000000e+00
+1                0.0         3.0  ...    1.095593e+05        1.095593e+05
+2                0.0         4.0  ...    5.276012e+05        5.276012e+05
+3                0.0         5.0  ...    1.200541e+06        1.200541e+06
+4                0.0         6.0  ...    2.193010e+06        2.193010e+06
+...              ...         ...  ...             ...                 ...
+1915           357.0        13.0  ...    1.500000e+07        1.500000e+07
+1916           357.0        14.0  ...    1.500000e+07        1.500000e+07
+1917           357.0        15.0  ...    1.500000e+07        1.500000e+07
+1918           357.0        16.0  ...    1.500000e+07        1.500000e+07
+1919           357.0        17.0  ...    1.500000e+07        1.500000e+07
+
+[1920 rows x 6 columns]
+
+====================================================================================================
+PORTED EXAMPLE: control_optimization_004_optimize_yaw_aep  vs  004_optimize_yaw_aep.py
+  Rust   exit=0  6.97s    Python exit=0  2.62s
+----------------------------------------------------------------------------------------------------
+--- RUST STDOUT ---
+[Serial Refine] Processing pass=0, turbine_depth=0 (0.0%)
+[Serial Refine] Processing pass=0, turbine_depth=1 (12.5%)
+[Serial Refine] Processing pass=0, turbine_depth=2 (25.0%)
+[Serial Refine] Processing pass=0, turbine_depth=3 (37.5%)
+[Serial Refine] Processing pass=1, turbine_depth=0 (50.0%)
+[Serial Refine] Processing pass=1, turbine_depth=1 (62.5%)
+[Serial Refine] Processing pass=1, turbine_depth=2 (75.0%)
+[Serial Refine] Processing pass=1, turbine_depth=3 (87.5%)
+Optimization finished in 0.12 seconds.
+Baseline AEP: 75.46 GWh.
+Optimal AEP: 76.14 GWh.
+Relative AEP uplift by wake steering: 0.903 %.
+--- PYTHON STDOUT ---
+[Serial Refine] Processing pass=0, turbine_depth=0 (0.0%)
+[Serial Refine] Processing pass=0, turbine_depth=1 (12.5%)
+[Serial Refine] Processing pass=0, turbine_depth=2 (25.0%)
+[Serial Refine] Processing pass=0, turbine_depth=3 (37.5%)
+[Serial Refine] Processing pass=1, turbine_depth=0 (50.0%)
+[Serial Refine] Processing pass=1, turbine_depth=1 (62.5%)
+[Serial Refine] Processing pass=1, turbine_depth=2 (75.0%)
+[Serial Refine] Processing pass=1, turbine_depth=3 (87.5%)
+Optimization finished in 0.59 seconds.
+Baseline AEP: 75.48 GWh.
+Optimal AEP: 76.18 GWh.
+Relative AEP uplift by wake steering: 0.926 %.
+
+====================================================================================================
+PORTED EXAMPLE: control_optimization_006_compare_yaw_optimizers  vs  006_compare_yaw_optimizers.py
+  Rust   exit=0  8.55s    Python exit=0  19.61s
+----------------------------------------------------------------------------------------------------
+--- RUST STDOUT ---
+Performing optimizations with SciPy...
+Performing optimizations with Serial Refine...
+[Serial Refine] Processing pass=0, turbine_depth=0 (0.0%)
+[Serial Refine] Processing pass=0, turbine_depth=1 (16.7%)
+[Serial Refine] Processing pass=0, turbine_depth=2 (33.3%)
+[Serial Refine] Processing pass=1, turbine_depth=0 (50.0%)
+[Serial Refine] Processing pass=1, turbine_depth=1 (66.7%)
+[Serial Refine] Processing pass=1, turbine_depth=2 (83.3%)
+Performing optimizations with Geometric Yaw...
+
+ Time spent, Geometric Yaw: 0.00 s.
+ Time spent, Serial Refine: 0.08 s.
+ Time spent, SciPy (SLSQP): 2.36 s.
+
+Total power uplift, Geometric Yaw: 3.776e6 W
+Total power uplift, Serial Refine: 4.268e6 W
+Total power uplift, SciPy (SLSQP): 4.280e6 W
+--- PYTHON STDOUT ---
+Performing optimizations with SciPy...
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     8.362152E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     8.365698E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     8.454492E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     9.711141E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     2.217228E-02
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     7.129374E-02
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     1.419861E-01
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     2.180748E-01
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     2.208611E-01
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     4    -1.003155E+00     6.242130E-02
+    2     7    -1.093049E+00     1.020444E-01
+    3    10    -1.203810E+00     1.954488E-01
+    4    13    -1.211961E+00     1.281127E-01
+    5    16    -1.214226E+00     1.153093E-01
+    6    19    -1.214237E+00     1.015314E-01
+    7    22    -1.214237E+00     1.013118E-01
+    8    24    -1.214237E+00     1.013095E-01
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.2142370269715685
+            Iterations: 8
+            Function evaluations: 24
+            Gradient evaluations: 8
+  NIT    FC           OBJFUN            GNORM
+    1     4    -1.077700E+00     2.636250E-01
+    2     7    -1.240651E+00     3.181902E-01
+    3    10    -1.245722E+00     6.558203E-02
+    4    13    -1.254002E+00     5.362665E-02
+    5    16    -1.254090E+00     1.319603E-02
+    6    19    -1.254067E+00     1.309625E-02
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.254089791882447
+            Iterations: 6
+            Function evaluations: 29
+            Gradient evaluations: 6
+  NIT    FC           OBJFUN            GNORM
+    1     4    -1.041029E+00     2.069800E-01
+    2     7    -1.123711E+00     1.859063E-01
+    3    10    -1.126458E+00     4.218585E-02
+    4    13    -1.126780E+00     2.116581E-02
+    5    16    -1.125994E+00     1.612383E-02
+    6    20    -1.126860E+00     1.533901E-02
+    7    25    -1.126833E+00     1.311498E-02
+    8    29    -1.128280E+00     8.142882E-03
+    9    32    -1.126762E+00     2.579974E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.1282800408328366
+            Iterations: 9
+            Function evaluations: 42
+            Gradient evaluations: 9
+  NIT    FC           OBJFUN            GNORM
+    1     4    -1.017900E+00     1.295852E-01
+    2     7    -1.046548E+00     9.997854E-02
+    3    10    -1.046487E+00     8.887290E-03
+    4    23    -1.046525E+00     8.887263E-03
+    5    28    -1.046624E+00     7.099863E-03
+    6    31    -1.046658E+00     1.033764E-03
+    7    34    -1.046683E+00     4.341468E-04
+    8    37    -1.046685E+00     3.729168E-05
+    9    40    -1.046685E+00     2.824112E-06
+   10    42    -1.046685E+00     6.047028E-08
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0466852786523966
+            Iterations: 10
+            Function evaluations: 42
+            Gradient evaluations: 10
+  NIT    FC           OBJFUN            GNORM
+    1     4    -1.002993E+00     4.975943E-02
+    2     7    -1.006900E+00     3.378644E-02
+    3    10    -1.007674E+00     1.032241E-02
+    4    13    -1.007874E+00     3.814488E-03
+    5    16    -1.007914E+00     2.517815E-03
+    6    19    -1.007945E+00     2.060119E-03
+    7    22    -1.007921E+00     7.695137E-04
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0079447483757342
+            Iterations: 7
+            Function evaluations: 32
+            Gradient evaluations: 7
+  NIT    FC           OBJFUN            GNORM
+    1     4    -1.000005E+00     8.565508E-04
+    2     7    -1.000025E+00     7.819653E-04
+    3    10    -1.000035E+00     5.322843E-04
+    4    12    -1.000035E+00     4.924128E-04
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0000354608371065
+            Iterations: 4
+            Function evaluations: 12
+            Gradient evaluations: 4
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     7.483173E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     8.306803E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     8.359719E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     8.361989E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     8.362152E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     8.365698E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     8.454492E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     9.711141E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     2.217228E-02
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     7.129374E-02
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     1.419861E-01
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     2.180748E-01
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     2.208611E-01
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     4    -1.003155E+00     6.242130E-02
+    2     7    -1.093049E+00     1.020444E-01
+    3    10    -1.203810E+00     1.954488E-01
+    4    13    -1.211961E+00     1.281127E-01
+    5    16    -1.214226E+00     1.153093E-01
+    6    19    -1.214237E+00     1.015314E-01
+    7    22    -1.214237E+00     1.013118E-01
+    8    24    -1.214237E+00     1.013095E-01
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.2142370269715697
+            Iterations: 8
+            Function evaluations: 24
+            Gradient evaluations: 8
+  NIT    FC           OBJFUN            GNORM
+    1     4    -1.077700E+00     2.636250E-01
+    2     7    -1.240651E+00     3.181902E-01
+    3    10    -1.245722E+00     6.558203E-02
+    4    13    -1.254002E+00     5.362665E-02
+    5    16    -1.254090E+00     1.319603E-02
+    6    19    -1.254067E+00     1.309625E-02
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.254089791882447
+            Iterations: 6
+            Function evaluations: 29
+            Gradient evaluations: 6
+  NIT    FC           OBJFUN            GNORM
+    1     4    -1.041029E+00     2.069800E-01
+    2     7    -1.123711E+00     1.859063E-01
+    3    10    -1.126458E+00     4.218585E-02
+    4    13    -1.126780E+00     2.116581E-02
+    5    16    -1.125994E+00     1.612383E-02
+    6    20    -1.126860E+00     1.533901E-02
+    7    25    -1.126833E+00     1.311498E-02
+    8    29    -1.128280E+00     8.142882E-03
+    9    32    -1.126762E+00     2.579974E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.1282800408328362
+            Iterations: 9
+            Function evaluations: 42
+            Gradient evaluations: 9
+  NIT    FC           OBJFUN            GNORM
+    1     4    -1.017900E+00     1.295852E-01
+    2     7    -1.046548E+00     9.997854E-02
+    3    10    -1.046487E+00     8.887290E-03
+    4    23    -1.046525E+00     8.887263E-03
+    5    28    -1.046624E+00     7.099863E-03
+    6    31    -1.046658E+00     1.033764E-03
+    7    34    -1.046683E+00     4.341468E-04
+    8    37    -1.046685E+00     3.729169E-05
+    9    40    -1.046685E+00     2.824112E-06
+   10    42    -1.046685E+00     6.047028E-08
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0466852786523966
+            Iterations: 10
+            Function evaluations: 42
+            Gradient evaluations: 10
+  NIT    FC           OBJFUN            GNORM
+    1     4    -1.002993E+00     4.975943E-02
+    2     7    -1.006900E+00     3.378644E-02
+    3    10    -1.007674E+00     1.032241E-02
+    4    13    -1.007874E+00     3.814488E-03
+    5    16    -1.007914E+00     2.517815E-03
+    6    19    -1.007945E+00     2.060119E-03
+    7    22    -1.007921E+00     7.695137E-04
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0079447483757344
+            Iterations: 7
+            Function evaluations: 32
+            Gradient evaluations: 7
+  NIT    FC           OBJFUN            GNORM
+    1     4    -1.000005E+00     8.565508E-04
+    2     7    -1.000025E+00     7.819653E-04
+    3    10    -1.000035E+00     5.322843E-04
+    4    12    -1.000035E+00     4.924128E-04
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0000354608371065
+            Iterations: 4
+            Function evaluations: 12
+            Gradient evaluations: 4
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     7.483173E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     8.306803E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     8.359719E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+  NIT    FC           OBJFUN            GNORM
+    1     3    -1.000000E+00     8.361989E-03
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: -1.0
+            Iterations: 1
+            Function evaluations: 3
+            Gradient evaluations: 1
+Performing optimizations with Serial Refine...
+[Serial Refine] Processing pass=0, turbine_depth=0 (0.0%)
+[Serial Refine] Processing pass=0, turbine_depth=1 (16.7%)
+[Serial Refine] Processing pass=0, turbine_depth=2 (33.3%)
+[Serial Refine] Processing pass=1, turbine_depth=0 (50.0%)
+[Serial Refine] Processing pass=1, turbine_depth=1 (66.7%)
+[Serial Refine] Processing pass=1, turbine_depth=2 (83.3%)
+Performing optimizations with Geometric Yaw...
+
+ Time spent, Geometric Yaw: 0.01 s.
+ Time spent, Serial Refine: 0.44 s.
+ Time spent, SciPy (SLSQP): 17.49 s.
+
+====================================================================================================
+PORTED EXAMPLE: control_optimization_007_optimize_yaw_with_neighbor_farms  vs  007_optimize_yaw_with_neighbor_farms.py
+  Rust   exit=0  122.41s    Python exit=0  36.35s
+----------------------------------------------------------------------------------------------------
+--- RUST STDOUT ---
+[Serial Refine] Processing pass=0, turbine_depth=0 (0.0%)
+[Serial Refine] Processing pass=0, turbine_depth=1 (1.7%)
+[Serial Refine] Processing pass=0, turbine_depth=2 (3.4%)
+[Serial Refine] Processing pass=0, turbine_depth=3 (5.2%)
+[Serial Refine] Processing pass=0, turbine_depth=4 (6.9%)
+[Serial Refine] Processing pass=0, turbine_depth=5 (8.6%)
+[Serial Refine] Processing pass=0, turbine_depth=6 (10.3%)
+[Serial Refine] Processing pass=0, turbine_depth=7 (12.1%)
+[Serial Refine] Processing pass=0, turbine_depth=8 (13.8%)
+[Serial Refine] Processing pass=0, turbine_depth=9 (15.5%)
+[Serial Refine] Processing pass=0, turbine_depth=10 (17.2%)
+[Serial Refine] Processing pass=0, turbine_depth=11 (19.0%)
+[Serial Refine] Processing pass=0, turbine_depth=12 (20.7%)
+[Serial Refine] Processing pass=0, turbine_depth=13 (22.4%)
+[Serial Refine] Processing pass=0, turbine_depth=14 (24.1%)
+[Serial Refine] Processing pass=0, turbine_depth=15 (25.9%)
+[Serial Refine] Processing pass=0, turbine_depth=16 (27.6%)
+[Serial Refine] Processing pass=0, turbine_depth=17 (29.3%)
+[Serial Refine] Processing pass=0, turbine_depth=18 (31.0%)
+[Serial Refine] Processing pass=0, turbine_depth=19 (32.8%)
+[Serial Refine] Processing pass=0, turbine_depth=20 (34.5%)
+[Serial Refine] Processing pass=0, turbine_depth=21 (36.2%)
+[Serial Refine] Processing pass=0, turbine_depth=22 (37.9%)
+[Serial Refine] Processing pass=0, turbine_depth=23 (39.7%)
+[Serial Refine] Processing pass=0, turbine_depth=24 (41.4%)
+[Serial Refine] Processing pass=0, turbine_depth=25 (43.1%)
+[Serial Refine] Processing pass=0, turbine_depth=26 (44.8%)
+[Serial Refine] Processing pass=0, turbine_depth=27 (46.6%)
+[Serial Refine] Processing pass=0, turbine_depth=28 (48.3%)
+[Serial Refine] Processing pass=1, turbine_depth=0 (50.0%)
+[Serial Refine] Processing pass=1, turbine_depth=1 (51.7%)
+[Serial Refine] Processing pass=1, turbine_depth=2 (53.4%)
+[Serial Refine] Processing pass=1, turbine_depth=3 (55.2%)
+[Serial Refine] Processing pass=1, turbine_depth=4 (56.9%)
+[Serial Refine] Processing pass=1, turbine_depth=5 (58.6%)
+[Serial Refine] Processing pass=1, turbine_depth=6 (60.3%)
+[Serial Refine] Processing pass=1, turbine_depth=7 (62.1%)
+[Serial Refine] Processing pass=1, turbine_depth=8 (63.8%)
+[Serial Refine] Processing pass=1, turbine_depth=9 (65.5%)
+[Serial Refine] Processing pass=1, turbine_depth=10 (67.2%)
+[Serial Refine] Processing pass=1, turbine_depth=11 (69.0%)
+[Serial Refine] Processing pass=1, turbine_depth=12 (70.7%)
+[Serial Refine] Processing pass=1, turbine_depth=13 (72.4%)
+[Serial Refine] Processing pass=1, turbine_depth=14 (74.1%)
+[Serial Refine] Processing pass=1, turbine_depth=15 (75.9%)
+[Serial Refine] Processing pass=1, turbine_depth=16 (77.6%)
+[Serial Refine] Processing pass=1, turbine_depth=17 (79.3%)
+[Serial Refine] Processing pass=1, turbine_depth=18 (81.0%)
+[Serial Refine] Processing pass=1, turbine_depth=19 (82.8%)
+[Serial Refine] Processing pass=1, turbine_depth=20 (84.5%)
+[Serial Refine] Processing pass=1, turbine_depth=21 (86.2%)
+[Serial Refine] Processing pass=1, turbine_depth=22 (87.9%)
+[Serial Refine] Processing pass=1, turbine_depth=23 (89.7%)
+[Serial Refine] Processing pass=1, turbine_depth=24 (91.4%)
+[Serial Refine] Processing pass=1, turbine_depth=25 (93.1%)
+[Serial Refine] Processing pass=1, turbine_depth=26 (94.8%)
+[Serial Refine] Processing pass=1, turbine_depth=27 (96.6%)
+[Serial Refine] Processing pass=1, turbine_depth=28 (98.3%)
+[Serial Refine] Processing pass=0, turbine_depth=0 (0.0%)
+[Serial Refine] Processing pass=0, turbine_depth=1 (5.0%)
+[Serial Refine] Processing pass=0, turbine_depth=2 (10.0%)
+[Serial Refine] Processing pass=0, turbine_depth=3 (15.0%)
+[Serial Refine] Processing pass=0, turbine_depth=4 (20.0%)
+[Serial Refine] Processing pass=0, turbine_depth=5 (25.0%)
+[Serial Refine] Processing pass=0, turbine_depth=6 (30.0%)
+[Serial Refine] Processing pass=0, turbine_depth=7 (35.0%)
+[Serial Refine] Processing pass=0, turbine_depth=8 (40.0%)
+[Serial Refine] Processing pass=0, turbine_depth=9 (45.0%)
+[Serial Refine] Processing pass=1, turbine_depth=0 (50.0%)
+[Serial Refine] Processing pass=1, turbine_depth=1 (55.0%)
+[Serial Refine] Processing pass=1, turbine_depth=2 (60.0%)
+[Serial Refine] Processing pass=1, turbine_depth=3 (65.0%)
+[Serial Refine] Processing pass=1, turbine_depth=4 (70.0%)
+[Serial Refine] Processing pass=1, turbine_depth=5 (75.0%)
+[Serial Refine] Processing pass=1, turbine_depth=6 (80.0%)
+[Serial Refine] Processing pass=1, turbine_depth=7 (85.0%)
+[Serial Refine] Processing pass=1, turbine_depth=8 (90.0%)
+[Serial Refine] Processing pass=1, turbine_depth=9 (95.0%)
+Baseline AEP: 145.21 GWh.
+Optimal AEP (Not accounting for neighboring farm): 147.82 GWh.
+Optimal AEP (Accounting for neighboring farm): 148.17 GWh.
+--- PYTHON STDOUT ---
+[Serial Refine] Processing pass=0, turbine_depth=0 (0.0%)
+[Serial Refine] Processing pass=0, turbine_depth=1 (1.7%)
+[Serial Refine] Processing pass=0, turbine_depth=2 (3.4%)
+[Serial Refine] Processing pass=0, turbine_depth=3 (5.2%)
+[Serial Refine] Processing pass=0, turbine_depth=4 (6.9%)
+[Serial Refine] Processing pass=0, turbine_depth=5 (8.6%)
+[Serial Refine] Processing pass=0, turbine_depth=6 (10.3%)
+[Serial Refine] Processing pass=0, turbine_depth=7 (12.1%)
+[Serial Refine] Processing pass=0, turbine_depth=8 (13.8%)
+[Serial Refine] Processing pass=0, turbine_depth=9 (15.5%)
+[Serial Refine] Processing pass=0, turbine_depth=10 (17.2%)
+[Serial Refine] Processing pass=0, turbine_depth=11 (19.0%)
+[Serial Refine] Processing pass=0, turbine_depth=12 (20.7%)
+[Serial Refine] Processing pass=0, turbine_depth=13 (22.4%)
+[Serial Refine] Processing pass=0, turbine_depth=14 (24.1%)
+[Serial Refine] Processing pass=0, turbine_depth=15 (25.9%)
+[Serial Refine] Processing pass=0, turbine_depth=16 (27.6%)
+[Serial Refine] Processing pass=0, turbine_depth=17 (29.3%)
+[Serial Refine] Processing pass=0, turbine_depth=18 (31.0%)
+[Serial Refine] Processing pass=0, turbine_depth=19 (32.8%)
+[Serial Refine] Processing pass=0, turbine_depth=20 (34.5%)
+[Serial Refine] Processing pass=0, turbine_depth=21 (36.2%)
+[Serial Refine] Processing pass=0, turbine_depth=22 (37.9%)
+[Serial Refine] Processing pass=0, turbine_depth=23 (39.7%)
+[Serial Refine] Processing pass=0, turbine_depth=24 (41.4%)
+[Serial Refine] Processing pass=0, turbine_depth=25 (43.1%)
+[Serial Refine] Processing pass=0, turbine_depth=26 (44.8%)
+[Serial Refine] Processing pass=0, turbine_depth=27 (46.6%)
+[Serial Refine] Processing pass=0, turbine_depth=28 (48.3%)
+[Serial Refine] Processing pass=1, turbine_depth=0 (50.0%)
+[Serial Refine] Processing pass=1, turbine_depth=1 (51.7%)
+[Serial Refine] Processing pass=1, turbine_depth=2 (53.4%)
+[Serial Refine] Processing pass=1, turbine_depth=3 (55.2%)
+[Serial Refine] Processing pass=1, turbine_depth=4 (56.9%)
+[Serial Refine] Processing pass=1, turbine_depth=5 (58.6%)
+[Serial Refine] Processing pass=1, turbine_depth=6 (60.3%)
+[Serial Refine] Processing pass=1, turbine_depth=7 (62.1%)
+[Serial Refine] Processing pass=1, turbine_depth=8 (63.8%)
+[Serial Refine] Processing pass=1, turbine_depth=9 (65.5%)
+[Serial Refine] Processing pass=1, turbine_depth=10 (67.2%)
+[Serial Refine] Processing pass=1, turbine_depth=11 (69.0%)
+[Serial Refine] Processing pass=1, turbine_depth=12 (70.7%)
+[Serial Refine] Processing pass=1, turbine_depth=13 (72.4%)
+[Serial Refine] Processing pass=1, turbine_depth=14 (74.1%)
+[Serial Refine] Processing pass=1, turbine_depth=15 (75.9%)
+[Serial Refine] Processing pass=1, turbine_depth=16 (77.6%)
+[Serial Refine] Processing pass=1, turbine_depth=17 (79.3%)
+[Serial Refine] Processing pass=1, turbine_depth=18 (81.0%)
+[Serial Refine] Processing pass=1, turbine_depth=19 (82.8%)
+[Serial Refine] Processing pass=1, turbine_depth=20 (84.5%)
+[Serial Refine] Processing pass=1, turbine_depth=21 (86.2%)
+[Serial Refine] Processing pass=1, turbine_depth=22 (87.9%)
+[Serial Refine] Processing pass=1, turbine_depth=23 (89.7%)
+[Serial Refine] Processing pass=1, turbine_depth=24 (91.4%)
+[Serial Refine] Processing pass=1, turbine_depth=25 (93.1%)
+[Serial Refine] Processing pass=1, turbine_depth=26 (94.8%)
+[Serial Refine] Processing pass=1, turbine_depth=27 (96.6%)
+[Serial Refine] Processing pass=1, turbine_depth=28 (98.3%)
+[Serial Refine] Processing pass=0, turbine_depth=0 (0.0%)
+[Serial Refine] Processing pass=0, turbine_depth=1 (5.0%)
+[Serial Refine] Processing pass=0, turbine_depth=2 (10.0%)
+[Serial Refine] Processing pass=0, turbine_depth=3 (15.0%)
+[Serial Refine] Processing pass=0, turbine_depth=4 (20.0%)
+[Serial Refine] Processing pass=0, turbine_depth=5 (25.0%)
+[Serial Refine] Processing pass=0, turbine_depth=6 (30.0%)
+[Serial Refine] Processing pass=0, turbine_depth=7 (35.0%)
+[Serial Refine] Processing pass=0, turbine_depth=8 (40.0%)
+[Serial Refine] Processing pass=0, turbine_depth=9 (45.0%)
+[Serial Refine] Processing pass=1, turbine_depth=0 (50.0%)
+[Serial Refine] Processing pass=1, turbine_depth=1 (55.0%)
+[Serial Refine] Processing pass=1, turbine_depth=2 (60.0%)
+[Serial Refine] Processing pass=1, turbine_depth=3 (65.0%)
+[Serial Refine] Processing pass=1, turbine_depth=4 (70.0%)
+[Serial Refine] Processing pass=1, turbine_depth=5 (75.0%)
+[Serial Refine] Processing pass=1, turbine_depth=6 (80.0%)
+[Serial Refine] Processing pass=1, turbine_depth=7 (85.0%)
+[Serial Refine] Processing pass=1, turbine_depth=8 (90.0%)
+[Serial Refine] Processing pass=1, turbine_depth=9 (95.0%)
+Baseline AEP: 145.29 GWh.
+Optimal AEP (Not accounting for neighboring farm): 147.96 GWh.
+Optimal AEP (Accounting for neighboring farm): 148.34 GWh.
+
+====================================================================================================
+PORTED EXAMPLE: control_optimization_008_optimize_yaw_with_disabled_turbines  vs  008_optimize_yaw_with_disabled_turbines.py
+  Rust   exit=0  6.74s    Python exit=0  2.01s
+----------------------------------------------------------------------------------------------------
+--- RUST STDOUT ---
+[Serial Refine] Processing pass=0, turbine_depth=0 (0.0%)
+[Serial Refine] Processing pass=0, turbine_depth=1 (16.7%)
+[Serial Refine] Processing pass=0, turbine_depth=2 (33.3%)
+[Serial Refine] Processing pass=1, turbine_depth=0 (50.0%)
+[Serial Refine] Processing pass=1, turbine_depth=1 (66.7%)
+[Serial Refine] Processing pass=1, turbine_depth=2 (83.3%)
+Serial Refine optimized yaw angles (all turbines active) [deg]:
+ [25 22.65625 0
+  25 22.65625 0]
+
+Geometric optimized yaw angles (all turbines active) [deg]:
+ [19.9952335557674 19.9952335557674 0
+  19.9952335557674 19.9952335557674 0]
+[Serial Refine] Processing pass=0, turbine_depth=0 (0.0%)
+[Serial Refine] Processing pass=0, turbine_depth=1 (16.7%)
+[Serial Refine] Processing pass=0, turbine_depth=2 (33.3%)
+[Serial Refine] Processing pass=1, turbine_depth=0 (50.0%)
+[Serial Refine] Processing pass=1, turbine_depth=1 (66.7%)
+[Serial Refine] Processing pass=1, turbine_depth=2 (83.3%)
+
+Serial Refine optimized yaw angles (some turbines disabled) [deg]:
+ [20.3125 0 0
+  25 25 0]
+
+Geometric optimized yaw angles (some turbines disabled) [deg]:
+ [19.9952335557674 19.9952335557674 0
+  19.9952335557674 19.9952335557674 0]
+--- PYTHON STDOUT ---
+[Serial Refine] Processing pass=0, turbine_depth=0 (0.0%)
+[Serial Refine] Processing pass=0, turbine_depth=1 (16.7%)
+[Serial Refine] Processing pass=0, turbine_depth=2 (33.3%)
+[Serial Refine] Processing pass=1, turbine_depth=0 (50.0%)
+[Serial Refine] Processing pass=1, turbine_depth=1 (66.7%)
+[Serial Refine] Processing pass=1, turbine_depth=2 (83.3%)
+Serial Refine optimized yaw angles (all turbines active) [deg]:
+ 0    [25.0, 22.65625, 0.0]
+1    [25.0, 22.65625, 0.0]
+Name: yaw_angles_opt, dtype: object
+
+Geometric optimized yaw angles (all turbines active) [deg]:
+ 0    [19.9952335557674, 19.9952335557674, 0.0]
+1    [19.9952335557674, 19.9952335557674, 0.0]
+Name: yaw_angles_opt, dtype: object
+[Serial Refine] Processing pass=0, turbine_depth=0 (0.0%)
+[Serial Refine] Processing pass=0, turbine_depth=1 (16.7%)
+[Serial Refine] Processing pass=0, turbine_depth=2 (33.3%)
+[Serial Refine] Processing pass=1, turbine_depth=0 (50.0%)
+[Serial Refine] Processing pass=1, turbine_depth=1 (66.7%)
+[Serial Refine] Processing pass=1, turbine_depth=2 (83.3%)
+
+Serial Refine optimized yaw angles (some turbines disabled) [deg]:
+ 0    [20.3125, 0.0, 0.0]
+1       [0.0, 25.0, 0.0]
+Name: yaw_angles_opt, dtype: object
+
+Geometric optimized yaw angles (some turbines disabled) [deg]:
+ 0    [14.990467111534794, 0.0, 0.0]
+1      [0.0, 19.9952335557674, 0.0]
+Name: yaw_angles_opt, dtype: object
+
+====================================================================================================
+PORTED EXAMPLE: layout_optimization_004_layout_optimization_gridded  vs  004_generate_gridded_layout.py
+  Rust   exit=0  4.9s    Python exit=0  1.79s
+----------------------------------------------------------------------------------------------------
+--- RUST STDOUT ---
+Gridded layout complete: 5 turbines in bounds.
+x: [989.7594028007619, 103.04050876496943, 507.61103030167726, 912.1815518383851, 25.462657802592503], shape=[5], strides=[1], layout=CFcf (0xf), const ndim=1
+y: [86.87443034723935, 9.296579384862525, 491.44495188394717, 973.593324383032, 896.0154734206551], shape=[5], strides=[1], layout=CFcf (0xf), const ndim=1
+--- PYTHON STDOUT ---
+
 

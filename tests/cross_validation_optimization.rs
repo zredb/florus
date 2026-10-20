@@ -2,6 +2,8 @@
 //! FLORIS examples (Python cross-validation, 2026-10).
 
 use florus::floris_model::FlorisModel;
+use florus::optimization::layout_optimization::layout_optimization_base::Boundary;
+use florus::optimization::layout_optimization::LayoutOptimizationGridded;
 use florus::types::Array1;
 use ndarray::Array2;
 
@@ -102,6 +104,58 @@ fn test_serial_refine_matches_python_optimum() {
         result.yaw_angles[[0, 1]]
     );
     assert_eq!(result.yaw_angles[[0, 2]], 0.0);
+}
+
+/// The gridded layout optimizer must reproduce Python's result exactly
+/// (examples_layout_optimization/004_generate_gridded_layout.py): 5 turbines
+/// at the given coordinates for a 1000 x 1000 m boundary with 5D spacing.
+#[test]
+fn test_gridded_layout_matches_python() {
+    let fmodel = FlorisModel::from_file("examples/inputs/gch.yaml").expect("model");
+
+    let boundaries = Boundary::Polygon(vec![
+        (0.0, 0.0),
+        (0.0, 1000.0),
+        (1000.0, 1000.0),
+        (1000.0, 0.0),
+        (0.0, 0.0),
+    ]);
+
+    let mut layout_opt = LayoutOptimizationGridded::new(&fmodel, boundaries, Some(5.0), None)
+        .expect("gridded optimizer");
+    layout_opt.optimize();
+
+    let expected_x = [
+        989.7594028008,
+        103.040508765,
+        507.6110303017,
+        912.1815518384,
+        25.4626578026,
+    ];
+    let expected_y = [
+        86.8744303472,
+        9.2965793849,
+        491.4449518839,
+        973.593324383,
+        896.0154734207,
+    ];
+
+    assert_eq!(layout_opt.n_turbines_max, 5);
+    assert_eq!(layout_opt.x_opt.len(), 5);
+    for t in 0..5 {
+        assert!(
+            (layout_opt.x_opt[t] - expected_x[t]).abs() < 1e-6,
+            "turbine {t} x: {} vs {}",
+            layout_opt.x_opt[t],
+            expected_x[t]
+        );
+        assert!(
+            (layout_opt.y_opt[t] - expected_y[t]).abs() < 1e-6,
+            "turbine {t} y: {} vs {}",
+            layout_opt.y_opt[t],
+            expected_y[t]
+        );
+    }
 }
 
 /// The Geometric yaw optimizer must reproduce Python's analytical result

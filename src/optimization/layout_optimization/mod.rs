@@ -12,6 +12,7 @@
 // Module declarations
 pub mod layout_optimization_base;
 pub mod layout_optimization_boundary_grid;
+pub mod layout_optimization_gridded;
 pub mod layout_optimization_pyoptsparse;
 pub mod layout_optimization_random_search;
 pub mod layout_optimization_scipy;
@@ -24,6 +25,7 @@ pub use layout_optimization_base::{
     OptimizationType,
 };
 
+pub use layout_optimization_gridded::LayoutOptimizationGridded;
 pub use layout_optimization_random_search::LayoutOptimizationRandomSearch;
 
 pub use layout_optimization_scipy::LayoutOptimizationScipy;
