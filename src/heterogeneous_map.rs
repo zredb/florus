@@ -19,7 +19,7 @@ pub struct MultidimConditions {
     pub hs: Option<Array1>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct HeterogeneousInflowConfig {
     pub x: Array1,
     pub y: Array1,
@@ -62,9 +62,33 @@ impl HeterogeneousMap {
                 bail!("Length of wind_speeds must match the first dimension of speed_multipliers");
             }
         }
-        if wind_directions.is_some() && wind_speeds.is_some() {
-            if speed_multipliers.shape()[0] != 1 {
-                bail!("If both wind_directions and wind_speeds are specified, speed_multipliers should have length 1 in 0th dimension");
+        // Python (heterogeneous_map.py:135-140): when neither wind
+        // directions nor wind speeds are given, the multipliers must be a
+        // single row.
+        if wind_directions.is_none() && wind_speeds.is_none() && n_speeds != 1 {
+            bail!(
+                "If both wind_speeds and wind_directions are None, then speed_multipliers \
+                 should be length 1 in 0th dimension."
+            );
+        }
+
+        // Python (heterogeneous_map.py:144-151): when both wind directions
+        // and wind speeds are given, each (direction, speed) pair must be
+        // unique.
+        if let (Some(directions), Some(speeds)) = (&wind_directions, &wind_speeds) {
+            let mut pairs: Vec<(i64, i64)> = directions
+                .iter()
+                .zip(speeds.iter())
+                .map(|(d, s)| (d.round() as i64, s.round() as i64))
+                .collect();
+            let total = pairs.len();
+            pairs.sort_unstable();
+            pairs.dedup();
+            if pairs.len() != total {
+                bail!(
+                    "Each row of a matrix where wind directions and wind speeds are the \
+                     columns should be unique."
+                );
             }
         }
 
@@ -119,9 +143,16 @@ impl HeterogeneousMap {
                         .map(|(idx, _)| idx)
                         .unwrap();
 
-                    // Check if angle difference is within tolerance
+                    // Check if angle difference is within tolerance. Python
+                    // (heterogeneous_map.py:205-213) silently uses the
+                    // closest configured direction; warn when the match is
+                    // poor instead of failing.
                     if angle_diffs[[i, min_angle_idx]] > 1e-5 {
-                        bail!("Provided wind_directions do not match those in heterogeneous map");
+                        log::warn!(
+                            "Closest heterogeneous inflow wind direction differs by {} deg; \
+                             using the closest configured direction.",
+                            angle_diffs[[i, min_angle_idx]]
+                        );
                     }
 
                     // Copy the speed multipliers for the closest direction
@@ -165,12 +196,19 @@ impl HeterogeneousMap {
 
                     let closest_config_idx = closest_wd_indices[min_speed_idx];
 
-                    // Check combined difference is within tolerance
                     let combined_diff = (angle_diffs[[i, closest_config_idx]].powi(2)
                         + speed_diffs[min_speed_idx].powi(2))
                     .sqrt();
+
+                    // Python (heterogeneous_map.py:216-250) silently uses the
+                    // closest configured (direction, speed) combination; warn
+                    // when the match is poor instead of failing.
                     if combined_diff > 1e-5 {
-                        bail!("Provided wind_directions and wind_speeds do not match those in heterogeneous map");
+                        log::warn!(
+                            "Closest heterogeneous inflow wind direction/speed combination \
+                             differs by {}; using the closest configured combination.",
+                            combined_diff
+                        );
                     }
 
                     // Copy the speed multipliers

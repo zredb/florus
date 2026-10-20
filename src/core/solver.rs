@@ -796,10 +796,12 @@ pub fn full_flow_sequential_solver(
     let mut turbine_grid_farm = farm.clone();
     let mut turbine_grid_flow_field = flow_field.clone();
     turbine_grid_farm.expand_farm_properties(n_findex, turbine_grid.sorted_coord_indices());
-    turbine_grid_flow_field.initialize_flow_field(
+    turbine_grid_flow_field.initialize_flow_field_with_coordinates(
         turbine_grid.grid_shape(),
         turbine_grid.z_sorted(),
         &turbine_grid.hub_heights(),
+        Some(turbine_grid.x_sorted_inertial_frame()),
+        Some(turbine_grid.y_sorted_inertial_frame()),
     );
     turbine_grid_farm.initialize(turbine_grid.sorted_indices());
     sequential_solver(

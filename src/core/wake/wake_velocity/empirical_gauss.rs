@@ -1,4 +1,4 @@
-//! Empirical Gauss Wake Velocity Model
+﻿//! Empirical Gauss Wake Velocity Model
 //!
 //! Extended Gauss model with empirical corrections for different conditions.
 //! This is a more tunable version of the Gaussian wake model.
@@ -467,6 +467,7 @@ mod tests {
             wind_veer: 0.0,
             reference_wind_height: 90.0,
             n_findex: 1,
+            heterogeneous_inflow_config: None,
             u_initial_sorted: empty_4d.clone(),
             v_initial_sorted: empty_4d.clone(),
             w_initial_sorted: empty_4d.clone(),

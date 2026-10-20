@@ -38,6 +38,7 @@ fn create_model(velocity_model: VelocityModelConfig) -> FlorisModel {
         air_density: 1.225,
         reference_wind_height: 90.0,
         multidim_conditions: None,
+        heterogeneous_inflow_config: None,
     };
 
     let config = FlorisConfig {
@@ -178,6 +179,7 @@ fn debug_direct_solver() {
         air_density: 1.225,
         reference_wind_height: 90.0,
         multidim_conditions: None,
+        heterogeneous_inflow_config: None,
     };
 
     let config = FlorisConfig {

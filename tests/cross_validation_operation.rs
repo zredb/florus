@@ -1,4 +1,4 @@
-mod common;
+﻿mod common;
 
 use florus::core::grid::{Grid, TurbineGrid};
 use florus::core::solver::sequential_solver;
@@ -44,6 +44,7 @@ fn create_operation_config(operation_model: &str) -> FlorisConfig {
             air_density: 1.225,
             reference_wind_height: 90.0,
             multidim_conditions: None,
+            heterogeneous_inflow_config: None,
         },
         wake: WakeConfig {
             model_strings: WakeModelStringsConfig {

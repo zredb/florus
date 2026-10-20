@@ -1,56 +1,65 @@
-//! Example: Heterogeneous Inflow
+//! Example: Heterogeneous Inflow for single case
 //!
-//! This example demonstrates heterogeneous inflow modeling.
+//! This example illustrates how to set up a heterogeneous inflow condition:
+//! it changes the wind farm layout, sets a single wind condition, defines a
+//! heterogeneous inflow (1.25x ambient for the upper turbines) and prints the
+//! resulting turbine powers.
 //!
-//! Corresponds to: examples_heterogeneous/001_heterogeneous_inflow.py
+//! Scenario aligned 1:1 with
+//! examples_heterogeneous/001_heterogeneous_inflow_single.py.
 
-use florus::Result;
+use florus::floris_model::FlorisModel;
+use florus::heterogeneous_map::HeterogeneousInflowConfig;
+use florus::types::{Array1, Array2};
+use ndarray::Array;
 
-fn main() -> Result<()> {
-    println!("=== Heterogeneous Inflow ===\n");
+fn main() -> anyhow::Result<()> {
+    // Initialize FLORIS
+    let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
-    println!("Heterogeneous Inflow Concept:\\n");
+    // Change the layout to a 4 turbine layout in a box
+    fmodel.set_layout(
+        &Array1::from_vec(vec![0.0, 0.0, 500.0, 500.0]),
+        &Array1::from_vec(vec![0.0, 500.0, 0.0, 500.0]),
+    )?;
 
-    println!("Definition:");
-    println!("  - Wind conditions vary spatially across the farm");
-    println!("  - Different wind speeds at different locations");
-    println!("  - More realistic than uniform inflow\\n");
+    // Set FLORIS to run for a single condition
+    fmodel.set_wind_conditions(
+        Array1::from_vec(vec![8.0]),
+        Array1::from_vec(vec![270.0]),
+        Array1::from_vec(vec![0.06]),
+    )?;
 
-    println!("Causes:");
-    println!("  - Terrain effects (hills, valleys)");
-    println!("  - Atmospheric boundary layer variations");
-    println!("  - Local weather patterns");
-    println!("  - Wake interactions with terrain\\n");
+    // Define the speed-ups of the heterogeneous inflow, and their locations.
+    // Heterogeneity is only applied within the bounds of the given points; the
+    // inflow is 1.25x the ambient wind speed for the upper turbines at y = 500 m.
+    let speed_ups = Array2::from_shape_vec((1, 4), vec![1.0, 1.25, 1.0, 1.25])?;
+    let x_locs = Array1::from_vec(vec![-500.0, -500.0, 1000.0, 1000.0]);
+    let y_locs = Array1::from_vec(vec![-500.0, 1000.0, -500.0, 1000.0]);
 
-    println!("Modeling Approaches:");
-    println!("  1. Grid-based:");
-    println!("     - Define wind speed at grid points");
-    println!("     - Interpolate to turbine locations");
-    println!("     - Flexible and accurate\\n");
+    // Set the heterogeneous inflow configuration
+    fmodel.set_heterogeneous_inflow_config(HeterogeneousInflowConfig {
+        x: x_locs,
+        y: y_locs,
+        z: None,
+        wind_speeds: None,
+        wind_directions: None,
+        speed_multipliers: speed_ups,
+    })?;
 
-    println!("  2. Analytical:");
-    println!("     - Mathematical functions");
-    println!("     - Shear profiles");
-    println!("     - Faster computation\\n");
+    // Run the FLORIS simulation
+    fmodel.run()?;
 
-    println!("  3. Measured data:");
-    println!("     - LiDAR measurements");
-    println!("     - Met mast data");
-    println!("     - Most realistic\\n");
+    // Get the power output of the turbines
+    let turbine_powers = fmodel.get_turbine_powers()? / 1000.0;
 
-    println!("Benefits:");
-    println!("  - More accurate power predictions");
-    println!("  - Better wake modeling");
-    println!("  - Improved layout optimization");
-    println!("  - Realistic AEP estimation\\n");
+    println!("Turbine 0 power = {:.1} kW", turbine_powers[[0, 0]]);
+    println!("Turbine 1 power = {:.1} kW", turbine_powers[[0, 1]]);
+    println!("Turbine 2 power = {:.1} kW", turbine_powers[[0, 2]]);
+    println!("Turbine 3 power = {:.1} kW", turbine_powers[[0, 3]]);
 
-    println!("Applications:");
-    println!("  - Complex terrain sites");
-    println!("  - Large wind farms");
-    println!("  - Offshore with spatial variation");
-    println!("  - Model validation\\n");
+    // Keep the ndarray import used (the speeds are set through the API above)
+    let _ = Array::from_elem(1, 0.0);
 
-    println!("=== Example Complete ===");
-    println!("Note: Full implementation requires set_heterogeneous_inflow_config API.");
     Ok(())
 }

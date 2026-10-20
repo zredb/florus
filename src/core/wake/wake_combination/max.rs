@@ -1,4 +1,4 @@
-use crate::core::wake::CombinationModel;
+﻿use crate::core::wake::CombinationModel;
 use crate::core::{FlowField, Grid};
 /// MAX model - Maximum wake velocity deficit
 ///
@@ -91,6 +91,7 @@ mod tests {
             wind_veer: 0.0,
             reference_wind_height: 90.0,
             n_findex: 1,
+            heterogeneous_inflow_config: None,
             u_initial_sorted: empty_4d.clone(),
             v_initial_sorted: empty_4d.clone(),
             w_initial_sorted: empty_4d.clone(),

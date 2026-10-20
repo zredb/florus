@@ -99,8 +99,13 @@ impl fmt::Debug for FlorisModel {
 impl FlorisModel {
     /// Create a new FlorisModel from a configuration file
     pub fn from_file<P: AsRef<Path>>(path: P) -> crate::Result<Self> {
-        let core = Core::from_file(path)?;
-        Ok(Self { core })
+        // Parse the input file here (instead of delegating to Core::from_file)
+        // so that the file-level settings handled by `from_config` -- such as
+        // the heterogeneous inflow configuration -- are applied.
+        let config_value = crate::utilities::load_yaml(path)?;
+        let config: FlorisConfig = serde_yaml::from_value(config_value)
+            .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))?;
+        Self::from_config(config)
     }
 
     pub fn from_default() -> crate::Result<Self> {
@@ -109,10 +114,40 @@ impl FlorisModel {
 
     /// Create from configuration structure
     pub fn from_config(config: FlorisConfig) -> crate::Result<Self> {
-        let core = Core::from_config(config)?;
+        // Heterogeneous inflow from the input file (Python
+        // flow_field.heterogeneous_inflow_config)
+        let het_config = config
+            .flow_field
+            .heterogeneous_inflow_config
+            .as_ref()
+            .map(|c| {
+                let multipliers = Array2::from_shape_vec(
+                    (c.speed_multipliers.len(), c.x.len()),
+                    c.speed_multipliers
+                        .iter()
+                        .flat_map(|row| row.iter().copied())
+                        .collect(),
+                )
+                .unwrap_or_else(|_| Array2::zeros((0, 0)));
+                crate::heterogeneous_map::HeterogeneousInflowConfig {
+                    x: Array1::from_vec(c.x.clone()),
+                    y: Array1::from_vec(c.y.clone()),
+                    z: c.z.as_ref().map(|z| Array1::from_vec(z.clone())),
+                    wind_speeds: c.wind_speeds.as_ref().map(|s| Array1::from_vec(s.clone())),
+                    wind_directions: c
+                        .wind_directions
+                        .as_ref()
+                        .map(|d| Array1::from_vec(d.clone())),
+                    speed_multipliers: multipliers,
+                }
+            });
+
+        let mut core = Core::from_config(config)?;
+        if let Some(cfg) = het_config {
+            core.flow_field.heterogeneous_inflow_config = Some(cfg);
+        }
         Ok(Self { core })
     }
-
     /// Run the FLORIS simulation
     ///
     /// This method performs the steady-state atmospheric condition calculation,
@@ -1250,11 +1285,16 @@ impl FlorisModel {
 
         // Reinitialize flow field with new grid
         if let Some(ref grid) = fmodel_viz.core.grid {
-            fmodel_viz.core.flow_field.initialize_flow_field(
-                grid.grid_shape(),
-                grid.z_sorted(),
-                &grid.hub_heights(),
-            );
+            fmodel_viz
+                .core
+                .flow_field
+                .initialize_flow_field_with_coordinates(
+                    grid.grid_shape(),
+                    grid.z_sorted(),
+                    &grid.hub_heights(),
+                    Some(grid.x_sorted_inertial_frame()),
+                    Some(grid.y_sorted_inertial_frame()),
+                );
         }
 
         // Mark as initialized
@@ -1369,11 +1409,16 @@ impl FlorisModel {
 
         // Reinitialize flow field with new grid
         if let Some(ref grid) = fmodel_viz.core.grid {
-            fmodel_viz.core.flow_field.initialize_flow_field(
-                grid.grid_shape(),
-                grid.z_sorted(),
-                &grid.hub_heights(),
-            );
+            fmodel_viz
+                .core
+                .flow_field
+                .initialize_flow_field_with_coordinates(
+                    grid.grid_shape(),
+                    grid.z_sorted(),
+                    &grid.hub_heights(),
+                    Some(grid.x_sorted_inertial_frame()),
+                    Some(grid.y_sorted_inertial_frame()),
+                );
         }
 
         // Mark as initialized
@@ -1488,11 +1533,16 @@ impl FlorisModel {
 
         // Reinitialize flow field with new grid
         if let Some(ref grid) = fmodel_viz.core.grid {
-            fmodel_viz.core.flow_field.initialize_flow_field(
-                grid.grid_shape(),
-                grid.z_sorted(),
-                &grid.hub_heights(),
-            );
+            fmodel_viz
+                .core
+                .flow_field
+                .initialize_flow_field_with_coordinates(
+                    grid.grid_shape(),
+                    grid.z_sorted(),
+                    &grid.hub_heights(),
+                    Some(grid.x_sorted_inertial_frame()),
+                    Some(grid.y_sorted_inertial_frame()),
+                );
         }
 
         // Mark as initialized
@@ -1654,6 +1704,25 @@ impl FlorisModel {
         // Mark farm as uninitialized so it will be properly reinitialized on next run()
         self.core.farm.state.initialized = false;
         self.core.grid = None;
+        Ok(())
+    }
+
+    /// Set the heterogeneous inflow configuration.
+    ///
+    /// The speed multipliers are applied to the initial velocity field
+    /// (Python `fmodel.set(heterogeneous_inflow_config=...)`,
+    /// floris_model.py:400). The multipliers are interpolated onto the flow
+    /// field grid points in the inertial frame; points outside the convex
+    /// hull of the given locations keep the freestream speed.
+    pub fn set_heterogeneous_inflow_config(
+        &mut self,
+        config: crate::heterogeneous_map::HeterogeneousInflowConfig,
+    ) -> crate::Result<()> {
+        self.core.flow_field.heterogeneous_inflow_config = Some(config);
+        // Mark the model uninitialized so the next run() re-initializes the
+        // flow field with the heterogeneous inflow applied.
+        self.core.state.initialized = false;
+        self.core.farm.state.initialized = false;
         Ok(())
     }
 
@@ -2422,6 +2491,7 @@ mod tests {
                 turbulence_intensities,
                 reference_wind_height: 90.0,
                 multidim_conditions: None,
+                heterogeneous_inflow_config: None,
             },
             wake: WakeConfig::default(),
             turbine_library: "turbine_library".to_string(),

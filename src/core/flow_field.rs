@@ -32,6 +32,12 @@ pub struct FlowField {
     /// Reference height for wind measurements [m]
     pub reference_wind_height: Float,
 
+    /// Heterogeneous inflow configuration (speed multipliers at user-defined
+    /// locations). Python: `flow_field.heterogeneous_inflow_config`
+    /// (floris/core/flow_field.py). When set, the initial velocity field is
+    /// multiplied by the spatially interpolated speed multipliers.
+    pub heterogeneous_inflow_config: Option<crate::heterogeneous_map::HeterogeneousInflowConfig>,
+
     /// Number of flow indices (conditions)
     pub n_findex: usize,
 
@@ -97,6 +103,7 @@ impl FlowField {
             turbulence_intensities,
             reference_wind_height,
             n_findex,
+            heterogeneous_inflow_config: None,
             u_initial_sorted: empty_4d.clone(),
             v_initial_sorted: empty_4d.clone(),
             w_initial_sorted: empty_4d.clone(),
@@ -123,6 +130,26 @@ impl FlowField {
         grid_shape: (usize, usize, usize, usize),
         z_grid: &Array4,
         hub_heights: &Array1,
+    ) {
+        self.initialize_flow_field_with_coordinates(grid_shape, z_grid, hub_heights, None, None);
+    }
+
+    /// Applies wind shear profile to create height-dependent velocity field
+    /// and, when a heterogeneous inflow configuration is set, the
+    /// heterogeneous speed multipliers.
+    ///
+    /// `inertial_x` / `inertial_y` are the grid coordinates in the inertial
+    /// frame; they are required to evaluate the heterogeneous inflow
+    /// multipliers (Python evaluates them at
+    /// `grid.x_sorted_inertial_frame` / `y_sorted_inertial_frame`,
+    /// floris/core/flow_field.py:initialize_velocity_field).
+    pub fn initialize_flow_field_with_coordinates(
+        &mut self,
+        grid_shape: (usize, usize, usize, usize),
+        z_grid: &Array4,
+        hub_heights: &Array1,
+        inertial_x: Option<&Array4>,
+        inertial_y: Option<&Array4>,
     ) {
         let (n_findex, n_turbines, n_y, n_z) = grid_shape;
 
@@ -202,6 +229,20 @@ impl FlowField {
         self.u_sorted = self.u_initial_sorted.clone();
         self.v_sorted = self.v_initial_sorted.clone();
         self.w_sorted = self.w_initial_sorted.clone();
+
+        // Apply the heterogeneous inflow speed multipliers (Python
+        // flow_field.py:initialize_velocity_field multiplies the sheared
+        // initial field by the interpolated multipliers).
+        if self.heterogeneous_inflow_config.is_some() {
+            if let (Some(x), Some(y)) = (inertial_x, inertial_y) {
+                self.apply_heterogeneous_inflow(
+                    x,
+                    y,
+                    Some(z_grid),
+                    crate::core::models::InterpMethod::Linear,
+                );
+            }
+        }
 
         // Initialize turbulence intensity field to the ambient TI. Python
         // (flow_field.py:232-239) broadcasts the per-findex ambient TI over the
@@ -286,6 +327,113 @@ impl FlowField {
             90.0,
         )
         .unwrap()
+    }
+
+    /// Apply the heterogeneous inflow speed multipliers to the initial
+    /// velocity field.
+    ///
+    /// Python multiplies the sheared initial field by the spatially
+    /// interpolated multipliers
+    /// (`u_initial_sorted = (wind_speeds.T * wind_profile_plane.T).T * speed_ups`,
+    /// floris/core/flow_field.py:initialize_velocity_field). The multipliers
+    /// are evaluated at the grid points in the INERTIAL frame
+    /// (`grid.x_sorted_inertial_frame` / `y_sorted_inertial_frame`); points
+    /// outside the convex hull of the user-defined locations fall back to the
+    /// freestream value 1.0, as in Python.
+    ///
+    /// `x_inertial` / `y_inertial` are the grid coordinates in the inertial
+    /// frame, shape (n_findex, n_turbines, n_y, n_z).
+    pub fn apply_heterogeneous_inflow(
+        &mut self,
+        x_inertial: &Array4,
+        y_inertial: &Array4,
+        z_sorted: Option<&Array4>,
+        interp_method: crate::core::models::InterpMethod,
+    ) {
+        let Some(config) = self.heterogeneous_inflow_config.clone() else {
+            return;
+        };
+        if config.x.is_empty() {
+            return;
+        }
+
+        let (n_findex, n_turbines, n_y, n_z) = self.u_initial_sorted.dim();
+        let n_multiplier_rows = config.speed_multipliers.shape()[0];
+
+        // The 3D case interpolates over x, y and z; the 2D case over x and y
+        let use_3d = config.z.is_some() && z_sorted.is_some();
+
+        for fi in 0..n_findex {
+            // The multipliers of this condition (fall back to the first row
+            // when the configuration is condition independent).
+            let row = if n_multiplier_rows == 1 {
+                0
+            } else {
+                fi.min(n_multiplier_rows - 1)
+            };
+            let values = crate::types::Array1::from_vec(
+                (0..config.x.len())
+                    .map(|p| config.speed_multipliers[[row, p]])
+                    .collect::<Vec<crate::types::Float>>(),
+            );
+
+            // Evaluate the multipliers at the grid points
+            let mut target_x = Vec::with_capacity(n_turbines * n_y * n_z);
+            let mut target_y = Vec::with_capacity(n_turbines * n_y * n_z);
+            let mut target_z = Vec::with_capacity(n_turbines * n_y * n_z);
+            for ti in 0..n_turbines {
+                for iy in 0..n_y {
+                    for iz in 0..n_z {
+                        target_x.push(x_inertial[[fi, ti, iy, iz]]);
+                        target_y.push(y_inertial[[fi, ti, iy, iz]]);
+                        if let Some(z) = z_sorted {
+                            target_z.push(z[[fi, ti, iy, iz]]);
+                        }
+                    }
+                }
+            }
+
+            let interpolated = if use_3d {
+                let points_z = config.z.as_ref().unwrap();
+                crate::core::heterogeneous_interp::interpolate_multipliers_3d(
+                    interp_method,
+                    &config.x,
+                    &config.y,
+                    points_z,
+                    &values,
+                    &target_x,
+                    &target_y,
+                    &target_z,
+                )
+            } else {
+                crate::core::heterogeneous_interp::interpolate_multipliers(
+                    interp_method,
+                    &config.x,
+                    &config.y,
+                    &values,
+                    &target_x,
+                    &target_y,
+                )
+            };
+
+            let mut k = 0usize;
+            for ti in 0..n_turbines {
+                for iy in 0..n_y {
+                    for iz in 0..n_z {
+                        // Outside the user-defined hull: freestream (1.0)
+                        let speed_up = interpolated[k].unwrap_or(1.0);
+                        k += 1;
+                        self.u_initial_sorted[[fi, ti, iy, iz]] *= speed_up;
+                        self.dudz_initial_sorted[[fi, ti, iy, iz]] *= speed_up;
+                    }
+                }
+            }
+        }
+
+        // The sorted fields mirror the initial field
+        self.u_sorted = self.u_initial_sorted.clone();
+        self.v_sorted = self.v_initial_sorted.clone();
+        self.w_sorted = self.w_initial_sorted.clone();
     }
 
     pub fn finalize(&mut self, unsorted_indices: &Array2) {

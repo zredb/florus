@@ -1,4 +1,4 @@
-//! GaussLegacy (GCH) Wake Velocity Model
+﻿//! GaussLegacy (GCH) Wake Velocity Model
 //!
 //! Gaussian wake model based on Bastankhah and Porte-Agel (2014, 2016)
 //! with the original GCH (Gauss-Curl-Hybrid) formulation.
@@ -270,6 +270,7 @@ mod tests {
             wind_veer: 0.0,
             reference_wind_height: 90.0,
             n_findex: 1,
+            heterogeneous_inflow_config: None,
             u_initial_sorted: empty_4d.clone(),
             v_initial_sorted: empty_4d.clone(),
             w_initial_sorted: empty_4d.clone(),

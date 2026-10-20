@@ -1,4 +1,4 @@
-﻿//! Layout Optimization PyOptSparse Module
+//! Layout Optimization PyOptSparse Module
 //!
 //! Provides layout optimization using argmin library for constrained optimization.
 //! This corresponds to layout_optimization_pyoptsparse.py in Python FLORIS v4.6,
@@ -453,6 +453,7 @@ mod tests {
             air_density: 1.225,
             reference_wind_height: 90.0,
             multidim_conditions: None,
+            heterogeneous_inflow_config: None,
         };
 
         let solver_config = SolverConfig::default();

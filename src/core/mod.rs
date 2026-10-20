@@ -6,6 +6,7 @@ pub mod cut_plane;
 pub mod farm;
 pub mod flow_field;
 pub mod grid;
+pub mod heterogeneous_interp;
 pub mod models;
 pub mod rotor_velocity;
 pub mod solver;

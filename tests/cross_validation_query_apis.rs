@@ -66,6 +66,7 @@ fn create_query_apis_config(turbine_type: &str) -> FlorisConfig {
             air_density: 1.225,
             reference_wind_height: 90.0,
             multidim_conditions: None,
+            heterogeneous_inflow_config: None,
         },
         wake: WakeConfig {
             model_strings: WakeModelStringsConfig {

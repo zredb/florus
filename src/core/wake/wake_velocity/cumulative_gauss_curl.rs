@@ -1,4 +1,4 @@
-//! Cumulative Gauss Curl Wake Velocity Model
+﻿//! Cumulative Gauss Curl Wake Velocity Model
 //!
 //! Implements the cumulative-curl wake model for capturing deep array effects
 //! and impacts to wake steering.
@@ -575,6 +575,7 @@ mod tests {
             wind_veer: 0.0,
             reference_wind_height: 90.0,
             n_findex: 1,
+            heterogeneous_inflow_config: None,
             u_initial_sorted: empty_4d.clone(),
             v_initial_sorted: empty_4d.clone(),
             w_initial_sorted: empty_4d.clone(),

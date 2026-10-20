@@ -277,10 +277,12 @@ impl Core {
 
         let grid = self.grid.as_ref().unwrap();
 
-        self.flow_field.initialize_flow_field(
+        self.flow_field.initialize_flow_field_with_coordinates(
             grid.grid_shape(),
             grid.z_sorted(),
             &grid.hub_heights(),
+            Some(grid.x_sorted_inertial_frame()),
+            Some(grid.y_sorted_inertial_frame()),
         );
 
         self.farm.initialize(grid.sorted_coord_indices());
@@ -425,10 +427,12 @@ impl Core {
 
         let grid = self.grid.as_ref().unwrap();
 
-        self.flow_field.initialize_flow_field(
+        self.flow_field.initialize_flow_field_with_coordinates(
             grid.grid_shape(),
             grid.z_sorted(),
             &grid.hub_heights(),
+            Some(grid.x_sorted_inertial_frame()),
+            Some(grid.y_sorted_inertial_frame()),
         );
 
         let grid_ref = self.grid.as_ref().unwrap();
@@ -524,10 +528,12 @@ impl Core {
 
         // Solve on a scratch copy; the main solve state stays intact.
         let mut points_flow_field = self.flow_field.clone();
-        points_flow_field.initialize_flow_field(
+        points_flow_field.initialize_flow_field_with_coordinates(
             points_grid.grid_shape(),
             points_grid.z_sorted(),
             &points_grid.hub_heights(),
+            Some(points_grid.x_sorted_inertial_frame()),
+            Some(points_grid.y_sorted_inertial_frame()),
         );
 
         full_flow_sequential_solver(&self.farm, &mut points_flow_field, &points_grid, &self.wake)?;

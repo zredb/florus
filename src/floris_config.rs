@@ -211,6 +211,39 @@ pub struct FlowFieldConfig {
     /// Multi-dimensional conditions for Cp/Ct interpolation
     #[serde(default, rename = "multidim_conditions")]
     pub multidim_conditions: Option<MultiDimConditions>,
+
+    /// Heterogeneous inflow configuration (Python
+    /// `flow_field.heterogeneous_inflow_config`, floris/core/flow_field.py).
+    /// The speed multipliers are interpolated onto the flow field grid points
+    /// and multiply the initial velocity field.
+    #[serde(default, rename = "heterogeneous_inflow_config")]
+    pub heterogeneous_inflow_config: Option<HeterogeneousInflowConfigFile>,
+}
+
+/// Heterogeneous inflow configuration as read from a YAML input file.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct HeterogeneousInflowConfigFile {
+    /// Speed multipliers, shape (n_conditions, n_points) or (1, n_points)
+    #[serde(default)]
+    pub speed_multipliers: Vec<Vec<Float>>,
+    /// x locations of the speed multipliers
+    #[serde(default)]
+    pub x: Vec<Float>,
+    /// y locations of the speed multipliers
+    #[serde(default)]
+    pub y: Vec<Float>,
+    /// Optional z locations (3D case)
+    #[serde(default)]
+    pub z: Option<Vec<Float>>,
+    /// Optional wind directions the multipliers are defined for
+    #[serde(default)]
+    pub wind_directions: Option<Vec<Float>>,
+    /// Optional wind speeds the multipliers are defined for
+    #[serde(default)]
+    pub wind_speeds: Option<Vec<Float>>,
+    /// Interpolation method ("linear" or "nearest"); defaults to linear
+    #[serde(default)]
+    pub interp_method: Option<String>,
 }
 
 /// Multi-dimensional conditions for advanced power/thrust calculations

@@ -1,4 +1,4 @@
-﻿//! Layout Optimization Boundary Grid Module
+//! Layout Optimization Boundary Grid Module
 //!
 //! Provides grid-based layout optimization within specified boundaries.
 //! This module corresponds to layout_optimization_boundary_grid.py in Python FLORIS v4.6.
@@ -545,6 +545,7 @@ mod tests {
             air_density: 1.225,
             reference_wind_height: 90.0,
             multidim_conditions: None,
+            heterogeneous_inflow_config: None,
         };
 
         let solver_config = SolverConfig::default();

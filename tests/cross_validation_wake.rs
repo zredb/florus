@@ -65,6 +65,7 @@ fn create_floris_config(
             air_density: 1.225,
             reference_wind_height: 90.0,
             multidim_conditions: None,
+            heterogeneous_inflow_config: None,
         },
         wake: WakeConfig {
             model_strings: WakeModelStringsConfig {
@@ -1111,6 +1112,7 @@ fn test_gauss_staggered_ti() {
             air_density: 1.225,
             reference_wind_height: 90.0,
             multidim_conditions: None,
+            heterogeneous_inflow_config: None,
         },
         wake: WakeConfig {
             model_strings: WakeModelStringsConfig {
@@ -1207,6 +1209,7 @@ fn test_gauss_heterogeneous_sort() {
             air_density: 1.225,
             reference_wind_height: 90.0,
             multidim_conditions: None,
+            heterogeneous_inflow_config: None,
         },
         wake: WakeConfig {
             model_strings: WakeModelStringsConfig {

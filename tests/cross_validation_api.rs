@@ -64,6 +64,7 @@ fn create_api_config_2t(wind_speeds: Vec<f64>, air_density: f64) -> FlorisConfig
             air_density,
             reference_wind_height: 90.0,
             multidim_conditions: None,
+            heterogeneous_inflow_config: None,
         },
         wake: WakeConfig {
             model_strings: WakeModelStringsConfig {
@@ -124,6 +125,7 @@ fn create_api_config_3t(wind_speeds: Vec<f64>, air_density: f64) -> FlorisConfig
             air_density,
             reference_wind_height: 90.0,
             multidim_conditions: None,
+            heterogeneous_inflow_config: None,
         },
         wake: WakeConfig {
             model_strings: WakeModelStringsConfig {

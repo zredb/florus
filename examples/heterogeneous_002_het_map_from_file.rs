@@ -1,52 +1,94 @@
-//! Example: Heterogeneous Map from File
+//! Example: Heterogeneous inflow with wind data
 //!
-//! This example demonstrates loading heterogeneous inflow from file.
+//! This example sets up a heterogeneous inflow condition for a set of wind
+//! conditions, first with the per-condition speed multipliers and then with
+//! a `HeterogeneousMap` that selects the multipliers by wind direction.
 //!
-//! Corresponds to: examples_heterogeneous/002_het_map_from_file.py
+//! Scenario aligned 1:1 with
+//! examples_heterogeneous/002_heterogeneous_using_wind_data.py.
 
-use florus::Result;
+use florus::floris_model::FlorisModel;
+use florus::heterogeneous_map::{HeterogeneousInflowConfig, HeterogeneousMap};
+use florus::types::{Array1, Array2};
+use ndarray::Array;
 
-fn main() -> Result<()> {
-    println!("=== Heterogeneous Map from File ===\n");
+fn main() -> anyhow::Result<()> {
+    // Initialize FLORIS
+    let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
-    println!("Loading Heterogeneous Data from Files:\\n");
+    // Change the layout to a 4 turbine layout in a box
+    fmodel.set_layout(
+        &Array1::from_vec(vec![0.0, 0.0, 500.0, 500.0]),
+        &Array1::from_vec(vec![0.0, 500.0, 0.0, 500.0]),
+    )?;
 
-    println!("Data Sources:");
-    println!("  1. CSV files:");
-    println!("     - Grid coordinates (x, y)");
-    println!("     - Wind speed values");
-    println!("     - Easy to generate and edit\\n");
+    // Four wind directions, constant wind speed and turbulence intensity
+    fmodel.set_wind_conditions(
+        Array1::from_vec(vec![8.0; 4]),
+        Array1::from_vec(vec![269.0, 270.0, 271.0, 282.0]),
+        Array1::from_vec(vec![0.06; 4]),
+    )?;
 
-    println!("  2. NetCDF files:");
-    println!("     - Standard meteorological format");
-    println!("     - Multi-dimensional data");
-    println!("     - Metadata support\\n");
+    // The x/y locations of the heterogeneous inflow box
+    let x_locs = Array1::from_vec(vec![-500.0, -500.0, 1000.0, 1000.0]);
+    let y_locs = Array1::from_vec(vec![-500.0, 1000.0, -500.0, 1000.0]);
 
-    println!("  3. GRIB files:");
-    println!("     - Weather model output");
-    println!("     - Global coverage");
-    println!("     - High resolution\\n");
+    // Per-condition speed multipliers: the first three conditions share the
+    // same multipliers, the last one uses larger speed-ups
+    let speed_multipliers = Array2::from_shape_vec(
+        (4, 4),
+        vec![
+            1.0, 1.25, 1.0, 1.25, //
+            1.0, 1.25, 1.0, 1.25, //
+            1.0, 1.25, 1.0, 1.25, //
+            1.0, 1.35, 1.0, 1.35,
+        ],
+    )?;
 
-    println!("File Format Requirements:");
-    println!("  - Grid definition (resolution, extent)");
-    println!("  - Coordinate system");
-    println!("  - Wind speed/direction data");
-    println!("  - Optional: TI, shear parameters\\n");
+    fmodel.set_heterogeneous_inflow_config(HeterogeneousInflowConfig {
+        x: x_locs.clone(),
+        y: y_locs.clone(),
+        z: None,
+        wind_speeds: None,
+        wind_directions: None,
+        speed_multipliers: speed_multipliers.clone(),
+    })?;
+    fmodel.run()?;
 
-    println!("Processing Steps:");
-    println!("  1. Read file data");
-    println!("  2. Parse grid structure");
-    println!("  3. Validate data quality");
-    println!("  4. Interpolate to turbine locations");
-    println!("  5. Apply to FLORUS model\\n");
+    let powers = fmodel.get_turbine_powers()? / 1000.0;
+    println!("Per-condition speed multipliers:");
+    for t in 0..4 {
+        let row: Vec<String> = (0..4).map(|i| format!("{:.1}", powers[[i, t]])).collect();
+        println!("  turbine {t}: {}", row.join(" "));
+    }
 
-    println!("Benefits:");
-    println!("  - Use real measurement data");
-    println!("  - Import from weather models");
-    println!("  - Share data between tools");
-    println!("  - Reproducible simulations\\n");
+    // Repeat using a HeterogeneousMap that selects the multipliers by wind
+    // direction (270 deg -> 1.25x, 280 deg -> 1.35x)
+    let map_multipliers =
+        Array2::from_shape_vec((2, 4), vec![1.0, 1.25, 1.0, 1.25, 1.0, 1.35, 1.0, 1.35])?;
+    let heterogeneous_map = HeterogeneousMap::new(
+        x_locs,
+        y_locs,
+        map_multipliers,
+        None,
+        Some(Array1::from_vec(vec![270.0, 280.0])),
+        None,
+        florus::core::models::InterpMethod::Linear,
+    )?;
 
-    println!("=== Example Complete ===");
-    println!("Note: Full implementation requires file parsing and HeterogeneousMap.");
+    let config = heterogeneous_map.get_heterogeneous_inflow_config(
+        Array1::from_vec(vec![269.0, 270.0, 271.0, 282.0]),
+        Array1::from_vec(vec![8.0; 4]),
+    )?;
+    fmodel.set_heterogeneous_inflow_config(config)?;
+    fmodel.run()?;
+
+    let powers = fmodel.get_turbine_powers()? / 1000.0;
+    println!("HeterogeneousMap (by wind direction):");
+    for t in 0..4 {
+        let row: Vec<String> = (0..4).map(|i| format!("{:.1}", powers[[i, t]])).collect();
+        println!("  turbine {t}: {}", row.join(" "));
+    }
+
     Ok(())
 }
