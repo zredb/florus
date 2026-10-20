@@ -5,16 +5,21 @@ use crate::{
     core::{
         rotor_effective_velocity,
         turbines::{
-            cp_ct_table::TableConditions,
+            cp_ct_table::{MultiDimConditionTables, TableConditions},
             operation_models::{TurbineContext, TurbineParameters},
             turbine_type::TurbineType,
         },
         AveragingMethod,
     },
-    types::{Array2, Array4, Float},
+    types::{Array1, Array2, Array4, Float},
 };
 use ndarray::Array;
+use std::collections::HashMap;
 use std::sync::Arc;
+
+/// The multi-dimensional conditions of a model: condition name -> one value
+/// per wind condition (Python `flow_field.multidim_conditions`).
+pub type MultidimConditionMap = HashMap<String, Array1>;
 
 /// Wind turbine representation with embedded turbine type
 #[derive(Debug, Clone)]
@@ -33,23 +38,32 @@ impl Turbine {
     /// turbine.py routes multi-dim tables through a separate branch that
     /// FLORUS has not ported yet).
     fn operation_model_parameters(&self) -> crate::Result<TurbineParameters> {
-        // Create lookup tables from cp_ct_table
-        let wind_speeds = self
-            .turbine_type
-            .power_thrust_table
-            .cp_ct_table
-            .wind_speeds();
+        self.operation_model_parameters_with_tables(None)
+    }
 
-        // Extract CP and CT values from the table
-        let (cp_values, ct_values) = match &self.turbine_type.power_thrust_table.cp_ct_table {
-            crate::core::turbines::cp_ct_table::CpCtTable::OneDimensional(table) => {
-                (&table.cp_values, &table.ct_values)
-            }
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Multi-dimensional Cp/Ct tables are not yet supported by the operation-model dispatch (Turbine::power/thrust_coefficient/axial_induction)"
-                ));
-            }
+    /// Build the operation-model parameters, optionally overriding the
+    /// power/thrust lookup tables.
+    ///
+    /// The override is used by the multi-dimensional power/thrust tables,
+    /// where the table depends on the wind condition
+    /// (Python `floris/core/turbine/turbine.py:power`).
+    fn operation_model_parameters_with_tables(
+        &self,
+        tables: Option<(&Array1, &Array1, &Array1)>,
+    ) -> crate::Result<TurbineParameters> {
+        // Extract the wind speeds, CP and CT values of the table
+        let (wind_speeds, cp_values, ct_values) = match tables {
+            Some((wind_speeds, cp_values, ct_values)) => (wind_speeds, cp_values, ct_values),
+            None => match &self.turbine_type.power_thrust_table.cp_ct_table {
+                crate::core::turbines::cp_ct_table::CpCtTable::OneDimensional(table) => {
+                    (&table.wind_speeds, &table.cp_values, &table.ct_values)
+                }
+                _ => {
+                    return Err(anyhow::anyhow!(
+                        "Multi-dimensional Cp/Ct tables require the per-condition tables"
+                    ));
+                }
+            },
         };
 
         let power_table = crate::core::turbines::operation_models::LookupTable {
@@ -214,11 +228,52 @@ impl Turbine {
         average_method: AveragingMethod,
         cubature_weights: Option<&Array2>,
         correct_cp_ct_for_tilt: Option<&ndarray::Array2<bool>>,
+        multidim_conditions: Option<&MultidimConditionMap>,
     ) -> crate::Result<Array2> {
+        let n_findex = velocities.shape()[0];
+
+        // Multi-dimensional power/thrust tables: the table is selected per
+        // wind condition (Python floris/core/turbine/turbine.py:power loops
+        // over the specified conditions and masks the result).
+        if let Some(tables) = self.multidim_tables() {
+            let selection = self.multidim_selection(tables, multidim_conditions, n_findex)?;
+            let air_density_array = Array::from_elem(n_findex, air_density);
+            let ctx = self.turbine_context(
+                velocities,
+                &air_density_array,
+                yaw_angles,
+                tilt_angles,
+                power_setpoints,
+                turbulence_intensities,
+                awc_modes,
+                awc_amplitudes,
+                cubature_weights,
+                correct_cp_ct_for_tilt,
+                average_method,
+            );
+            let mut power = Array2::zeros((n_findex, ctx.n_turbines()));
+            for group in unique_groups(&selection) {
+                let params = self.operation_model_parameters_with_tables(Some((
+                    &tables.entries[group].wind_speeds,
+                    &tables.entries[group].power,
+                    &tables.entries[group].thrust_coefficient,
+                )))?;
+                let group_power = self.turbine_type.operation_model.power(&params, &ctx)?;
+                for fi in 0..n_findex {
+                    if selection[fi] != group {
+                        continue;
+                    }
+                    for ti in 0..ctx.n_turbines() {
+                        power[[fi, ti]] = group_power[[fi, ti]];
+                    }
+                }
+            }
+            return Ok(power);
+        }
+
         let params = self.operation_model_parameters()?;
 
         // Create air density array
-        let n_findex = velocities.shape()[0];
         let air_density_array = Array::from_elem(n_findex, air_density);
 
         // Create turbine context
@@ -254,11 +309,53 @@ impl Turbine {
         average_method: AveragingMethod,
         cubature_weights: Option<&Array2>,
         correct_cp_ct_for_tilt: Option<&ndarray::Array2<bool>>,
+        multidim_conditions: Option<&MultidimConditionMap>,
     ) -> crate::Result<Array2> {
+        let n_findex = velocities.shape()[0];
+
+        // Multi-dimensional power/thrust tables (Python turbine.py:thrust_coefficient)
+        if let Some(tables) = self.multidim_tables() {
+            let selection = self.multidim_selection(tables, multidim_conditions, n_findex)?;
+            let air_density_array = Array::from_elem(n_findex, air_density);
+            let ctx = self.turbine_context(
+                velocities,
+                &air_density_array,
+                yaw_angles,
+                tilt_angles,
+                power_setpoints,
+                turbulence_intensities,
+                awc_modes,
+                awc_amplitudes,
+                cubature_weights,
+                correct_cp_ct_for_tilt,
+                average_method,
+            );
+            let mut thrust = Array2::zeros((n_findex, ctx.n_turbines()));
+            for group in unique_groups(&selection) {
+                let params = self.operation_model_parameters_with_tables(Some((
+                    &tables.entries[group].wind_speeds,
+                    &tables.entries[group].power,
+                    &tables.entries[group].thrust_coefficient,
+                )))?;
+                let group_thrust = self
+                    .turbine_type
+                    .operation_model
+                    .thrust_coefficient(&params, &ctx)?;
+                for fi in 0..n_findex {
+                    if selection[fi] != group {
+                        continue;
+                    }
+                    for ti in 0..ctx.n_turbines() {
+                        thrust[[fi, ti]] = group_thrust[[fi, ti]];
+                    }
+                }
+            }
+            return Ok(thrust);
+        }
+
         let params = self.operation_model_parameters()?;
 
         // Create air density array
-        let n_findex = velocities.shape()[0];
         let air_density_array = Array::from_elem(n_findex, air_density);
 
         // Create turbine context
@@ -296,11 +393,53 @@ impl Turbine {
         average_method: AveragingMethod,
         cubature_weights: Option<&Array2>,
         correct_cp_ct_for_tilt: Option<&ndarray::Array2<bool>>,
+        multidim_conditions: Option<&MultidimConditionMap>,
     ) -> crate::Result<Array2> {
+        let n_findex = velocities.shape()[0];
+
+        // Multi-dimensional power/thrust tables (Python turbine.py:axial_induction)
+        if let Some(tables) = self.multidim_tables() {
+            let selection = self.multidim_selection(tables, multidim_conditions, n_findex)?;
+            let air_density_array = Array::from_elem(n_findex, air_density);
+            let ctx = self.turbine_context(
+                velocities,
+                &air_density_array,
+                yaw_angles,
+                tilt_angles,
+                power_setpoints,
+                turbulence_intensities,
+                awc_modes,
+                awc_amplitudes,
+                cubature_weights,
+                correct_cp_ct_for_tilt,
+                average_method,
+            );
+            let mut induction = Array2::zeros((n_findex, ctx.n_turbines()));
+            for group in unique_groups(&selection) {
+                let params = self.operation_model_parameters_with_tables(Some((
+                    &tables.entries[group].wind_speeds,
+                    &tables.entries[group].power,
+                    &tables.entries[group].thrust_coefficient,
+                )))?;
+                let group_induction = self
+                    .turbine_type
+                    .operation_model
+                    .axial_induction(&params, &ctx)?;
+                for fi in 0..n_findex {
+                    if selection[fi] != group {
+                        continue;
+                    }
+                    for ti in 0..ctx.n_turbines() {
+                        induction[[fi, ti]] = group_induction[[fi, ti]];
+                    }
+                }
+            }
+            return Ok(induction);
+        }
+
         let params = self.operation_model_parameters()?;
 
         // Create air density array
-        let n_findex = velocities.shape()[0];
         let air_density_array = Array::from_elem(n_findex, air_density);
 
         // Create turbine context
@@ -323,4 +462,71 @@ impl Turbine {
             .operation_model
             .axial_induction(&params, &ctx)
     }
+
+    /// The multi-dimensional power/thrust tables of this turbine, if any.
+    fn multidim_tables(&self) -> Option<&MultiDimConditionTables> {
+        match &self.turbine_type.power_thrust_table.cp_ct_table {
+            crate::core::turbines::cp_ct_table::CpCtTable::MultiDimensionalConditions(tables) => {
+                Some(tables)
+            }
+            _ => None,
+        }
+    }
+
+    /// Select the power/thrust table of every wind condition.
+    fn multidim_selection(
+        &self,
+        tables: &MultiDimConditionTables,
+        conditions: Option<&MultidimConditionMap>,
+        n_findex: usize,
+    ) -> crate::Result<Vec<usize>> {
+        let conditions = conditions.ok_or_else(|| {
+            anyhow::anyhow!(
+                "multidim_condition must be provided if using multidimensional \
+                 power/thrust_coefficient"
+            )
+        })?;
+        tables
+            .select_entries(conditions, n_findex)
+            .map_err(|e| anyhow::anyhow!("{e}"))
+    }
+
+    /// Build the turbine context shared by the operation models.
+    #[allow(clippy::too_many_arguments)]
+    fn turbine_context<'a>(
+        &'a self,
+        velocities: &'a Array4,
+        air_density: &'a Array1,
+        yaw_angles: Option<&'a Array2>,
+        tilt_angles: Option<&'a Array2>,
+        power_setpoints: Option<&'a Array2>,
+        turbulence_intensities: Option<&'a Array4>,
+        awc_modes: Option<&'a ndarray::Array2<String>>,
+        awc_amplitudes: Option<&'a Array2>,
+        cubature_weights: Option<&'a Array2>,
+        correct_cp_ct_for_tilt: Option<&'a ndarray::Array2<bool>>,
+        average_method: AveragingMethod,
+    ) -> TurbineContext<'a> {
+        TurbineContext {
+            velocities,
+            air_density,
+            yaw_angles,
+            tilt_angles,
+            power_setpoints,
+            turbulence_intensities,
+            awc_modes,
+            awc_amplitudes,
+            cubature_weights,
+            correct_cp_ct_for_tilt,
+            average_method,
+        }
+    }
+}
+
+/// The unique group indices of a selection, in ascending order.
+fn unique_groups(selection: &[usize]) -> Vec<usize> {
+    let mut groups: Vec<usize> = selection.to_vec();
+    groups.sort_unstable();
+    groups.dedup();
+    groups
 }

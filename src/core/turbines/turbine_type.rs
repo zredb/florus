@@ -142,9 +142,11 @@ impl TurbineType {
             })?;
             let full_path = yaml_dir.join(file_path);
 
-            // 加载多维数据
-            let multi_dim_table =
-                CsvDataLoader::load_multidimensional_data(full_path).map_err(|e| {
+            // Load the multi-dimensional data as the condition-keyed tables
+            // used by Python
+            // (floris/core/turbine/turbine.py:_initialize_multidim_power_thrust_table).
+            let multi_dim_table = CsvDataLoader::load_multidimensional_conditions(full_path)
+                .map_err(|e| {
                     TurbineTypeError::IoError(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         format!("Failed to load power thrust data file: {}", e),
@@ -153,7 +155,7 @@ impl TurbineType {
 
             // 更新turbine_type的cp_ct_table
             turbine_type.power_thrust_table.cp_ct_table =
-                CpCtTable::MultiDimensional(multi_dim_table);
+                CpCtTable::MultiDimensionalConditions(multi_dim_table);
         }
         // Load the Cp/Ct surface for the controller-dependent (TUM) operation
         // model (Python loads the same .npz into
@@ -839,11 +841,27 @@ mod tests {
             pt_table.cp_ct_table.table_type(),
             TableType::MultiDimensional
         );
+        // The multi-dimensional table is a set of one-dimensional tables
+        // keyed by the condition tuple (Python
+        // turbine.py:_initialize_multidim_power_thrust_table): the condition
+        // dimensions are Tp and Hs, the wind speed is the table axis.
         let supported_dims = &pt_table.cp_ct_table.supported_dimensions();
-        assert!(supported_dims.contains(&Dimension::WindSpeed));
         assert!(supported_dims.contains(&Dimension::WaveHeight));
         assert!(supported_dims.contains(&Dimension::WavePeriod));
-        assert_eq!(supported_dims.len(), 3);
+        assert_eq!(supported_dims.len(), 2);
+        match &pt_table.cp_ct_table {
+            crate::core::turbines::cp_ct_table::CpCtTable::MultiDimensionalConditions(tables) => {
+                assert_eq!(
+                    tables.condition_keys,
+                    vec!["Tp".to_string(), "Hs".to_string()]
+                );
+                assert!(!tables.entries.is_empty());
+                let entry = &tables.entries[0];
+                assert_eq!(entry.wind_speeds.len(), entry.power.len());
+                assert_eq!(entry.wind_speeds.len(), entry.thrust_coefficient.len());
+            }
+            _ => panic!("expected a multi-dimensional condition table"),
+        }
 
         // 验证其他参数
         assert_eq!(turbine_type.correct_cp_ct_for_tilt, false);

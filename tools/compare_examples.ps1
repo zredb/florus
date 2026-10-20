@@ -24,6 +24,9 @@ $pairs = @(
     @{ Rust = "heterogeneous_002_het_map_from_file"; Py = "examples_heterogeneous/002_heterogeneous_using_wind_data.py"; Cwd = "floris/examples" }
     @{ Rust = "heterogeneous_003_het_speedup_by_wd_ws"; Py = "examples_heterogeneous/003_heterogeneous_speedup_by_wd_and_ws.py"; Cwd = "floris/examples" }
     @{ Rust = "heterogeneous_004_het_with_wind_rose"; Py = "examples_heterogeneous/004_heterogeneous_2d_and_3d.py"; Cwd = "floris/examples" }
+    @{ Rust = "multidim_001_multi_dimensional_cp_ct"; Py = "examples_multidim/001_multi_dimensional_cp_ct.py"; Cwd = "floris/examples" }
+    @{ Rust = "multidim_002_multi_dimensional_cp_ct_2Hs"; Py = "examples_multidim/002_multi_dimensional_cp_ct_2Hs.py"; Cwd = "floris/examples" }
+    @{ Rust = "multidim_003_multi_dimensional_cp_ct_TI"; Py = "examples_multidim/003_multi_dimensional_cp_ct_TI.py"; Cwd = "floris/examples" }
 )
 
 $python = "floris\.venv\Scripts\python.exe"

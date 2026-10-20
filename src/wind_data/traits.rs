@@ -87,11 +87,11 @@ pub trait WindData {
         let (_, _, _, _, value_table, _) = self.unpack().clone();
         value_table
     }
-    fn unpack_multidim_conditions(&self) -> MultidimConditions {
+    fn unpack_multidim_conditions(&self) -> Option<MultidimConditions> {
         //   NOTE: This is a temporary method for backwards compatibility and will be removed in a
         // future release, when multidim_conditions are included in the unpack() method of child
         // classes.
-        unimplemented!()
+        None
     }
     // rust 的类型系统可以保证heterogeneous_inflow_config 正确, 所以不需要check方法
     // fn check_heterogeneous_inflow_config(&self, heterogeneous_inflow_config: HeterogeneousInflowConfig) -> anyhow::Result<()> {

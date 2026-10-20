@@ -172,6 +172,16 @@ impl WindRose {
             MultidimConditions {
                 tp: Array1::from_vec(tp_flat),
                 hs: hs_flat,
+                ti: mc.ti.as_ref().map(|ti| {
+                    let ti_flat: Vec<Float> = (0..n_conditions)
+                        .map(|i| {
+                            let d = i / n_ws;
+                            let s = i % n_ws;
+                            ti[d * n_ws + s]
+                        })
+                        .collect();
+                    Array1::from_vec(ti_flat)
+                }),
             }
         })
     }
@@ -691,6 +701,10 @@ impl WindRose {
                 } else {
                     None
                 },
+                ti: conditions
+                    .ti
+                    .as_ref()
+                    .map(|ti| Array1::from_vec(vec![ti[0]])),
             });
         }
 
@@ -721,6 +735,10 @@ impl WindRose {
         Some(MultidimConditions {
             tp: Array1::from_vec(tp_filtered),
             hs: hs_filtered,
+            ti: conditions.ti.as_ref().map(|ti| {
+                let ti_filtered: Vec<Float> = nonzero_indices.iter().map(|&i| ti[i]).collect();
+                Array1::from_vec(ti_filtered)
+            }),
         })
     }
 
@@ -752,6 +770,7 @@ impl WindRose {
             wind_speeds: Array1::from_vec(ws_flat),
             turbulence_intensities: Array1::from_vec(ti_flat),
             values: Array1::from_vec(vec![1.0; count]),
+            multidim_conditions: self.multidim_conditions.clone(),
         }
     }
 }
@@ -1612,6 +1631,7 @@ mod tests {
         let multidim = MultidimConditions {
             tp: Array1::from_vec(vec![5.0, 6.0, 7.0, 8.0]),
             hs: Some(Array1::from_vec(vec![1.0, 1.5, 2.0, 2.5])),
+            ti: None,
         };
 
         let wr = WindRose::new(
@@ -1641,6 +1661,7 @@ mod tests {
         let multidim = MultidimConditions {
             tp: Array1::from_vec(vec![5.0, 5.0, 5.0, 5.0]),
             hs: None,
+            ti: None,
         };
 
         let wr = WindRose::new(
@@ -1672,6 +1693,7 @@ mod tests {
         let multidim = MultidimConditions {
             tp: Array1::from_vec(vec![5.0, 6.0, 7.0, 8.0]),
             hs: None,
+            ti: None,
         };
 
         let wr = WindRose::new(

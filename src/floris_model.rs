@@ -255,20 +255,6 @@ impl FlorisModel {
             bail!("Can't compute turbine powers without first running `FlorisModel::run()`.");
         }
 
-        let multi_dim = self.core.farm.turbines.iter().any(|t| {
-            matches!(
-                t.turbine_type.power_thrust_table.cp_ct_table,
-                crate::core::turbines::cp_ct_table::CpCtTable::MultiDimensional(_)
-            )
-        });
-        if multi_dim {
-            log::warn!(
-                "Multi-dimensional Cp/Ct tables detected: get_turbine_powers falls back to \
-                 the legacy inline estimate (operation-model dispatch unavailable)."
-            );
-            return Ok(self.get_turbine_powers_legacy());
-        }
-
         let farm = &self.core.farm;
         let flow_field = &self.core.flow_field;
 
@@ -324,101 +310,6 @@ impl FlorisModel {
             }
         }
         out
-    }
-
-    /// Legacy inline power estimate over the UNSORTED velocity field:
-    /// cubic-mean rotor average, density/yaw/tilt cosine corrections, Cp
-    /// table lookup and a post-hoc power-setpoint clamp. Superseded by
-    /// `get_turbine_powers` (operation-model route); kept as the fallback
-    /// for multi-dimensional Cp/Ct fleets, which the operation-model
-    /// dispatch does not support.
-    fn get_turbine_powers_legacy(&self) -> Array2 {
-        let n_findex = self.core.flow_field.n_findex;
-        let n_turbines = self.core.farm.n_turbines();
-        let yaw_angles = &self.core.farm.yaw_angles;
-        let tilt_angles = &self.core.farm.tilt_angles;
-
-        let mut powers = Array::zeros((n_findex, n_turbines));
-        let velocities = &self.core.flow_field.u;
-
-        if velocities.shape()[0] == 0 || velocities.shape()[1] == 0 {
-            return powers;
-        }
-
-        for ti in 0..n_turbines {
-            if ti >= self.core.farm.turbines.len() {
-                continue;
-            }
-
-            let turbine = &self.core.farm.turbines[ti];
-
-            let ref_air_density = turbine
-                .turbine_type
-                .power_thrust_table
-                .ref_air_density
-                .unwrap_or(1.225);
-            let cosine_loss_exponent_yaw = turbine
-                .turbine_type
-                .power_thrust_table
-                .cosine_loss_exponent_yaw
-                .unwrap_or(1.88);
-            let cosine_loss_exponent_tilt = turbine
-                .turbine_type
-                .power_thrust_table
-                .cosine_loss_exponent_tilt
-                .unwrap_or(1.88);
-            let ref_tilt = turbine
-                .turbine_type
-                .power_thrust_table
-                .ref_tilt
-                .unwrap_or(5.0);
-
-            for fi in 0..n_findex {
-                let mut v_cubed_sum = 0.0;
-                let grid_points = velocities.shape()[2] * velocities.shape()[3];
-                for iy in 0..velocities.shape()[2] {
-                    for iz in 0..velocities.shape()[3] {
-                        v_cubed_sum += velocities[[fi, ti, iy, iz]].powi(3);
-                    }
-                }
-                let rotor_avg_velocity = (v_cubed_sum / grid_points as f64).powf(1.0 / 3.0);
-
-                let density_factor =
-                    (self.core.flow_field.air_density / ref_air_density).powf(1.0 / 3.0);
-                let mut rotor_effective_velocity = rotor_avg_velocity * density_factor;
-
-                let yaw = yaw_angles[[fi, ti]];
-                let yaw_correction = cosd(yaw).powf(cosine_loss_exponent_yaw / 3.0);
-                rotor_effective_velocity *= yaw_correction;
-
-                let tilt = tilt_angles[[fi, ti]];
-                let tilt_correction =
-                    (cosd(tilt) / cosd(ref_tilt)).powf(cosine_loss_exponent_tilt / 3.0);
-                rotor_effective_velocity *= tilt_correction;
-
-                use crate::core::turbines::cp_ct_table::TableConditions;
-                let mut conditions = TableConditions::default();
-                conditions.wind_speed = rotor_effective_velocity;
-                let power_kw = turbine
-                    .turbine_type
-                    .power_thrust_table
-                    .cp_ct_table
-                    .get_cp(&conditions)
-                    .unwrap_or(0.0);
-
-                let mut power_val = power_kw * 1000.0;
-
-                // Apply power setpoint limit (simple-derating)
-                let sp = self.core.farm.power_setpoints[[fi, ti]];
-                if sp < crate::core::POWER_SETPOINT_DEFAULT {
-                    power_val = power_val.min(sp);
-                }
-
-                powers[[fi, ti]] = power_val;
-            }
-        }
-
-        powers
     }
 
     /// Get farm power
@@ -1620,13 +1511,42 @@ impl FlorisModel {
     /// This method accepts any object that implements the WindData trait,
     /// including TimeSeries, WindRose, WindRoseRwg and custom implementations.
     pub fn set_wind_data(&mut self, wind_data: &dyn WindData) -> crate::Result<()> {
-        self.core.flow_field = FlowField::from_wind_data(wind_data);
+        // Python `fmodel.set(wind_data=...)` only replaces the wind speeds,
+        // directions and turbulence intensities; the shear, veer, air density
+        // and reference height of the model are kept. Rebuilding the flow
+        // field with the model's own settings (instead of the hard-coded
+        // defaults of `FlowField::from_wind_data`) preserves them.
+        let (wind_directions, wind_speeds, turbulence_intensities, _, _, _) = wind_data.unpack();
+        self.core.flow_field = FlowField::new(
+            wind_speeds,
+            wind_directions,
+            self.core.flow_field.wind_veer,
+            self.core.flow_field.wind_shear,
+            self.core.flow_field.air_density,
+            turbulence_intensities,
+            self.core.flow_field.reference_wind_height,
+        )?;
         self.core
             .farm
             .initialize_control_arrays(self.core.flow_field.n_findex);
         self.core
             .farm
             .set_tilt_to_ref_tilt(self.core.flow_field.n_findex);
+
+        // The multi-dimensional conditions of the wind data select the
+        // power/thrust table of the multi-dimensional turbines (Python
+        // `floris_model.py:reinitialize`).
+        self.core.multidim_conditions = wind_data.unpack_multidim_conditions().map(|conditions| {
+            let mut values = std::collections::HashMap::new();
+            for (key, array) in conditions.to_condition_map() {
+                values.insert(
+                    key,
+                    crate::floris_config::MultiDimConditionValue::Array(array.to_vec()),
+                );
+            }
+            crate::floris_config::MultiDimConditions { values }
+        });
+
         self.core.grid = None;
         Ok(())
     }
@@ -1721,6 +1641,23 @@ impl FlorisModel {
         self.core.flow_field.heterogeneous_inflow_config = Some(config);
         // Mark the model uninitialized so the next run() re-initializes the
         // flow field with the heterogeneous inflow applied.
+        self.core.state.initialized = false;
+        self.core.farm.state.initialized = false;
+        Ok(())
+    }
+
+    /// Set the multi-dimensional conditions of the model.
+    ///
+    /// The conditions select the power/thrust table of the multi-dimensional
+    /// turbines (Python `fmodel.set(multidim_conditions=...)`). The keys are
+    /// the condition names of the turbine's table (e.g. "Tp", "Hs", "TI").
+    pub fn set_multidim_conditions(
+        &mut self,
+        conditions: std::collections::HashMap<String, crate::floris_config::MultiDimConditionValue>,
+    ) -> crate::Result<()> {
+        self.core.multidim_conditions =
+            Some(crate::floris_config::MultiDimConditions { values: conditions });
+        // The conditions are applied when the flow field is initialized
         self.core.state.initialized = false;
         self.core.farm.state.initialized = false;
         Ok(())

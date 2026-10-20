@@ -1,4 +1,4 @@
-use crate::core::turbines::operation_models::POWER_SETPOINT_DEFAULT;
+﻿use crate::core::turbines::operation_models::POWER_SETPOINT_DEFAULT;
 use crate::core::turbines::turbine_type::TurbineType;
 use crate::core::{AveragingMethod, State, Turbine, TurbineGrid};
 use crate::types::{Array1, Array2, Float, NumericDict};
@@ -46,6 +46,11 @@ pub struct Farm {
     /// the turbine at sorted position `i` for findex `fi` (Python's
     /// `turbine_type_map_sorted` dispatch key).
     pub sorted_indices: Array2,
+    /// The multi-dimensional conditions of the model (Python
+    /// `flow_field.multidim_conditions`): condition name -> one value per
+    /// wind condition. They select the power/thrust table of the
+    /// multi-dimensional turbines.
+    pub multidim_conditions: Option<std::collections::HashMap<String, Array1>>,
     pub state: State,
 }
 
@@ -71,6 +76,17 @@ impl fmt::Debug for Farm {
     }
 }
 
+/// The path of a turbine type definition in the turbine library.
+///
+/// The type name may already carry the .yaml extension (Python accepts
+/// both, e.g. iea_15MW_multi_dim_TI.yaml).
+fn turbine_library_path(turbine_type: &str) -> String {
+    if turbine_type.ends_with(".yaml") {
+        format!("turbine_library/{turbine_type}")
+    } else {
+        format!("turbine_library/{turbine_type}.yaml")
+    }
+}
 impl Farm {
     pub fn new(
         layout_x: Array1,
@@ -94,7 +110,7 @@ impl Farm {
         let mut turbines = Vec::new();
         if turbine_types.len() == 1 {
             // Single turbine type for all turbines - share the same Arc instance
-            let turbine_path = format!("turbine_library/{}.yaml", turbine_types[0]);
+            let turbine_path = turbine_library_path(&turbine_types[0]);
             let turbine_type = TurbineType::load_turbine_type(&turbine_path).map_err(|e| {
                 anyhow::anyhow!("Failed to load turbine type '{}': {}", turbine_types[0], e)
             })?;
@@ -107,7 +123,7 @@ impl Farm {
         } else {
             // Multiple turbine types, one per turbine
             for t in turbine_types {
-                let turbine_path = format!("turbine_library/{}.yaml", t);
+                let turbine_path = turbine_library_path(t);
                 let turbine_type = TurbineType::load_turbine_type(&turbine_path)
                     .map_err(|e| anyhow::anyhow!("Failed to load turbine type '{}': {}", t, e))?;
                 turbines.push(Turbine {
@@ -153,6 +169,7 @@ impl Farm {
                 s
             },
             state: State::default(),
+            multidim_conditions: None,
         };
 
         farm.map_turbine_types()?;
@@ -757,6 +774,7 @@ impl Farm {
                 average_method,
                 cubature_weights,
                 Some(&self.correct_cp_ct_for_tilt_sorted),
+                self.multidim_conditions.as_ref(),
             )?;
 
             for fi in 0..n_findex {
@@ -813,6 +831,7 @@ impl Farm {
                 average_method,
                 cubature_weights,
                 Some(&self.correct_cp_ct_for_tilt_sorted),
+                self.multidim_conditions.as_ref(),
             )?;
 
             for fi in 0..n_findex {
@@ -869,6 +888,7 @@ impl Farm {
                 average_method,
                 cubature_weights,
                 Some(&self.correct_cp_ct_for_tilt_sorted),
+                self.multidim_conditions.as_ref(),
             )?;
 
             for fi in 0..n_findex {

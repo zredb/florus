@@ -64,6 +64,16 @@ pub enum CpCtTable {
 
     /// 多维表：多个维度 -> (Cp, Ct)
     MultiDimensional(MultiDimTable),
+
+    /// 多维条件表：按条件元组索引的一维表集合
+    ///
+    /// Python stores the multi-dimensional power/thrust data as a dictionary
+    /// of one-dimensional tables keyed by the tuple of condition values
+    /// (`floris/core/turbine/turbine.py:_initialize_multidim_power_thrust_table`)
+    /// and selects, for every wind condition, the nearest specified value of
+    /// each condition dimension
+    /// (`floris/core/turbine/turbine.py:_select_multidim_condition`).
+    MultiDimensionalConditions(MultiDimConditionTables),
 }
 
 impl CpCtTable {
@@ -72,6 +82,9 @@ impl CpCtTable {
         match self {
             CpCtTable::OneDimensional(table) => table.get_cp(conditions.wind_speed),
             CpCtTable::MultiDimensional(table) => table.get_cp(conditions),
+            CpCtTable::MultiDimensionalConditions(_) => Err(CpCtError::ValidationFailed(
+                "Multi-dimensional condition tables require a per-condition lookup".to_string(),
+            )),
         }
     }
 
@@ -80,6 +93,9 @@ impl CpCtTable {
         match self {
             CpCtTable::OneDimensional(table) => table.get_ct(conditions.wind_speed),
             CpCtTable::MultiDimensional(table) => table.get_ct(conditions),
+            CpCtTable::MultiDimensionalConditions(_) => Err(CpCtError::ValidationFailed(
+                "Multi-dimensional condition tables require a per-condition lookup".to_string(),
+            )),
         }
     }
 
@@ -104,6 +120,7 @@ impl CpCtTable {
         match self {
             CpCtTable::OneDimensional(_) => TableType::OneDimensional,
             CpCtTable::MultiDimensional(_) => TableType::MultiDimensional,
+            CpCtTable::MultiDimensionalConditions(_) => TableType::MultiDimensional,
         }
     }
 
@@ -116,6 +133,16 @@ impl CpCtTable {
                 .iter()
                 .map(|d| d.dimension.clone())
                 .collect(),
+            CpCtTable::MultiDimensionalConditions(tables) => tables
+                .condition_keys
+                .iter()
+                .map(|key| match key.to_lowercase().as_str() {
+                    "tp" => Dimension::WavePeriod,
+                    "hs" => Dimension::WaveHeight,
+                    "ti" => Dimension::TurbulenceIntensity,
+                    _ => Dimension::Custom(key.clone()),
+                })
+                .collect(),
         }
     }
     pub fn wind_speeds(&self) -> &[f64] {
@@ -127,7 +154,135 @@ impl CpCtTable {
                 .find(|d| d.dimension == Dimension::WindSpeed)
                 .map(|d| d.values.as_slice())
                 .unwrap_or(&[]),
+            CpCtTable::MultiDimensionalConditions(tables) => tables
+                .entries
+                .first()
+                .map(|e| e.wind_speeds.as_slice().unwrap_or(&[]))
+                .unwrap_or(&[]),
         }
+    }
+}
+
+// ============================================================================
+// 多维条件表（按条件元组索引的一维表集合）
+// ============================================================================
+
+/// Multi-dimensional power/thrust tables keyed by the condition tuple.
+///
+/// Python stores the multi-dimensional data as a dictionary of one-dimensional
+/// tables keyed by the tuple of condition values
+/// (`floris/core/turbine/turbine.py:_initialize_multidim_power_thrust_table`).
+/// The condition keys are the column names of the data file, except for the
+/// last three columns (`ws`, `power`, `thrust_coefficient`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MultiDimConditionTables {
+    /// Names of the condition dimensions (e.g. `["Tp", "Hs"]`)
+    pub condition_keys: Vec<String>,
+    /// One entry per specified condition tuple
+    pub entries: Vec<MultiDimConditionEntry>,
+}
+
+/// One condition tuple of a multi-dimensional power/thrust table.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MultiDimConditionEntry {
+    /// The condition values of this entry, in `condition_keys` order
+    pub condition: Vec<f64>,
+    /// Wind speeds of the table
+    pub wind_speeds: Array1,
+    /// Power values [kW]
+    pub power: Array1,
+    /// Thrust coefficient values
+    pub thrust_coefficient: Array1,
+}
+
+impl MultiDimConditionTables {
+    /// Select the table entry of every wind condition.
+    ///
+    /// Python `floris/core/turbine/turbine.py:_select_multidim_condition`:
+    /// for every condition dimension the nearest specified value is selected
+    /// (independently of the other dimensions); the resulting tuple
+    /// identifies the table.
+    ///
+    /// `conditions` maps a condition name to one value per findex (a single
+    /// value is broadcast to every findex).
+    pub fn select_entries(
+        &self,
+        conditions: &std::collections::HashMap<String, Array1>,
+        n_findex: usize,
+    ) -> Result<Vec<usize>, CpCtError> {
+        if self.entries.is_empty() {
+            return Err(CpCtError::ValidationFailed(
+                "The multi-dimensional power/thrust table has no entries".to_string(),
+            ));
+        }
+
+        // The requested value of every dimension and findex
+        let mut requested: Vec<Vec<f64>> = Vec::with_capacity(n_findex);
+        for f in 0..n_findex {
+            let mut row = Vec::with_capacity(self.condition_keys.len());
+            for key in &self.condition_keys {
+                let values = conditions.get(key).ok_or_else(|| {
+                    CpCtError::ValidationFailed(format!(
+                        "The provided condition keys do not include '{key}', which is required by \
+                         the multi-dimensional power/thrust table."
+                    ))
+                })?;
+                let value = if values.len() == 1 {
+                    values[0]
+                } else if f < values.len() {
+                    values[f]
+                } else {
+                    values[values.len() - 1]
+                };
+                row.push(value);
+            }
+            requested.push(row);
+        }
+
+        // The values specified for every dimension
+        let mut dimension_values: Vec<Vec<f64>> = Vec::with_capacity(self.condition_keys.len());
+        for i in 0..self.condition_keys.len() {
+            let mut values: Vec<f64> = self.entries.iter().map(|e| e.condition[i]).collect();
+            values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            values.dedup();
+            dimension_values.push(values);
+        }
+
+        // Nearest specified value of every dimension
+        let mut selection = Vec::with_capacity(n_findex);
+        for row in &requested {
+            let mut tuple = Vec::with_capacity(row.len());
+            for (i, value) in row.iter().enumerate() {
+                let nearest = dimension_values[i]
+                    .iter()
+                    .min_by(|a, b| {
+                        (*a - value)
+                            .abs()
+                            .partial_cmp(&(*b - value).abs())
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+                    .copied()
+                    .ok_or_else(|| {
+                        CpCtError::ValidationFailed(format!(
+                            "No specified value for condition dimension '{}'",
+                            self.condition_keys[i]
+                        ))
+                    })?;
+                tuple.push(nearest);
+            }
+            let index = self
+                .entries
+                .iter()
+                .position(|e| e.condition == tuple)
+                .ok_or_else(|| {
+                    CpCtError::ValidationFailed(format!(
+                        "No multi-dimensional power/thrust table is defined for the condition {tuple:?}"
+                    ))
+                })?;
+            selection.push(index);
+        }
+
+        Ok(selection)
     }
 }
 

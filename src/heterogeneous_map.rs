@@ -17,6 +17,25 @@ pub struct HeterogeneousMap {
 pub struct MultidimConditions {
     pub tp: Array1,
     pub hs: Option<Array1>,
+    /// The turbulence intensity condition (Python `multidim_conditions["TI"]`)
+    pub ti: Option<Array1>,
+}
+
+impl MultidimConditions {
+    /// The conditions as a map of condition name to one value per wind
+    /// condition (the representation used by the power/thrust table
+    /// selection).
+    pub fn to_condition_map(&self) -> std::collections::HashMap<String, Array1> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("Tp".to_string(), self.tp.clone());
+        if let Some(hs) = &self.hs {
+            map.insert("Hs".to_string(), hs.clone());
+        }
+        if let Some(ti) = &self.ti {
+            map.insert("TI".to_string(), ti.clone());
+        }
+        map
+    }
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

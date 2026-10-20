@@ -1,16 +1,128 @@
-// CSV数据加载器
+﻿// CSV数据加载器
 
-use super::{CpCtError, Dimension, DimensionRange, InterpolationMethod, MultiDimTable};
+use super::{
+    CpCtError, Dimension, DimensionRange, InterpolationMethod, MultiDimConditionEntry,
+    MultiDimConditionTables, MultiDimTable,
+};
+use crate::types::Array1;
 use crate::types::Array2;
 use crate::types::ArrayD;
 use csv::Reader;
 use ordered_float::OrderedFloat;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
+
+/// The rows of one condition tuple: wind speeds, power and thrust coefficient
+type ConditionTableRows = (Vec<f64>, Vec<f64>, Vec<f64>);
 
 pub struct CsvDataLoader;
 
 impl CsvDataLoader {
+    /// Load a multi-dimensional power/thrust data file into the
+    /// condition-keyed tables used by Python.
+    ///
+    /// The file has the condition columns first and the last three columns are
+    /// `ws`, `power` and `thrust_coefficient`
+    /// (`floris/core/turbine/turbine.py:_initialize_multidim_power_thrust_table`).
+    /// Every unique combination of the condition columns defines a
+    /// one-dimensional power/thrust table.
+    pub fn load_multidimensional_conditions<P: AsRef<Path>>(
+        file_path: P,
+    ) -> Result<MultiDimConditionTables, CpCtError> {
+        let mut rdr = Reader::from_path(file_path)?;
+
+        let headers = rdr.headers()?.clone();
+        let n_columns = headers.len();
+        if n_columns < 4 {
+            return Err(CpCtError::InvalidCsvFormat(
+                "The multi-dimensional data file needs at least one condition column".to_string(),
+            ));
+        }
+
+        // The condition keys are all columns except the last three
+        let condition_keys: Vec<String> = headers
+            .iter()
+            .take(n_columns - 3)
+            .map(|h| h.trim().to_string())
+            .collect();
+        let last_three: Vec<String> = headers
+            .iter()
+            .skip(n_columns - 3)
+            .map(|h| h.trim().to_string())
+            .collect();
+        if last_three[0] != "ws"
+            || last_three[1] != "power"
+            || last_three[2] != "thrust_coefficient"
+        {
+            return Err(CpCtError::InvalidCsvFormat(
+                "The last three columns of the data file must be ws, power, thrust_coefficient"
+                    .to_string(),
+            ));
+        }
+
+        // Group the records by their condition tuple, keeping the order of the
+        // rows in the file
+        let mut order: Vec<Vec<f64>> = Vec::new();
+        let mut grouped: HashMap<Vec<OrderedFloat<f64>>, ConditionTableRows> = HashMap::new();
+
+        for result in rdr.records() {
+            let record = result?;
+            let mut condition = Vec::with_capacity(condition_keys.len());
+            for i in 0..condition_keys.len() {
+                let value_str = record.get(i).ok_or_else(|| {
+                    CpCtError::InvalidCsvFormat("A condition column is missing".to_string())
+                })?;
+                let value: f64 = value_str.trim().parse().map_err(|_| {
+                    CpCtError::InvalidCsvFormat(format!(
+                        "Could not parse the condition value '{value_str}'"
+                    ))
+                })?;
+                condition.push(value);
+            }
+
+            let ws: f64 = record
+                .get(n_columns - 3)
+                .and_then(|v| v.trim().parse().ok())
+                .ok_or_else(|| CpCtError::InvalidCsvFormat("Invalid wind speed".to_string()))?;
+            let power: f64 = record
+                .get(n_columns - 2)
+                .and_then(|v| v.trim().parse().ok())
+                .ok_or_else(|| CpCtError::InvalidCsvFormat("Invalid power value".to_string()))?;
+            let ct: f64 = record
+                .get(n_columns - 1)
+                .and_then(|v| v.trim().parse().ok())
+                .ok_or_else(|| {
+                    CpCtError::InvalidCsvFormat("Invalid thrust coefficient value".to_string())
+                })?;
+
+            let key: Vec<OrderedFloat<f64>> = condition.iter().copied().map(OrderedFloat).collect();
+            let entry = grouped.entry(key).or_insert_with(|| {
+                order.push(condition.clone());
+                (Vec::new(), Vec::new(), Vec::new())
+            });
+            entry.0.push(ws);
+            entry.1.push(power);
+            entry.2.push(ct);
+        }
+
+        let mut entries = Vec::with_capacity(order.len());
+        for condition in order {
+            let key: Vec<OrderedFloat<f64>> = condition.iter().copied().map(OrderedFloat).collect();
+            let (wind_speeds, power, thrust_coefficient) = grouped.remove(&key).unwrap();
+            entries.push(MultiDimConditionEntry {
+                condition,
+                wind_speeds: Array1::from_vec(wind_speeds),
+                power: Array1::from_vec(power),
+                thrust_coefficient: Array1::from_vec(thrust_coefficient),
+            });
+        }
+
+        Ok(MultiDimConditionTables {
+            condition_keys,
+            entries,
+        })
+    }
+
     pub fn load_multidimensional_data<P: AsRef<Path>>(
         file_path: P,
     ) -> Result<MultiDimTable, CpCtError> {

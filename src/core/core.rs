@@ -36,6 +36,11 @@ pub struct Core {
 
     // Wind data metadata for reshaping (WindRose information)
     pub wind_data_info: Option<WindDataInfo>,
+
+    /// The multi-dimensional conditions of the input file (Python
+    /// `flow_field.multidim_conditions`). They select the power/thrust table
+    /// of the multi-dimensional turbines.
+    pub multidim_conditions: Option<crate::floris_config::MultiDimConditions>,
 }
 
 /// Information about wind data structure for reshaping results
@@ -77,6 +82,7 @@ impl Clone for Core {
             grid: None, // Grid needs to be recreated
             state: self.state.clone(),
             wind_data_info: self.wind_data_info.clone(),
+            multidim_conditions: self.multidim_conditions.clone(),
         }
     }
 }
@@ -162,6 +168,7 @@ impl Core {
             grid: None,
             state,
             wind_data_info: None, // Default to None for YAML-based initialization
+            multidim_conditions: config.flow_field.multidim_conditions.clone(),
         };
 
         // Initialize grid based on solver type
@@ -286,6 +293,14 @@ impl Core {
         );
 
         self.farm.initialize(grid.sorted_coord_indices());
+
+        // Apply the multi-dimensional conditions (Python
+        // `flow_field.multidim_conditions`): they select the power/thrust
+        // table of the multi-dimensional turbines.
+        if let Some(conditions) = &self.multidim_conditions {
+            let n_findex = self.flow_field.n_findex;
+            self.farm.multidim_conditions = Some(conditions.expand(n_findex)?);
+        }
 
         self.state.initialized = true;
 

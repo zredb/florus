@@ -3,7 +3,7 @@
 //! This module contains configuration structures that correspond to the
 //! FLORIS YAML configuration file format (gch.yaml).
 
-use crate::types::Float;
+use crate::types::{Array1, Float};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_yaml::Value;
 use std::{collections::HashMap, str::FromStr};
@@ -247,14 +247,59 @@ pub struct HeterogeneousInflowConfigFile {
 }
 
 /// Multi-dimensional conditions for advanced power/thrust calculations
+///
+/// Python `flow_field.multidim_conditions` is a dictionary that maps the
+/// condition names of the turbine's multi-dimensional power/thrust table
+/// (e.g. `Tp`, `Hs` or `TI`) to a value or to one value per wind condition.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MultiDimConditions {
-    /// Wave period
-    #[serde(rename = "Tp")]
-    pub tp: Float,
-    /// Significant wave height
-    #[serde(rename = "Hs")]
-    pub hs: Float,
+    /// The condition values, by condition name
+    #[serde(flatten)]
+    pub values: std::collections::HashMap<String, MultiDimConditionValue>,
+}
+
+/// The value of a multi-dimensional condition: a single value (applied to
+/// every wind condition) or one value per wind condition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum MultiDimConditionValue {
+    /// A single value
+    Scalar(Float),
+    /// One value per wind condition
+    Array(Vec<Float>),
+}
+
+impl MultiDimConditions {
+    /// Expand the conditions to one value per wind condition.
+    ///
+    /// A single value is broadcast to every wind condition; an array must
+    /// either match the number of wind conditions or hold a single value.
+    pub fn expand(
+        &self,
+        n_findex: usize,
+    ) -> crate::Result<std::collections::HashMap<String, Array1>> {
+        let mut expanded = std::collections::HashMap::new();
+        for (key, value) in &self.values {
+            let array = match value {
+                MultiDimConditionValue::Scalar(v) => Array1::from_vec(vec![*v; n_findex]),
+                MultiDimConditionValue::Array(values) => {
+                    if values.len() == n_findex {
+                        Array1::from_vec(values.clone())
+                    } else if values.len() == 1 {
+                        Array1::from_vec(vec![values[0]; n_findex])
+                    } else {
+                        anyhow::bail!(
+                            "The multi-dimensional condition '{key}' has {} values but there are \
+                             {n_findex} wind conditions.",
+                            values.len()
+                        );
+                    }
+                }
+            };
+            expanded.insert(key.clone(), array);
+        }
+        Ok(expanded)
+    }
 }
 
 /// Wake model configuration

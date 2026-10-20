@@ -1,4 +1,4 @@
-//! Time series wind data.
+﻿//! Time series wind data.
 //!
 //! TimeSeries represents sequential wind measurements or synthetic wind
 //! conditions over time, with wind direction, speed, and turbulence intensity.
@@ -27,6 +27,10 @@ pub struct TimeSeries {
     pub turbulence_intensities: Array1,
     /// Value at each time step (e.g., electricity price) [n_times]
     pub values: Array1,
+    /// The multi-dimensional conditions of the time series (Python
+    /// `TimeSeries(multidim_conditions=...)`); they select the power/thrust
+    /// table of the multi-dimensional turbines.
+    pub multidim_conditions: Option<crate::heterogeneous_map::MultidimConditions>,
 }
 
 impl TimeSeries {
@@ -57,6 +61,7 @@ impl TimeSeries {
             wind_speeds,
             turbulence_intensities,
             values,
+            multidim_conditions: None,
         })
     }
 
@@ -82,6 +87,7 @@ impl TimeSeries {
             wind_speeds,
             turbulence_intensities,
             values,
+            multidim_conditions: None,
         })
     }
 
@@ -278,6 +284,10 @@ impl TimeSeries {
 impl WindData for TimeSeries {
     fn wind_speeds(&self) -> Array1 {
         self.wind_speeds.clone()
+    }
+
+    fn unpack_multidim_conditions(&self) -> Option<crate::heterogeneous_map::MultidimConditions> {
+        self.multidim_conditions.clone()
     }
 
     fn wind_directions(&self) -> Array1 {
