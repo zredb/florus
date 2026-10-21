@@ -1,4 +1,4 @@
-﻿================================================================================
+================================================================================
  FLORUS (Rust) vs FLORIS (Python) example output comparison
  Generated: 2026-10-19 15:53:10
  Rust examples:    cargo build --release --examples, run from repo root
@@ -5411,6 +5411,9 @@ Floating AEP increase: -1.114 GWh (-0.31%)
          equivalent exists.
    * uncertain_003 and control_optimization_002
        - The UncertainFlorisModel is available (florus::uncertain::UncertainFlorisModel), but
-         these examples need the yaw uncertainty and the parallel runner of the yaw optimizer.
+       - The UncertainFlorisModel is available (florus::uncertain::UncertainFlorisModel) and the yaw
+         angles can be fixed to the nominal direction, but the parallel runner is not ported
+         (splitting the unique conditions over several chunks does not reproduce the serial
+         flow field), so these two examples remain open.
    * load_optimization_001 / 002
        - Python's load optimization algorithm (structural load model) is not ported.
