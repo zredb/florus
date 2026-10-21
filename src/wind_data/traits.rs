@@ -123,9 +123,17 @@ impl Default for TIParams {
 impl TIParams {
     /// Calculate TI using IEC method
     pub fn calculate_ti(&self, wind_speed: Float) -> Float {
-        // IEC 61400-1 normal turbulence model
-        // TI = iref * (15 + offset) / (wind_speed + offset)
-        let ti = self.iref * (15.0 + self.offset) / (wind_speed + self.offset);
+        // IEC 61400-1 normal turbulence model (Python
+        // wind_data.py:assign_ti_using_iec_method):
+        //   sigma_1 = Iref * (0.75 * ws + offset)
+        //   TI = sigma_1 / ws
+        // With the defaults (Iref = 0.07, offset = 3.8) this gives a TI of
+        // 8.6 % at 8 m/s.
+        if wind_speed <= 0.0 {
+            return 0.0;
+        }
+        let sigma_1 = self.iref * (0.75 * wind_speed + self.offset);
+        let ti = sigma_1 / wind_speed;
         ti.clamp(0.0, 1.0)
     }
 }

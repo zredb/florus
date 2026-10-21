@@ -5351,6 +5351,8 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    get_flow_004        identical values        the velocity deficit profiles match
    turbine_001        identical values        the power, Ct and yaw sweeps of the library turbines
    turbine_002        identical powers        1754.0 / 2548.6 kW (the flow planes differ slightly)
+   wind_data_002      identical values        the IEC and custom turbulence intensities match
+   wind_data_003      identical values        the custom and piecewise linear values match
 
  Engine gaps that were fixed in this round:
    1. Heterogeneous inflow was never applied to the velocity field -> now interpolated onto the
