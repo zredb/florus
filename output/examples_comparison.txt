@@ -1,4 +1,4 @@
-================================================================================
+﻿================================================================================
  FLORUS (Rust) vs FLORIS (Python) example output comparison
  Generated: 2026-10-19 15:53:10
  Rust examples:    cargo build --release --examples, run from repo root
@@ -5340,6 +5340,12 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    multidim_003       identical powers        both turbulence-intensity sweeps
    floating_002       identical powers        36674.6 / 36975.1 kW (+300.5 kW); the wind-rose AEP is
                                                still ~0.8 % above Python's
+   wind_resource_grid_002
+                        identical powers        2280015.30 / 2272352.88 / 2324102.91 W
+   control_types_001  identical powers        the derating sweep matches
+   control_types_002  identical powers        1753.95 / 354.99 / 339.56 kW
+   control_types_004  identical powers        6133.2 / 2827.1 / 6301.1 / 2076.6 kW
+   control_types_005  identical powers        the Ct and power sweeps match
 
  Engine gaps that were fixed in this round:
    1. Heterogeneous inflow was never applied to the velocity field -> now interpolated onto the
@@ -5352,6 +5358,9 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    4. The floating tilt was not interpolated at the effective velocity for the wake models.
    5. The wind rose bin centers were half a step off (Python's bin edges start half a step below
       zero) and the long-format CSV reader was missing.
+   6. The expected-power and AEP queries used uniform frequencies instead of the frequencies of the
+      wind data (Python uses wind_data.unpack_freq(), which is a per-turbine table for the wind
+      resource grid) -> this was the actual cause of the wind_resource_grid_002 mismatch.
 
  Still unaligned (and why):
    * layout_optimization_001 / 002 / 003 / 005
@@ -5369,7 +5378,7 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    * The remaining Rust examples are still narrative placeholders or use their own scenarios:
      002_visualization, 003_wind_data_objects, 004_set, 005_getting_power, 007_sweeping_variables,
      008_uncertain_models, 009_parallel_models, 010_compare_farm_power_with_neighbor,
-     control_optimization_001/002, control_types_001-005, emgauss_001/002, floating_001/003,
+     control_optimization_001/002, control_types_003, emgauss_001/002, floating_001/003,
      get_flow_002/003/004, heterogeneous_003_het_multi_turbine (a leftover placeholder, the real
      port is heterogeneous_003_het_speedup_by_wd_ws), operation_models_001, turbine_001/002/003,
      turbopark_001, uncertain_001/003, visualizations_001-005, wind_data_001/002/003,
