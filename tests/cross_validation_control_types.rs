@@ -122,6 +122,94 @@ fn test_disable_turbines_matches_python() {
 }
 
 #[test]
+fn test_yaw_and_disabling_matches_python() {
+    // Python: examples_control_types/003_setting_yaw_and_disabling.py
+    let mut fmodel_2 = FlorisModel::from_file("examples/inputs/gch.yaml").unwrap();
+    let mut fmodel_3 = FlorisModel::from_file("examples/inputs/gch.yaml").unwrap();
+    fmodel_2.set_operation_model("mixed").unwrap();
+    fmodel_3.set_operation_model("mixed").unwrap();
+    fmodel_2
+        .set_layout(
+            &Array1::from_vec(vec![0.0, 1000.0]),
+            &Array1::from_vec(vec![0.0, 0.0]),
+        )
+        .unwrap();
+    fmodel_3
+        .set_layout(
+            &Array1::from_vec(vec![0.0, 500.0, 1000.0]),
+            &Array1::from_vec(vec![0.0, 0.0, 0.0]),
+        )
+        .unwrap();
+
+    let n = 50;
+    let time_series = TimeSeries::new(
+        Array1::from_vec(vec![270.0; n]),
+        Array1::from_vec(vec![8.0; n]),
+        Array1::from_vec(vec![0.06; n]),
+    )
+    .unwrap();
+    fmodel_2.set_wind_data(&time_series).unwrap();
+    fmodel_3.set_wind_data(&time_series).unwrap();
+
+    // The yaw angle of the most upstream turbine is swept from -20 to 20
+    let upstream_yaw: Vec<f64> = (0..n)
+        .map(|i| -20.0 + 40.0 * i as f64 / (n - 1) as f64)
+        .collect();
+    let mut yaw_2 = Array2::zeros((n, 2));
+    let mut yaw_3 = Array2::zeros((n, 3));
+    for (i, yaw) in upstream_yaw.iter().enumerate() {
+        yaw_2[[i, 0]] = *yaw;
+        yaw_3[[i, 0]] = *yaw;
+    }
+
+    // The middle turbine of the three-turbine case is disabled
+    let mut disable_turbines = ndarray::Array2::<bool>::from_elem((n, 3), false);
+    for i in 0..n {
+        disable_turbines[[i, 1]] = true;
+    }
+
+    fmodel_2
+        .set_operation(Some(yaw_2), None, None, None, None, None)
+        .unwrap();
+    fmodel_3
+        .set_operation(Some(yaw_3), None, None, None, None, Some(disable_turbines))
+        .unwrap();
+
+    fmodel_2.run().unwrap();
+    fmodel_3.run().unwrap();
+    let powers_2 = fmodel_2.get_turbine_powers().unwrap();
+    let powers_3 = fmodel_3.get_turbine_powers().unwrap();
+
+    // Python reference (kW): yaw, 2-turbine upstream/downstream, 3-turbine
+    // upstream/downstream
+    let cases = [
+        (0usize, -20.0, 1561.3, 1090.7, 1561.3, 1090.7),
+        (1, -19.18, 1576.1, 1073.6, 1576.1, 1073.6),
+        (25, 0.41, 1753.9, 769.0, 1753.9, 769.0),
+        (49, 20.0, 1561.3, 1106.9, 1561.3, 1106.9),
+    ];
+    for (i, yaw, p2u, p2d, p3u, p3d) in cases {
+        assert!((upstream_yaw[i] - yaw).abs() < 0.01);
+        assert!(
+            (powers_2[[i, 0]] / 1000.0 - p2u).abs() < 0.1,
+            "2-turbine upstream at {yaw} deg"
+        );
+        assert!(
+            (powers_2[[i, 1]] / 1000.0 - p2d).abs() < 0.1,
+            "2-turbine downstream at {yaw} deg"
+        );
+        assert!(
+            (powers_3[[i, 0]] / 1000.0 - p3u).abs() < 0.1,
+            "3-turbine upstream at {yaw} deg"
+        );
+        assert!(
+            (powers_3[[i, 2]] / 1000.0 - p3d).abs() < 0.1,
+            "3-turbine downstream at {yaw} deg"
+        );
+    }
+}
+
+#[test]
 fn test_helix_awc_matches_python() {
     // Python: examples_control_types/004_helix_active_wake_mixing.py
     let mut fmodel = FlorisModel::from_file("examples/inputs/emgauss_helix.yaml").unwrap();

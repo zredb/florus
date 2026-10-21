@@ -5344,6 +5344,7 @@ Floating AEP increase: -1.114 GWh (-0.31%)
                         identical powers        2280015.30 / 2272352.88 / 2324102.91 W
    control_types_001  identical powers        the derating sweep matches
    control_types_002  identical powers        1753.95 / 354.99 / 339.56 kW
+   control_types_003  identical powers        the yaw sweep of the two- and three-turbine farms matches
    control_types_004  identical powers        6133.2 / 2827.1 / 6301.1 / 2076.6 kW
    control_types_005  identical powers        the Ct and power sweeps match
    get_flow_002        identical values        the met mast velocity sweep matches
@@ -5386,7 +5387,7 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    * The remaining Rust examples are still narrative placeholders or use their own scenarios:
      002_visualization, 003_wind_data_objects, 005_getting_power, 007_sweeping_variables,
      008_uncertain_models, 009_parallel_models, 010_compare_farm_power_with_neighbor,
-     control_optimization_001/002, control_types_003, emgauss_001/002, floating_001/003,
+     control_optimization_001/002, emgauss_001/002, floating_001/003,
      heterogeneous_003_het_multi_turbine (a leftover placeholder, the real
      port is heterogeneous_003_het_speedup_by_wd_ws), operation_models_001,
      turbopark_001, uncertain_001/003, visualizations_001-005, wind_data_001/002/003,

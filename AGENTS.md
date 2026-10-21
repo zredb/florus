@@ -1,4 +1,4 @@
-# FLORUS Agent Guidelines
+﻿# FLORUS Agent Guidelines
 
 ## Build / Test / Lint
 
