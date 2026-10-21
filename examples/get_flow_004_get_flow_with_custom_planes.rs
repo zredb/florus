@@ -1,51 +1,54 @@
-//! Example: Get Flow Field with Custom Planes
+//! Example: Plot velocity deficit profiles
 //!
-//! This example demonstrates extracting flow field data on custom planes.
+//! This example illustrates how to extract velocity deficit profiles at
+//! several locations downstream of a turbine. The velocity deficit is defined
+//! as `(homogeneous_wind_speed - u) / homogeneous_wind_speed`, where `u` is
+//! the wake velocity obtained with a homogeneous inflow.
 //!
-//! Corresponds to: examples_get_flow/004_get_flow_with_custom_planes.py
+//! Scenario aligned 1:1 with
+//! examples_get_flow/004_plot_velocity_deficit_profiles.py.
 
-use florus::{FlorisModel, Result};
+use florus::floris_model::FlorisModel;
+use florus::types::Array1;
 
-fn main() -> Result<()> {
-    println!("=== Get Flow with Custom Planes ===\n");
+fn main() -> anyhow::Result<()> {
+    let d = 125.88; // The turbine diameter
+    let hub_height = 90.0;
+    let homogeneous_wind_speed = 8.0;
 
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-    fmodel.set_layout(&ndarray::arr1(&[0.0, 630.0]), &ndarray::arr1(&[0.0, 0.0]))?;
+    fmodel.set_layout(&Array1::from_vec(vec![0.0]), &Array1::from_vec(vec![0.0]))?;
 
-    fmodel.set_wind_conditions(
-        ndarray::arr1(&[8.0]),
-        ndarray::arr1(&[270.0]),
-        ndarray::arr1(&[0.06]),
+    // The profiles are sampled at three distances downstream of the turbine,
+    // along lines parallel to the cross-stream direction
+    let downstream_dists = [3.0 * d, 5.0 * d, 7.0 * d];
+
+    let profiles = fmodel.sample_velocity_deficit_profiles(
+        "cross-stream",
+        Some(&downstream_dists),
+        None,
+        100,
+        None,
+        Some(homogeneous_wind_speed),
+        None,
+        0.0,
+        0.0,
+        Some(hub_height),
     )?;
 
-    println!("Custom Plane Extraction Concept:\n");
-    println!("Flow field can be sampled on various planes:");
-    println!("  1. Horizontal planes (z = constant)");
-    println!("     - Hub height plane");
-    println!("     - Ground level plane");
-    println!("     - Multiple heights for 3D analysis\n");
+    for (i, profile) in profiles.iter().enumerate() {
+        println!(
+            "Profile at {:.1} m downstream (x1/D = {:.3}), velocity deficit:",
+            downstream_dists[i], profile.x1[0]
+        );
+        // Print every tenth point of the profile
+        for j in (0..profile.velocity_deficit.len()).step_by(10) {
+            println!(
+                "  x2/D = {:+.3}, deficit = {:.6}",
+                profile.x2[j], profile.velocity_deficit[j]
+            );
+        }
+    }
 
-    println!("  2. Vertical planes (x or y = constant)");
-    println!("     - Cross-stream planes");
-    println!("     - Streamwise planes");
-    println!("     - Wake cross-sections\n");
-
-    println!("  3. Arbitrary oriented planes");
-    println!("     - Tilted planes");
-    println!("     - Rotated coordinates");
-    println!("     - Custom orientations\n");
-
-    println!("Applications:");
-    println!("  - Wake visualization");
-    println!("  - Model validation");
-    println!("  - Turbine placement optimization");
-    println!("  - Load analysis\n");
-
-    fmodel.run()?;
-    println!(
-        "Note: Full custom plane extraction requires sample_velocity_deficit_profiles method."
-    );
-
-    println!("\n=== Example Complete ===");
     Ok(())
 }

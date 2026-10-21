@@ -1,4 +1,4 @@
-﻿use crate::core::turbines::cp_ct_table::TableConditions;
+use crate::core::turbines::cp_ct_table::TableConditions;
 use crate::core::turbines::operation_models::{POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED};
 use crate::core::{Core, Farm, FlowField, State, TurbineGrid};
 use crate::floris_config::{FlorisConfig, SolverConfig};
@@ -2142,6 +2142,141 @@ impl FlorisModel {
         }
 
         velocities
+    }
+
+    /// Extract velocity deficit profiles at a set of downstream distances.
+    ///
+    /// Python `FlorisModel.sample_velocity_deficit_profiles`
+    /// (floris/floris_model.py): the velocity deficit is
+    /// `(homogeneous_wind_speed - u) / homogeneous_wind_speed`, where `u` is
+    /// the wake velocity obtained with a homogeneous inflow (the wind shear
+    /// is temporarily set to zero, as in Python).
+    ///
+    /// * `direction` - "cross-stream" or "vertical"
+    /// * `downstream_dists` - the streamwise locations of the profiles
+    ///   (default: `ref_rotor_diameter * [3, 5, 7, 9]`)
+    /// * `profile_range` - the extent of the profile lines (default:
+    ///   `ref_rotor_diameter * [-2, 2]`)
+    /// * `resolution` - the number of points of every profile
+    /// * `wind_direction` - the wind direction (default: the single wind
+    ///   direction of the model)
+    /// * `homogeneous_wind_speed` - the wind speed of the homogeneous inflow
+    ///   (default: the single wind speed of the model)
+    /// * `ref_rotor_diameter` - the reference rotor diameter (default: the
+    ///   rotor diameter of the farm)
+    /// * `x_start`, `y_start` - the origin of the profiles
+    /// * `reference_height` - the height of the horizontal plane (default:
+    ///   the reference wind height of the model)
+    pub fn sample_velocity_deficit_profiles(
+        &mut self,
+        direction: &str,
+        downstream_dists: Option<&[Float]>,
+        profile_range: Option<&[Float]>,
+        resolution: usize,
+        wind_direction: Option<Float>,
+        homogeneous_wind_speed: Option<Float>,
+        ref_rotor_diameter: Option<Float>,
+        x_start: Float,
+        y_start: Float,
+        reference_height: Option<Float>,
+    ) -> crate::Result<Vec<crate::core::core::VelocityDeficitProfile>> {
+        // The reference rotor diameter
+        let ref_rotor_diameter = match ref_rotor_diameter {
+            Some(d) => d,
+            None => {
+                let diameters = self.core.farm.rotor_diameters();
+                let mut unique = diameters.to_vec();
+                unique.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                unique.dedup();
+                if unique.len() != 1 {
+                    anyhow::bail!(
+                        "Please provide a `ref_rotor_diameter`. This is needed to normalize the \
+                         coordinates."
+                    );
+                }
+                unique[0]
+            }
+        };
+
+        let downstream_dists: Vec<Float> = match downstream_dists {
+            Some(d) => d.to_vec(),
+            None => vec![
+                3.0 * ref_rotor_diameter,
+                5.0 * ref_rotor_diameter,
+                7.0 * ref_rotor_diameter,
+                9.0 * ref_rotor_diameter,
+            ],
+        };
+        let profile_range: Vec<Float> = match profile_range {
+            Some(r) => r.to_vec(),
+            None => vec![-2.0 * ref_rotor_diameter, 2.0 * ref_rotor_diameter],
+        };
+
+        // The wind direction and the homogeneous wind speed
+        let wind_direction = match wind_direction {
+            Some(wd) => wd,
+            None => {
+                if self.core.flow_field.wind_directions.len() != 1 {
+                    anyhow::bail!(
+                        "Could not determine a wind direction for which to sample the velocity \
+                         profiles. Either provide a single `wind_direction` as an argument to this \
+                         method, or initialize the Floris object with a single wind direction."
+                    );
+                }
+                self.core.flow_field.wind_directions[0]
+            }
+        };
+        let homogeneous_wind_speed = match homogeneous_wind_speed {
+            Some(ws) => ws,
+            None => {
+                if self.core.flow_field.wind_speeds.len() != 1 {
+                    anyhow::bail!(
+                        "Could not determine a wind speed for which to sample the velocity \
+                         profiles. Provide a single `homogeneous_wind_speed` to this method."
+                    );
+                }
+                self.core.flow_field.wind_speeds[0]
+            }
+        };
+        let reference_height =
+            reference_height.unwrap_or(self.core.flow_field.reference_wind_height);
+
+        // The inflow is homogeneous while the profiles are sampled: the wind
+        // shear is temporarily set to zero and the wind conditions are reduced
+        // to a single direction and speed (Python does the same).
+        let wind_directions_copy = self.core.flow_field.wind_directions.clone();
+        let wind_speeds_copy = self.core.flow_field.wind_speeds.clone();
+        let wind_shear_copy = self.core.flow_field.wind_shear;
+        let turbulence_intensities = self.core.flow_field.turbulence_intensities.clone();
+
+        self.set_wind_conditions(
+            Array1::from_vec(vec![homogeneous_wind_speed]),
+            Array1::from_vec(vec![wind_direction]),
+            Array1::from_vec(vec![turbulence_intensities[0]]),
+        )?;
+        self.set_wind_shear(0.0)?;
+
+        let profiles = self.core.solve_for_velocity_deficit_profiles(
+            direction,
+            &downstream_dists,
+            &profile_range,
+            resolution,
+            homogeneous_wind_speed,
+            ref_rotor_diameter,
+            x_start,
+            y_start,
+            reference_height,
+        );
+
+        // Restore the original wind conditions
+        self.set_wind_conditions(
+            wind_speeds_copy,
+            wind_directions_copy,
+            turbulence_intensities,
+        )?;
+        self.set_wind_shear(wind_shear_copy)?;
+
+        profiles
     }
 
     /// Sample the flow velocity at arbitrary points, solving the wake AT the

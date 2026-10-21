@@ -96,6 +96,25 @@ impl Clone for Core {
     }
 }
 
+/// One velocity deficit profile (Python: the DataFrame returned by
+/// Core.solve_for_velocity_deficit_profiles).
+#[derive(Debug, Clone)]
+pub struct VelocityDeficitProfile {
+    /// The inertial x coordinates of the sample points
+    pub x: Array1,
+    /// The inertial y coordinates of the sample points
+    pub y: Array1,
+    /// The heights of the sample points
+    pub z: Array1,
+    /// The streamwise coordinate, normalized by the reference rotor diameter
+    pub x1: Array1,
+    /// The cross-stream coordinate, normalized by the reference rotor diameter
+    pub x2: Array1,
+    /// The vertical coordinate, normalized by the reference rotor diameter
+    pub x3: Array1,
+    /// The velocity deficit of every sample point
+    pub velocity_deficit: Array1,
+}
 impl Core {
     /// Create a Core instance from a YAML configuration file
     ///
@@ -485,6 +504,93 @@ impl Core {
     /// state) — numerically identical, strictly safer. The `cc` and
     /// `empirical_gauss` models are rejected until their full-flow solver
     /// variants are ported; `turbopark` matches Python's explicit refusal.
+    /// Extract velocity deficit profiles at a set of downstream distances.
+    ///
+    /// Python `core.solve_for_velocity_deficit_profiles`
+    /// (floris/core/core.py): for every downstream distance a line of sample
+    /// points is created along the cross-stream (or vertical) direction, the
+    /// points are transformed into the inertial frame and the velocity is
+    /// sampled. The deficit is `(homogeneous_wind_speed - u) /
+    /// homogeneous_wind_speed`.
+    pub fn solve_for_velocity_deficit_profiles(
+        &self,
+        direction: &str,
+        downstream_dists: &[Float],
+        profile_range: &[Float],
+        resolution: usize,
+        homogeneous_wind_speed: Float,
+        ref_rotor_diameter: Float,
+        x_start: Float,
+        y_start: Float,
+        reference_height: Float,
+    ) -> crate::Result<Vec<VelocityDeficitProfile>> {
+        if direction != "cross-stream" && direction != "vertical" {
+            anyhow::bail!("`direction` must be either `cross-stream` or `vertical`.");
+        }
+        if resolution < 2 {
+            anyhow::bail!("`resolution` must be at least 2.");
+        }
+
+        // The rotation of the wind-direction relative frame into the inertial
+        // frame (Python utilities.py:reverse_rotate_coordinates_rel_west):
+        // the angle is the deviation from west.
+        let wind_direction = self.flow_field.wind_directions[0];
+        let angle = (-(wind_direction - 270.0)).to_radians();
+        let (sin_angle, cos_angle) = angle.sin_cos();
+
+        let n_lines = downstream_dists.len();
+        let mut points_x: Vec<Float> = Vec::with_capacity(n_lines * resolution);
+        let mut points_y: Vec<Float> = Vec::with_capacity(n_lines * resolution);
+        let mut points_z: Vec<Float> = Vec::with_capacity(n_lines * resolution);
+        let mut x1_values: Vec<Float> = Vec::with_capacity(n_lines * resolution);
+        let mut x2_values: Vec<Float> = Vec::with_capacity(n_lines * resolution);
+        let mut x3_values: Vec<Float> = Vec::with_capacity(n_lines * resolution);
+
+        for downstream in downstream_dists {
+            for j in 0..resolution {
+                let single_line = profile_range[0]
+                    + (profile_range[1] - profile_range[0]) * j as Float
+                        / (resolution - 1) as Float;
+                let (x1, x2, x3) = if direction == "cross-stream" {
+                    (*downstream, single_line, 0.0)
+                } else {
+                    (*downstream, 0.0, single_line)
+                };
+
+                // Rotate about the origin and translate
+                points_x.push(x1 * cos_angle - x2 * sin_angle + x_start);
+                points_y.push(x1 * sin_angle + x2 * cos_angle + y_start);
+                points_z.push(x3 + reference_height);
+
+                x1_values.push(x1 / ref_rotor_diameter);
+                x2_values.push(x2 / ref_rotor_diameter);
+                x3_values.push(x3 / ref_rotor_diameter);
+            }
+        }
+
+        let (velocities, _) = self.solve_for_points(&points_x, &points_y, &points_z)?;
+
+        let mut profiles = Vec::with_capacity(n_lines);
+        for i in 0..n_lines {
+            let start = i * resolution;
+            let end = start + resolution;
+            let deficit: Array1 = (start..end)
+                .map(|k| (homogeneous_wind_speed - velocities[[0, k]]) / homogeneous_wind_speed)
+                .collect();
+            profiles.push(VelocityDeficitProfile {
+                x: Array1::from_vec(points_x[start..end].to_vec()),
+                y: Array1::from_vec(points_y[start..end].to_vec()),
+                z: Array1::from_vec(points_z[start..end].to_vec()),
+                x1: Array1::from_vec(x1_values[start..end].to_vec()),
+                x2: Array1::from_vec(x2_values[start..end].to_vec()),
+                x3: Array1::from_vec(x3_values[start..end].to_vec()),
+                velocity_deficit: deficit,
+            });
+        }
+
+        Ok(profiles)
+    }
+
     pub fn solve_for_points(
         &self,
         points_x: &[f64],
@@ -553,10 +659,14 @@ impl Core {
 
         // Solve on a scratch copy; the main solve state stays intact.
         let mut points_flow_field = self.flow_field.clone();
+        // The wind shear is referenced to the hub height of the farm, not to
+        // the heights of the sampling points (Python uses the turbine grid's
+        // hub heights, core.py:246-247).
+        let farm_hub_heights = self.farm.hub_heights().clone();
         points_flow_field.initialize_flow_field_with_coordinates(
             points_grid.grid_shape(),
             points_grid.z_sorted(),
-            &points_grid.hub_heights(),
+            &farm_hub_heights,
             Some(points_grid.x_sorted_inertial_frame()),
             Some(points_grid.y_sorted_inertial_frame()),
         );

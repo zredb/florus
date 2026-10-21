@@ -1,56 +1,61 @@
-//! Example: Extract Turbulence Intensity at Points
+//! Example: Extract the turbulence intensity at points
 //!
-//! Demonstrates sample_ti_at_points to extract TI at user-specified locations.
+//! This example demonstrates the use of the `sample_ti_at_points` method: the
+//! turbulence intensity is extracted at user-specified locations in the flow.
+//! The TI is sampled at a single x, y location and four different heights
+//! over a sweep of wind directions, which mimics the TI measurements of a met
+//! mast.
 //!
-//! Corresponds to: examples_get_flow/003_extract_turbulence_intensity_at_points.py
+//! Scenario aligned 1:1 with
+//! examples_get_flow/003_extract_turbulence_intensity_at_points.py.
 
-use florus::{FlorisModel, Result};
+use florus::floris_model::FlorisModel;
+use florus::types::Array1;
 
-fn main() -> Result<()> {
-    println!("=== Extract Turbulence Intensity at Points ===\n");
+fn main() -> anyhow::Result<()> {
+    // The met mast location (0 to 3, as in the Python example)
+    let met_mast_option = 0;
 
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
+
+    // A two-turbine farm
     let d = 126.0;
-    fmodel.set_layout(&ndarray::arr1(&[0.0, 3.0 * d]), &ndarray::arr1(&[0.0, 0.0]))?;
+    fmodel.set_layout(
+        &Array1::from_vec(vec![0.0, 3.0 * d]),
+        &Array1::from_vec(vec![0.0, 3.0 * d]),
+    )?;
 
-    let points_x = vec![3.0 * d; 4];
-    let points_y = vec![0.0; 4];
-    let points_z = vec![30.0, 90.0, 150.0, 250.0];
+    // The wind direction is swept over 360 degrees
+    let wd_array: Vec<f64> = (0..360).map(|i| i as f64).collect();
+    let n = wd_array.len();
+    fmodel.set_wind_conditions(
+        Array1::from_vec(vec![8.0; n]),
+        Array1::from_vec(wd_array.clone()),
+        Array1::from_vec(vec![0.06; n]),
+    )?;
 
-    println!(
-        "Met Mast at ({:.0}, 0) with heights: {:?} m\n",
-        3.0 * d,
-        points_z
-    );
+    // The met mast in between the turbines
+    let (points_x, points_y) = match met_mast_option {
+        0 => (vec![3.0 * d; 4], vec![0.0; 4]),
+        1 => (vec![200.0; 4], vec![200.0; 4]),
+        2 => (vec![20.0; 4], vec![20.0; 4]),
+        _ => (vec![305.0; 4], vec![158.0; 4]),
+    };
+    let points_z = [30.0, 90.0, 150.0, 250.0];
 
-    println!("TI at Met Mast:");
-    println!(
-        "{:<10} | {:<10} | {:<10} | {:<10} | {:<10}",
-        "WD (deg)", "z=30m", "z=90m", "z=150m", "z=250m"
-    );
-    println!("{}", "-".repeat(58));
+    let ti_at_points = fmodel.sample_ti_at_points(&points_x, &points_y, &points_z)?;
 
-    for wd in (0..360).step_by(30) {
-        fmodel.set_wind_conditions(
-            ndarray::arr1(&[8.0]),
-            ndarray::arr1(&[wd as f64]),
-            ndarray::arr1(&[0.06]),
-        )?;
-        fmodel.run()?;
-
-        let ti_at_points = fmodel.sample_ti_at_points(&points_x, &points_y, &points_z)?;
-
-        // Returns (n_findex, n_points); the model has a single condition.
+    println!("Wind direction [deg], TI at z=30 m, z=90 m, z=150 m, z=250 m");
+    for i in 0..n {
         println!(
-            "{:<10} | {:<10.4} | {:<10.4} | {:<10.4} | {:<10.4}",
-            wd,
-            ti_at_points[[0, 0]],
-            ti_at_points[[0, 1]],
-            ti_at_points[[0, 2]],
-            ti_at_points[[0, 3]]
+            "{:.0}, {:.6}, {:.6}, {:.6}, {:.6}",
+            wd_array[i],
+            ti_at_points[[i, 0]],
+            ti_at_points[[i, 1]],
+            ti_at_points[[i, 2]],
+            ti_at_points[[i, 3]]
         );
     }
 
-    println!("\n=== Example Complete ===");
     Ok(())
 }
