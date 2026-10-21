@@ -1,4 +1,4 @@
-﻿//! The uncertain FLORIS model: the mean power of a farm for a distribution
+//! The uncertain FLORIS model: the mean power of a farm for a distribution
 //! of wind direction deviations.
 //!
 //! Python `floris/uncertain_floris_model.py`: the wind conditions of the
@@ -8,6 +8,7 @@
 
 use crate::floris_model::FlorisModel;
 use crate::types::{Array1, Array2, Array3, Float};
+use crate::wind_data::WindData;
 use anyhow::Result;
 use ndarray::s;
 use std::collections::HashMap;
@@ -25,6 +26,26 @@ fn row_key(row: &[Float]) -> Vec<u8> {
         key.extend_from_slice(&value.to_bits().to_le_bytes());
     }
     key
+}
+
+/// Round a value to the nearest multiple of `resolution`.
+///
+/// The ties are rounded to the even value, exactly as `numpy.round` does
+/// (Python's `_get_rounded_inputs` uses `np.round(x / resolution) * resolution`).
+fn round_to_resolution(value: Float, resolution: Float) -> Float {
+    let scaled = value / resolution;
+    let fractional = scaled - scaled.trunc();
+    if fractional.abs() == 0.5 {
+        // A tie: round to the even multiple
+        let floor = scaled.floor();
+        let even = if (floor as i64) % 2 == 0 {
+            floor
+        } else {
+            floor + 1.0
+        };
+        return even * resolution;
+    }
+    scaled.round() * resolution
 }
 
 /// A model with an uncertainty in the wind direction.
@@ -184,20 +205,17 @@ impl UncertainFlorisModel {
         }
 
         // Round the inputs to the resolutions (Python
-        // `_get_rounded_inputs`)
-        let resolutions = [
-            1.0,   // wind direction [deg]
-            1.0,   // wind speed [m/s]
-            0.01,  // turbulence intensity
-            1.0,   // yaw angle [deg]
-            100.0, // power setpoint [W]
-            0.1,   // AWC amplitude [deg]
-        ];
+        // `_get_rounded_inputs`). The resolutions are per column: the wind
+        // direction, the wind speed and the turbulence intensity, then the
+        // yaw angles, the power setpoints and the AWC amplitudes.
         for row in inputs.iter_mut() {
-            for (i, resolution) in resolutions.iter().enumerate() {
-                if i < row.len() {
-                    row[i] = (row[i] / resolution).round() * resolution;
-                }
+            row[0] = round_to_resolution(row[0], 1.0);
+            row[1] = round_to_resolution(row[1], 1.0);
+            row[2] = round_to_resolution(row[2], 0.01);
+            for t in 0..n_turbines {
+                row[3 + t] = round_to_resolution(row[3 + t], 1.0);
+                row[3 + n_turbines + t] = round_to_resolution(row[3 + n_turbines + t], 100.0);
+                row[3 + 2 * n_turbines + t] = round_to_resolution(row[3 + 2 * n_turbines + t], 0.1);
             }
         }
 
@@ -302,6 +320,26 @@ impl UncertainFlorisModel {
     ) -> Result<()> {
         self.model
             .set_wind_conditions(wind_speeds, wind_directions, turbulence_intensities)?;
+        self.expand()
+    }
+
+    /// Set the wind data of the model and expand the conditions again.
+    ///
+    /// Python `UncertainFlorisModel.set(wind_data=...)` replaces the wind
+    /// conditions of the unexpanded model and expands them.
+    pub fn set_wind_data(&mut self, wind_data: &dyn WindData) -> Result<()> {
+        self.model.set_wind_data(wind_data)?;
+        self.expand()
+    }
+
+    /// Set the yaw angles of the model and expand the conditions again.
+    ///
+    /// The yaw angles are set on the unexpanded model, so all the expanded
+    /// wind directions use the same yaw misalignment (unless
+    /// `fix_yaw_to_nominal_direction` is set), exactly as Python's
+    /// `UncertainFlorisModel.set(yaw_angles=...)`.
+    pub fn set_yaw_angles(&mut self, yaw_angles: Array2) -> Result<()> {
+        self.model.set_yaw_angles(yaw_angles)?;
         self.expand()
     }
 

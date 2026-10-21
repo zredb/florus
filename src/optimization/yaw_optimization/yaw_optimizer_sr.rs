@@ -22,8 +22,236 @@
 
 use crate::floris_model::FlorisModel;
 use crate::types::{Array1, Array2, Float};
+use crate::uncertain::UncertainFlorisModel;
 
 use super::{YawOptimization, YawOptimizationConfig, YawOptimizationResult};
+
+/// The evaluation of the farm power for a batch of ambient conditions and
+/// yaw angles.
+///
+/// The Serial-Refine optimizer evaluates the farm power for a batch of
+/// conditions: the conditions are tiled `Ny` times, one copy for every row of
+/// the evaluation grid (Python `_calc_powers_with_memory`). For a
+/// `FlorisModel` the farm power is the weighted sum of the turbine powers;
+/// for an `UncertainFlorisModel` the turbine powers are first averaged over
+/// the wind direction distribution (Python's
+/// `UncertainFlorisModel.get_turbine_powers`).
+pub trait YawPowerEvaluator {
+    /// The ambient conditions of the model: the wind directions, the wind
+    /// speeds and the turbulence intensities.
+    fn conditions(&self) -> (Array1, Array1, Array1);
+
+    /// The layout of the farm: the x and the y coordinates of the turbines.
+    fn layout(&self) -> (Array1, Array1);
+
+    /// The weighted farm power of a batch of conditions.
+    fn farm_powers(
+        &mut self,
+        wind_directions: &Array1,
+        wind_speeds: &Array1,
+        turbulence_intensities: &Array1,
+        yaw_angles: &Array2,
+        turbine_weights: &[Float],
+    ) -> anyhow::Result<Array1>;
+
+    /// The turbine powers of a batch of conditions.
+    fn turbine_powers(
+        &mut self,
+        wind_directions: &Array1,
+        wind_speeds: &Array1,
+        turbulence_intensities: &Array1,
+        yaw_angles: &Array2,
+    ) -> anyhow::Result<Array2>;
+}
+
+/// Tile the power setpoints of a model over a batch of conditions.
+///
+/// The optimizer stacks `Ny` copies of the conditions per evaluation, so the
+/// saved `(n_findex, n_turbines)` table has to be tiled to the batch size
+/// (Python's `np.tile(setpoints, (Ny, 1))`).
+fn tile_power_setpoints(saved: &Array2, n_batch: usize) -> Array2 {
+    let n_saved = saved.shape()[0];
+    let n_turbines = saved.shape()[1];
+    if n_batch == n_saved {
+        return saved.clone();
+    }
+    Array2::from_shape_fn((n_batch, n_turbines), |(r, c)| saved[[r % n_saved, c]])
+}
+
+/// The power evaluator of a `FlorisModel`.
+pub struct FlorisModelPowerEvaluator<'a> {
+    fmodel: &'a mut FlorisModel,
+}
+
+impl<'a> FlorisModelPowerEvaluator<'a> {
+    pub fn new(fmodel: &'a mut FlorisModel) -> Self {
+        Self { fmodel }
+    }
+}
+
+impl YawPowerEvaluator for FlorisModelPowerEvaluator<'_> {
+    fn conditions(&self) -> (Array1, Array1, Array1) {
+        (
+            self.fmodel.flow_field().wind_directions.clone(),
+            self.fmodel.flow_field().wind_speeds.clone(),
+            self.fmodel.flow_field().turbulence_intensities.clone(),
+        )
+    }
+
+    fn layout(&self) -> (Array1, Array1) {
+        (
+            self.fmodel.farm().layout_x.clone(),
+            self.fmodel.farm().layout_y.clone(),
+        )
+    }
+
+    /// Python `_calculate_farm_power` (yaw_optimization_base.py:306-375):
+    /// one batched FLORIS run for the given conditions and yaw angles, then
+    /// the turbine-weighted farm power per condition.
+    ///
+    /// `set_wind_conditions` resets the control arrays (yaw, setpoints, AWC)
+    /// to their reference defaults; the optimizer must preserve the
+    /// power setpoints that were set by `set_operation(disable_turbines=...)`
+    /// across evaluations (Python deep-copies the model, keeping them).
+    fn farm_powers(
+        &mut self,
+        wind_directions: &Array1,
+        wind_speeds: &Array1,
+        turbulence_intensities: &Array1,
+        yaw_angles: &Array2,
+        turbine_weights: &[Float],
+    ) -> anyhow::Result<Array1> {
+        let n = wind_directions.len();
+
+        let saved_setpoints = self.fmodel.core().farm.power_setpoints.clone();
+        let setpoints_to_restore = tile_power_setpoints(&saved_setpoints, wind_speeds.len());
+
+        self.fmodel.set_wind_conditions(
+            wind_speeds.clone(),
+            wind_directions.clone(),
+            turbulence_intensities.clone(),
+        )?;
+        self.fmodel
+            .core_mut()
+            .farm
+            .set_power_setpoints(setpoints_to_restore);
+        self.fmodel.set_yaw_angles(yaw_angles.clone())?;
+        self.fmodel.run()?;
+        let powers = self.fmodel.get_turbine_powers()?;
+
+        let mut farm_power = Array1::zeros(n);
+        for fi in 0..n {
+            let mut sum = 0.0;
+            for (ti_idx, &w) in turbine_weights.iter().enumerate() {
+                sum += w * powers[[fi, ti_idx]];
+            }
+            farm_power[fi] = sum;
+        }
+        Ok(farm_power)
+    }
+
+    fn turbine_powers(
+        &mut self,
+        wind_directions: &Array1,
+        wind_speeds: &Array1,
+        turbulence_intensities: &Array1,
+        yaw_angles: &Array2,
+    ) -> anyhow::Result<Array2> {
+        self.fmodel.set_wind_conditions(
+            wind_speeds.clone(),
+            wind_directions.clone(),
+            turbulence_intensities.clone(),
+        )?;
+        self.fmodel.set_yaw_angles(yaw_angles.clone())?;
+        self.fmodel.run()?;
+        self.fmodel.get_turbine_powers()
+    }
+}
+
+/// The power evaluator of an `UncertainFlorisModel`.
+///
+/// The turbine powers are averaged over the wind direction distribution
+/// before they are weighted, exactly as in Python (the optimizer runs on the
+/// expanded model of the uncertainty wrapper).
+pub struct UncertainPowerEvaluator<'a> {
+    model: &'a mut UncertainFlorisModel,
+}
+
+impl<'a> UncertainPowerEvaluator<'a> {
+    pub fn new(model: &'a mut UncertainFlorisModel) -> Self {
+        Self { model }
+    }
+}
+
+impl YawPowerEvaluator for UncertainPowerEvaluator<'_> {
+    fn conditions(&self) -> (Array1, Array1, Array1) {
+        (
+            self.model.model.flow_field().wind_directions.clone(),
+            self.model.model.flow_field().wind_speeds.clone(),
+            self.model.model.flow_field().turbulence_intensities.clone(),
+        )
+    }
+
+    fn layout(&self) -> (Array1, Array1) {
+        (
+            self.model.model.farm().layout_x.clone(),
+            self.model.model.farm().layout_y.clone(),
+        )
+    }
+
+    fn farm_powers(
+        &mut self,
+        wind_directions: &Array1,
+        wind_speeds: &Array1,
+        turbulence_intensities: &Array1,
+        yaw_angles: &Array2,
+        turbine_weights: &[Float],
+    ) -> anyhow::Result<Array1> {
+        let powers = self.turbine_powers(
+            wind_directions,
+            wind_speeds,
+            turbulence_intensities,
+            yaw_angles,
+        )?;
+        let n = powers.shape()[0];
+        let mut farm_power = Array1::zeros(n);
+        for fi in 0..n {
+            let mut sum = 0.0;
+            for (ti_idx, &w) in turbine_weights.iter().enumerate() {
+                sum += w * powers[[fi, ti_idx]];
+            }
+            farm_power[fi] = sum;
+        }
+        Ok(farm_power)
+    }
+
+    fn turbine_powers(
+        &mut self,
+        wind_directions: &Array1,
+        wind_speeds: &Array1,
+        turbulence_intensities: &Array1,
+        yaw_angles: &Array2,
+    ) -> anyhow::Result<Array2> {
+        // The power setpoints are preserved across the condition reset (the
+        // expansion of the model copies them to the expanded conditions).
+        let saved_setpoints = self.model.model.core().farm.power_setpoints.clone();
+        let setpoints_to_restore = tile_power_setpoints(&saved_setpoints, wind_speeds.len());
+
+        self.model.set_wind_conditions(
+            wind_speeds.clone(),
+            wind_directions.clone(),
+            turbulence_intensities.clone(),
+        )?;
+        self.model
+            .model
+            .core_mut()
+            .farm
+            .set_power_setpoints(setpoints_to_restore);
+        self.model.set_yaw_angles(yaw_angles.clone())?;
+        self.model.run()?;
+        self.model.get_turbine_powers()
+    }
+}
 
 /// Serial-Refine configuration (Python `Ny_passes=[5, 4]`).
 ///
@@ -85,10 +313,12 @@ impl YawOptimizationSR {
     /// wind direction, turbines sorted by x in the wind-aligned frame
     /// (`np.argsort` of the rotated layout x; numpy's small-array sort is
     /// stable for ties, matching Rust's stable sort).
-    fn turbine_orders(fmodel: &FlorisModel, wind_directions: &Array1) -> Vec<Vec<usize>> {
-        let n_turbines = fmodel.farm().n_turbines();
-        let layout_x = fmodel.farm().layout_x.clone();
-        let layout_y = fmodel.farm().layout_y.clone();
+    fn turbine_orders(
+        layout_x: &Array1,
+        layout_y: &Array1,
+        wind_directions: &Array1,
+    ) -> Vec<Vec<usize>> {
+        let n_turbines = layout_x.len();
 
         wind_directions
             .iter()
@@ -106,83 +336,14 @@ impl YawOptimizationSR {
             .collect()
     }
 
-    /// Python `_calculate_farm_power` (yaw_optimization_base.py:306-375):
-    /// one batched FLORIS run for the given conditions and yaw angles, then
-    /// the turbine-weighted farm power per condition.
+    /// Optimize the yaw angles with a custom power evaluator.
     ///
-    /// `set_wind_conditions` resets the control arrays (yaw, setpoints, AWC)
-    /// to their reference defaults; the optimizer must preserve the
-    /// power setpoints that were set by `set_operation(disable_turbines=...)`
-    /// across evaluations (Python deep-copies the model, keeping them).
-    fn calculate_farm_powers(
-        fmodel: &mut FlorisModel,
-        wd: &Array1,
-        ws: &Array1,
-        ti: &Array1,
-        yaw_angles: &Array2,
-        turbine_weights: &[Float],
-    ) -> anyhow::Result<Array1> {
-        let n = wd.len();
-
-        // Preserve power setpoints across the condition reset. The optimizer
-        // stacks Ny copies of the conditions per evaluation, so the saved
-        // (n_findex, n_turbines) table must be tiled to the batch size
-        // (Python's deep copy + set() handles this implicitly).
-        let saved_setpoints = fmodel.core().farm.power_setpoints.clone();
-        let n_saved = saved_setpoints.shape()[0];
-        let n_turbines = saved_setpoints.shape()[1];
-
-        fmodel.set_wind_conditions(ws.clone(), wd.clone(), ti.clone())?;
-
-        // Tile the saved setpoints if the batch has more conditions
-        let n_batch = ws.len();
-        let setpoints_to_restore = if n_batch == n_saved {
-            saved_setpoints
-        } else {
-            // Tile row i -> rows i, i+n_saved, i+2*n_saved, ...
-            // This matches Python's np.tile(setpoints, (Ny, 1))
-            Array2::from_shape_fn((n_batch, n_turbines), |(r, c)| {
-                saved_setpoints[[r % n_saved, c]]
-            })
-        };
-        fmodel
-            .core_mut()
-            .farm
-            .set_power_setpoints(setpoints_to_restore);
-        fmodel.set_yaw_angles(yaw_angles.clone())?;
-        fmodel.run()?;
-        let powers = fmodel.get_turbine_powers()?;
-
-        let mut farm_power = Array1::zeros(n);
-        for fi in 0..n {
-            let mut sum = 0.0;
-            for (ti_idx, &w) in turbine_weights.iter().enumerate() {
-                sum += w * powers[[fi, ti_idx]];
-            }
-            farm_power[fi] = sum;
-        }
-        Ok(farm_power)
-    }
-
-    fn linspace(a: Float, b: Float, n: usize) -> Vec<Float> {
-        if n == 1 {
-            return vec![a];
-        }
-        let step = (b - a) / (n as Float - 1.0);
-        (0..n).map(|i| a + step * i as Float).collect()
-    }
-}
-
-impl Default for YawOptimizationSR {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl YawOptimization for YawOptimizationSR {
-    fn optimize(
+    /// The evaluator provides the ambient conditions, the layout and the
+    /// farm power of a batch of conditions, so the same optimizer can be
+    /// applied to a `FlorisModel` and to an `UncertainFlorisModel`.
+    pub fn optimize_with_evaluator(
         &mut self,
-        fmodel: &mut FlorisModel,
+        evaluator: &mut dyn YawPowerEvaluator,
         config: Option<YawOptimizationConfig>,
     ) -> anyhow::Result<YawOptimizationResult> {
         if let Some(cfg) = config {
@@ -190,17 +351,12 @@ impl YawOptimization for YawOptimizationSR {
         }
         self.sr_config.validate()?;
 
-        if !fmodel.state().initialized {
-            anyhow::bail!("FlorisModel must be run before optimization");
-        }
-
-        let n_findex = fmodel.flow_field().n_findex;
-        let n_turbines = fmodel.farm().n_turbines();
-
         // Ambient conditions of the (subset) model
-        let wd = fmodel.flow_field().wind_directions.clone();
-        let ws = fmodel.flow_field().wind_speeds.clone();
-        let ti = fmodel.flow_field().turbulence_intensities.clone();
+        let (wd, ws, ti) = evaluator.conditions();
+        let n_findex = wd.len();
+        let (layout_x, layout_y) = evaluator.layout();
+        let n_turbines = layout_x.len();
+
         let turbine_weights = self
             .config
             .turbine_weights
@@ -215,17 +371,11 @@ impl YawOptimization for YawOptimizationSR {
             .unwrap_or_else(|| Array2::zeros((n_findex, n_turbines)));
 
         // Front-to-back turbine order per wind direction
-        let orders = Self::turbine_orders(fmodel, &wd);
+        let orders = Self::turbine_orders(&layout_x, &layout_y, &wd);
 
         // Baseline weighted farm powers (Python _calculate_baseline_farm_power)
-        let farm_powers_baseline = Self::calculate_farm_powers(
-            fmodel,
-            &wd,
-            &ws,
-            &ti,
-            &yaw_angles_baseline,
-            &turbine_weights,
-        )?;
+        let farm_powers_baseline =
+            evaluator.farm_powers(&wd, &ws, &ti, &yaw_angles_baseline, &turbine_weights)?;
 
         // Optimal solutions start at the baseline
         let mut yaw_opt = yaw_angles_baseline.clone();
@@ -322,8 +472,7 @@ impl YawOptimization for YawOptimizationSR {
                     grid[row / n_findex][[row % n_findex, t]]
                 });
 
-                let farm_powers = Self::calculate_farm_powers(
-                    fmodel,
+                let farm_powers = evaluator.farm_powers(
                     &stacked_wd,
                     &stacked_ws,
                     &stacked_ti,
@@ -364,12 +513,7 @@ impl YawOptimization for YawOptimizationSR {
         }
 
         // Final per-turbine powers at the optimal yaw angles
-        let powers = {
-            fmodel.set_wind_conditions(ws.clone(), wd.clone(), ti.clone())?;
-            fmodel.set_yaw_angles(yaw_opt.clone())?;
-            fmodel.run()?;
-            fmodel.get_turbine_powers()?
-        };
+        let powers = evaluator.turbine_powers(&wd, &ws, &ti, &yaw_opt)?;
 
         let baseline_power: Float = farm_powers_baseline.sum();
         let optimized_power: Float = farm_power_opt.sum();
@@ -390,6 +534,35 @@ impl YawOptimization for YawOptimizationSR {
             farm_powers_opt: farm_power_opt,
             farm_powers_baseline,
         })
+    }
+
+    fn linspace(a: Float, b: Float, n: usize) -> Vec<Float> {
+        if n == 1 {
+            return vec![a];
+        }
+        let step = (b - a) / (n as Float - 1.0);
+        (0..n).map(|i| a + step * i as Float).collect()
+    }
+}
+
+impl Default for YawOptimizationSR {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl YawOptimization for YawOptimizationSR {
+    fn optimize(
+        &mut self,
+        fmodel: &mut FlorisModel,
+        config: Option<YawOptimizationConfig>,
+    ) -> anyhow::Result<YawOptimizationResult> {
+        if !fmodel.state().initialized {
+            anyhow::bail!("FlorisModel must be run before optimization");
+        }
+
+        let mut evaluator = FlorisModelPowerEvaluator::new(fmodel);
+        self.optimize_with_evaluator(&mut evaluator, config)
     }
 }
 

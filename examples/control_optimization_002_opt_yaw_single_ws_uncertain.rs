@@ -1,85 +1,93 @@
-//! Example: Optimize yaw for a single wind speed with uncertainty consideration.
+//! Example: Optimize yaw for a single wind speed and multiple wind directions.
+//! Compare certain and uncertain results.
 //!
-//! This example demonstrates yaw optimization across multiple wind directions,
-//! comparing baseline and optimized performance.
+//! Use the serial-refine method to optimize the yaw angles for a 3-turbine
+//! wind farm.  In one case use the FlorisModel without uncertainty and in the
+//! other use the UncertainFlorisModel with a wind direction standard
+//! deviation of 3 degrees.  Compare the results.
 //!
-//! Note: This is a simplified version. Full uncertainty modeling requires
-//! UncertainFlorisModel which may not be fully implemented yet.
+//! Scenario aligned 1:1 with
+//! examples_control_optimization/002_opt_yaw_single_ws_uncertain.py.
 
 use florus::optimization::yaw_optimization::{
-    YawOptimization, YawOptimizationConfig, YawOptimizationSR,
+    UncertainPowerEvaluator, YawOptimization, YawOptimizationSR,
 };
+use florus::types::Array1;
+use florus::uncertain::UncertainFlorisModel;
 use florus::{FlorisModel, Result, TimeSeries};
-use ndarray::Array1;
 
 fn main() -> Result<()> {
-    println!("=== Yaw Optimization - Single Wind Speed with Uncertainty ===\n");
-
-    // Load the FLORIS model
+    // Load the floris model and uncertain floris model
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-
-    // Define wind directions to sweep (250° to 290°, step 1°)
-    let wind_directions: Vec<f64> = (250..290).map(|d| d as f64).collect();
-    let n_dirs = wind_directions.len();
-
-    let wind_speeds = vec![8.0; n_dirs];
-    let turbulence_intensities = vec![0.06; n_dirs];
-
-    // Set layout: 3 turbines aligned in x-direction, 5D spacing
-    let d = 126.0; // Rotor diameter for NREL 5MW
-    fmodel.set_layout(
-        &Array1::from_vec(vec![0.0, 5.0 * d, 10.0 * d]),
-        &Array1::from_vec(vec![0.0, 0.0, 0.0]),
+    let mut ufmodel = UncertainFlorisModel::new(
+        FlorisModel::from_file("examples/inputs/gch.yaml")?,
+        3.0,
+        None,
     )?;
 
-    // Set wind conditions
+    // Define an inflow that keeps wind speed and TI constant while sweeping
+    // the wind directions
+    let wind_directions = Array1::from_iter((250..290).map(|d| d as f64));
+    let n_conditions = wind_directions.len();
+    let wind_speeds = Array1::from_elem(n_conditions, 8.0);
+    let turbulence_intensities = Array1::from_elem(n_conditions, 0.06);
     let time_series = TimeSeries::new(
-        Array1::from_vec(wind_directions),
-        Array1::from_vec(wind_speeds),
-        Array1::from_vec(turbulence_intensities),
+        wind_directions.clone(),
+        wind_speeds.clone(),
+        turbulence_intensities.clone(),
     )?;
+
+    // Reinitialize as a 3-turbine farm using the above inflow
+    let d = 126.0; // Rotor diameter for the NREL 5 MW
+    let layout_x = Array1::from_vec(vec![0.0, 5.0 * d, 10.0 * d]);
+    let layout_y = Array1::from_vec(vec![0.0, 0.0, 0.0]);
+    fmodel.set_layout(&layout_x, &layout_y)?;
     fmodel.set_wind_data(&time_series)?;
+    fmodel.run()?;
 
-    println!("Wind farm configuration:");
-    println!("  - Turbines: 3 (aligned in x-direction)");
-    println!("  - Spacing: 5D ({:.0} m) between turbines", 5.0 * d);
-    println!("  - Wind directions: {} conditions (250° to 289°)", n_dirs);
-    println!("  - Wind speed: 8.0 m/s (constant)");
-    println!("  - Turbulence intensity: 0.06 (constant)\n");
+    ufmodel.set_layout(&layout_x, &layout_y)?;
+    ufmodel.set_wind_data(&time_series)?;
 
-    // Initialize optimizer
-    println!("Running yaw optimization (Serial-Refine method)...");
-    let config = YawOptimizationConfig {
-        minimum_yaw_angle: -30.0,
-        maximum_yaw_angle: 30.0,
-        ..Default::default()
+    // Initialize optimizer object and run optimization using the Serial-Refine
+    // method
+    println!("++++++++++CERTAIN++++++++++++");
+    let mut yaw_opt = YawOptimizationSR::new();
+    let result_certain = yaw_opt.optimize(&mut fmodel, None)?;
+
+    // Repeat with uncertain model
+    println!("++++++++++UNCERTAIN++++++++++++");
+    let mut yaw_opt_u = YawOptimizationSR::new();
+    let result_uncertain = {
+        let mut evaluator = UncertainPowerEvaluator::new(&mut ufmodel);
+        yaw_opt_u.optimize_with_evaluator(&mut evaluator, None)?
     };
 
-    let mut yaw_opt = YawOptimizationSR::new();
-    let result = yaw_opt.optimize(&mut fmodel, Some(config))?;
-
-    println!("\nOptimization completed!");
-    println!("  - Baseline farm power: {:.0} W", result.baseline_power);
-    println!("  - Optimized farm power: {:.0} W", result.optimized_power);
-    println!("  - Power improvement: {:.0} W", result.power_improvement);
-    println!(
-        "  - Improvement percentage: {:.2}%",
-        result.improvement_percentage
-    );
-
-    // Show optimal yaw angles for first few wind directions
-    println!("\nOptimal yaw angles (first 5 wind directions):");
-    for i in 0..5.min(result.yaw_angles.nrows()) {
-        print!("  Row {}: ", i);
-        for ti in 0..result.yaw_angles.ncols() {
-            print!("T{}={:.1}° ", ti, result.yaw_angles[[i, ti]]);
-        }
-        println!();
+    // Show the yaw and turbine results
+    println!("certain: wind direction, yaw angles, baseline farm power, optimized farm power");
+    for i in 0..n_conditions {
+        println!(
+            "certain {i}: {:.0}, {:.6}, {:.6}, {:.6}, {:.6}, {:.6}",
+            wind_directions[i],
+            result_certain.yaw_angles[[i, 0]],
+            result_certain.yaw_angles[[i, 1]],
+            result_certain.yaw_angles[[i, 2]],
+            result_certain.farm_powers_baseline[i],
+            result_certain.farm_powers_opt[i],
+        );
     }
 
-    println!("\n=== Yaw Optimization Complete ===");
-    println!("\nNote: For full uncertainty modeling, use UncertainFlorisModel");
-    println!("with wind direction standard deviation (wd_std).");
+    println!("uncertain: wind direction, yaw angles, baseline farm power, optimized farm power");
+    for i in 0..n_conditions {
+        println!(
+            "uncertain {i}: {:.0}, {:.6}, {:.6}, {:.6}, {:.6}, {:.6}",
+            wind_directions[i],
+            result_uncertain.yaw_angles[[i, 0]],
+            result_uncertain.yaw_angles[[i, 1]],
+            result_uncertain.yaw_angles[[i, 2]],
+            result_uncertain.farm_powers_baseline[i],
+            result_uncertain.farm_powers_opt[i],
+        );
+    }
 
     Ok(())
 }

@@ -5326,7 +5326,85 @@ Farm AEP (floating): 357.747 GWh
 Floating AEP increase: -1.114 GWh (-0.31%)
 
 ====================================================================================================
- SUMMARY OF THIS ROUND (2026-10-20)
+ PORTED EXAMPLE: control_optimization_002_opt_yaw_single_ws_uncertain  vs  002_opt_yaw_single_ws_uncertain.py
+   (the Serial-Refine yaw optimization of a 3-turbine row, once with the FlorisModel and once
+    with the UncertainFlorisModel, wd_std = 3 deg)
+====================================================================================================
+  Rust   exit=0        Python exit=0
+----------------------------------------------------------------------------------------------------
+--- RUST STDOUT (the conditions with a non-zero yaw angle) ---
+certain 18: 268, 25.000000, 25.000000, 0.000000, 2892655.144025, 2973038.555864
+certain 19: 269, 25.000000, 25.000000, 0.000000, 2748875.853126, 3104344.503907
+certain 20: 270, 25.000000, 22.656250, 0.000000, 2697065.314464, 3275737.731164
+certain 21: 271, 25.000000, 21.875000, 0.000000, 2753926.611869, 3486497.980480
+certain 22: 272, 25.000000, 22.656250, 0.000000, 2902224.206320, 3697174.322056
+certain 23: 273, 24.218750, 21.875000, 0.000000, 3106003.372428, 3896081.357840
+certain 24: 274, 24.218750, 18.750000, 0.000000, 3365049.687371, 4078122.872056
+certain 25: 275, 21.875000, 17.187500, 0.000000, 3659986.845842, 4257702.595103
+certain 26: 276, 21.875000, 15.625000, 0.000000, 3932834.880710, 4437387.488856
+certain 27: 277, 17.187500, 14.062500, 0.000000, 4183280.568110, 4600522.895287
+certain 28: 278, 14.062500, 12.500000, 0.000000, 4431603.049258, 4742775.814354
+certain 29: 279, 12.500000, 10.937500, 0.000000, 4648542.540017, 4867256.893763
+certain 30: 280, 9.375000, 7.812500, 0.000000, 4843441.692669, 4972703.175267
+certain 31: 281, 9.375000, 6.250000, 0.000000, 4987221.983415, 5068949.621004
+certain 32: 282, 4.687500, 4.687500, 0.000000, 5095501.790277, 5137561.181406
+certain 33: 283, 3.125000, 3.125000, 0.000000, 5170397.746709, 5185384.881261
+uncertain 19: 269, 24.218750, 24.218750, 0.000000, 3058251.245322, 3264533.047640
+uncertain 20: 270, 24.218750, 24.218750, 0.000000, 3027038.307499, 3380955.640074
+uncertain 21: 271, 25.000000, 21.875000, 0.000000, 3063084.293251, 3527885.358017
+uncertain 22: 272, 25.000000, 21.875000, 0.000000, 3157241.817385, 3687700.540394
+uncertain 23: 273, 24.218750, 20.312500, 0.000000, 3291383.566990, 3855005.250486
+uncertain 24: 274, 22.656250, 18.750000, 0.000000, 3470441.169711, 4019942.605192
+uncertain 25: 275, 20.312500, 17.187500, 0.000000, 3686043.961999, 4181148.398205
+uncertain 26: 276, 20.312500, 15.625000, 0.000000, 3901715.020063, 4341710.761471
+uncertain 27: 277, 17.187500, 14.062500, 0.000000, 4120582.821247, 4489471.671211
+uncertain 28: 278, 15.625000, 12.500000, 0.000000, 4338067.886675, 4623030.837166
+uncertain 29: 279, 14.062500, 10.937500, 0.000000, 4530982.372355, 4744388.514666
+uncertain 30: 280, 12.500000, 9.375000, 0.000000, 4703700.136381, 4854093.178510
+uncertain 31: 281, 9.375000, 7.812500, 0.000000, 4848899.110872, 4953923.047204
+uncertain 32: 282, 7.812500, 6.250000, 0.000000, 4966748.910496, 5032212.069785
+uncertain 33: 283, 6.250000, 4.687500, 0.000000, 5061278.808543, 5096603.655410
+uncertain 34: 284, 6.250000, 3.125000, 0.000000, 5128381.645503, 5147118.215146
+uncertain 35: 285, 3.125000, 0.000000, 0.000000, 5177676.308966, 5185583.628346
+--- PYTHON STDOUT (the conditions with a non-zero yaw angle) ---
+CERTAIN 18 268 ['25.000000', '25.000000', '0.000000'] 2892655.144025 2973038.555864
+CERTAIN 19 269 ['25.000000', '25.000000', '0.000000'] 2748875.853126 3104344.503907
+CERTAIN 20 270 ['25.000000', '22.656250', '0.000000'] 2697065.314464 3275737.731164
+CERTAIN 21 271 ['25.000000', '21.875000', '0.000000'] 2753926.611869 3486497.980480
+CERTAIN 22 272 ['25.000000', '22.656250', '0.000000'] 2902224.206320 3697174.322056
+CERTAIN 23 273 ['24.218750', '21.875000', '0.000000'] 3106003.372428 3896081.357840
+CERTAIN 24 274 ['24.218750', '18.750000', '0.000000'] 3365049.687371 4078122.872056
+CERTAIN 25 275 ['21.875000', '17.187500', '0.000000'] 3659986.845842 4257702.595103
+CERTAIN 26 276 ['21.875000', '15.625000', '0.000000'] 3932834.880710 4437387.488856
+CERTAIN 27 277 ['17.187500', '14.062500', '0.000000'] 4183280.568110 4600522.895287
+CERTAIN 28 278 ['14.062500', '12.500000', '0.000000'] 4431603.049258 4742775.814354
+CERTAIN 29 279 ['12.500000', '10.937500', '0.000000'] 4648542.540017 4867256.893763
+CERTAIN 30 280 ['9.375000', '7.812500', '0.000000'] 4843441.692669 4972703.175267
+CERTAIN 31 281 ['9.375000', '6.250000', '0.000000'] 4987221.983415 5068949.621004
+CERTAIN 32 282 ['4.687500', '4.687500', '0.000000'] 5095501.790277 5137561.181406
+CERTAIN 33 283 ['3.125000', '3.125000', '0.000000'] 5170397.746709 5185384.881261
+UNCERTAIN 19 269 ['24.218750', '24.218750', '0.000000'] 3058251.245322 3264533.047640
+UNCERTAIN 20 270 ['24.218750', '24.218750', '0.000000'] 3027038.307499 3380955.640074
+UNCERTAIN 21 271 ['25.000000', '21.875000', '0.000000'] 3063084.293251 3527885.358017
+UNCERTAIN 22 272 ['25.000000', '21.875000', '0.000000'] 3157241.817385 3687700.540394
+UNCERTAIN 23 273 ['24.218750', '20.312500', '0.000000'] 3291383.566990 3855005.250486
+UNCERTAIN 24 274 ['22.656250', '18.750000', '0.000000'] 3470441.169711 4019942.605192
+UNCERTAIN 25 275 ['20.312500', '17.187500', '0.000000'] 3686043.961999 4181148.398205
+UNCERTAIN 26 276 ['20.312500', '15.625000', '0.000000'] 3901715.020063 4341710.761471
+UNCERTAIN 27 277 ['17.187500', '14.062500', '0.000000'] 4120582.821247 4489471.671211
+UNCERTAIN 28 278 ['15.625000', '12.500000', '0.000000'] 4338067.886675 4623030.837166
+UNCERTAIN 29 279 ['14.062500', '10.937500', '0.000000'] 4530982.372355 4744388.514666
+UNCERTAIN 30 280 ['12.500000', '9.375000', '0.000000'] 4703700.136381 4854093.178510
+UNCERTAIN 31 281 ['9.375000', '7.812500', '0.000000'] 4848899.110872 4953923.047204
+UNCERTAIN 32 282 ['7.812500', '6.250000', '0.000000'] 4966748.910496 5032212.069785
+UNCERTAIN 33 283 ['6.250000', '4.687500', '0.000000'] 5061278.808543 5096603.655410
+UNCERTAIN 34 284 ['6.250000', '3.125000', '0.000000'] 5128381.645503 5147118.215146
+UNCERTAIN 35 285 ['3.125000', '0.000000', '0.000000'] 5177676.308966 5185583.628346
+  All 40 conditions of both the certain and the uncertain model match: the yaw angles are
+  identical and the farm powers agree to ~1e-12 relative (the rounding of the printed values).
+
+====================================================================================================
+ SUMMARY OF THIS ROUND (2026-10-21)
 ====================================================================================================
  Aligned 1:1 with the Python FLORIS examples (the values below were compared against the Python
  reference; "identical" means the printed values match to the printed precision):
@@ -5373,6 +5451,9 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    floating_003       identical powers        the 5 and 15 degree tilt cases match
    control_optimization_001
                         identical powers        the Serial-Refine yaw angles and farm powers match
+   control_optimization_002
+                        identical values        the Serial-Refine yaw angles of the certain and of the
+                                              uncertain (3 deg) model and their farm powers match
    wind_data_001      identical values        the AEP of the time series and the wind rose match
    009_parallel       identical powers        the results do not depend on the parallelization
    emgauss_001        identical powers        the four velocity deficit parameter sets match
@@ -5406,6 +5487,11 @@ Floating AEP increase: -1.114 GWh (-0.31%)
       setpoints without invalidating the model state, so the sorted setpoints used by the solver
       were stale and the derating had no effect -> the levels are now set through the model
       (which resets the state), exactly as Python's fmodel.set(power_setpoints=...) does.
+   8. The uncertain model applied the rounding resolutions per row instead of per column, so the
+      yaw angle of the second turbine was rounded to the power setpoint resolution (100) and was
+      therefore always zero -> the resolutions are now applied per column (the yaw angles to 1 deg,
+      the power setpoints to 100 W, the AWC amplitudes to 0.1 deg) and the ties are rounded to the
+      even value, exactly as numpy.round does.
 
  Still unaligned (and why):
    * layout_optimization_001 / 002 / 003 / 005 and wind_resource_grid_003
@@ -5418,8 +5504,4 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    * uncertain_002
        - Needs Python's ApproxFlorisModel surrogate (floris/simulation/approx.py); no Rust
          equivalent exists.
-   * control_optimization_002
-       - The UncertainFlorisModel is available (florus::uncertain::UncertainFlorisModel) with the
-         parallel runner and the fix_yaw_to_nominal_direction option, but the yaw optimizer
-         does not accept an uncertain model yet (Python runs the optimization on the
-         expanded model).
+

@@ -87,4 +87,7 @@ pub use yaw_optimization_tools::{
 
 pub use yaw_optimizer_geometric::YawOptimizationGeometric;
 pub use yaw_optimizer_scipy::{SciPyOptimizationConfig, YawOptimizationScipy};
-pub use yaw_optimizer_sr::{SerialRefineConfig, YawOptimizationSR};
+pub use yaw_optimizer_sr::{
+    FlorisModelPowerEvaluator, SerialRefineConfig, UncertainPowerEvaluator, YawOptimizationSR,
+    YawPowerEvaluator,
+};
