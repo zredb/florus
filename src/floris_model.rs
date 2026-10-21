@@ -661,12 +661,35 @@ impl FlorisModel {
         turbine_weights: Option<Array2>,
     ) -> crate::Result<Float> {
         let n_findex = self.core.flow_field.n_findex;
+        let n_turbines = self.core.farm.n_turbines();
 
-        // Get expected farm power
-        let expected_power = self.get_expected_farm_power(freq, turbine_weights)?;
+        // Determine the frequencies to use (Python floris_model.py:657-663):
+        // the frequencies of the wind data, or uniform frequencies if there is
+        // no wind data.
+        let (frequencies, per_turbine_frequencies) = if let Some(f) = freq {
+            if f.len() != n_findex {
+                anyhow::bail!(
+                    "Frequency array length ({}) must match n_findex ({})",
+                    f.len(),
+                    n_findex
+                );
+            }
+            (f, false)
+        } else if let Some(stored) = &self.core.wind_data_frequencies {
+            // A (n_findex, n_turbines) table (the wind resource grid) weights
+            // the power of every turbine separately
+            if stored.shape()[1] > 1 && stored.shape()[1] == n_turbines {
+                (stored.column(0).to_owned(), true)
+            } else {
+                (stored.column(0).to_owned(), false)
+            }
+        } else {
+            (Array1::from_elem(n_findex, 1.0 / n_findex as Float), false)
+        };
 
-        // Determine values
-        let (value_array, is_uniform) = if let Some(ref v) = values {
+        // Determine the values to use (Python floris_model.py:665-670): the
+        // values of the wind data, or 1.0 for every condition.
+        let value_array = if let Some(v) = values {
             if v.len() != n_findex {
                 anyhow::bail!(
                     "Values array length ({}) must match n_findex ({})",
@@ -674,23 +697,26 @@ impl FlorisModel {
                     n_findex
                 );
             }
-            (v.clone(), false)
+            v
+        } else if let Some(stored) = &self.core.wind_data_values {
+            stored.column(0).to_owned()
         } else {
-            (Array1::from_elem(n_findex, 1.0), true)
+            Array1::from_elem(n_findex, 1.0)
         };
 
-        // Calculate weighted farm power for each findex
+        // Calculate the weighted farm power for every findex
         let farm_power = self.get_farm_power()?;
 
-        // Multiply power by values and sum
+        // Multiply the power with the values (and the frequencies) and sum
         let mut expected_value = 0.0;
         for fi in 0..n_findex {
-            expected_value += value_array[fi] * farm_power[fi];
-        }
-
-        // Normalize by number of findices if using uniform values
-        if is_uniform {
-            expected_value /= n_findex as Float;
+            if per_turbine_frequencies {
+                // Python: the per-turbine frequencies are not applied to the
+                // value (the values already weight the conditions)
+                expected_value += value_array[fi] * farm_power[fi];
+            } else {
+                expected_value += value_array[fi] * frequencies[fi] * farm_power[fi];
+            }
         }
 
         Ok(expected_value)

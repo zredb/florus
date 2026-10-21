@@ -5468,6 +5468,11 @@ UNCERTAIN 35 285 ['3.125000', '0.000000', '0.000000'] 5177676.308966 5185583.628
    load_optimization_002
                         identical values        the revenues, the VOCs and the optimized power
                                               setpoints match
+   layout_optimization_001
+                        within 1 %             the random wind resource and the AEP/AVP of the
+                                              initial layout match Python; the optimized layout
+                                              differs (the Rust pattern search reaches 58370.6 MWh,
+                                              Python's SLSQP 58824.3 MWh)
 
  Engine gaps that were fixed in this round:
    1. Heterogeneous inflow was never applied to the velocity field -> now interpolated onto the
@@ -5492,6 +5497,14 @@ UNCERTAIN 35 285 ['3.125000', '0.000000', '0.000000'] 5177676.308966 5185583.628
       therefore always zero -> the resolutions are now applied per column (the yaw angles to 1 deg,
       the power setpoints to 100 W, the AWC amplitudes to 0.1 deg) and the ties are rounded to the
       even value, exactly as numpy.round does.
+   9. get_expected_farm_value() ignored the value table and the frequencies of the wind data
+      (it used a uniform value of 1.0 and no frequency weighting) -> the values and the
+      frequencies of the wind data are now used, as in Python's get_expected_farm_value().
+  10. The layout optimizer used uniform frequencies for its objective and forbade the turbines
+      to lie on the boundary, and it could only move the turbines along the axes -> the objective
+      is now the AEP/AVP of the wind data, the boundary constraint is the signed distance to the
+      boundary (the turbines may lie on it, as in Python) and the search is a Hooke-Jeeves pattern
+      search over the eight compass directions.
 
  Still unaligned (and why):
    * uncertain_002
@@ -5503,13 +5516,17 @@ UNCERTAIN 35 285 ['3.125000', '0.000000', '0.000000'] 5177676.308966 5185583.628
          therefore the expected power, differs from Python's. The run times are not comparable
          either.
    * layout_optimization_001 / 002 / 003 / 005 and wind_resource_grid_003
-       - Python uses SLSQP (001, 002) and a genetic algorithm (003, 005, wind_resource_grid_003);
-         FLORIS uses coordinate descent and a heuristic spread. Only the deterministic gridded
-         optimizer (004) was ported exactly. The optimum of the SLSQP problems is not unique (the
-         objective is flat over a plateau), so a bit-for-bit match is not attainable without the
-         same optimizer. The random search is time-based (it runs until a wall-clock deadline), so
-         its result is not reproducible either, and the wind resources of all the examples are
-         drawn with numpy's random number generator.
+       - layout_optimization_001 is a 1:1 port: the random wind resource is drawn with the numpy
+         compatible generator (florus::numpy_random) and therefore identical to Python's, and the
+         AEP/AVP of the initial layout match Python to 1e-6. The optimizer itself differs (Rust: a
+         Hooke-Jeeves pattern search, Python: scipy's SLSQP), so the optimal layouts are not
+         identical: the AEP gain is 3.7 % (Python: 4.5 %) and the AVP gain is 19.4 % (Python:
+         25.2 %). The SLSQP optimum lies slightly outside the minimum-distance constraint, which
+         the Rust optimizer enforces exactly.
+       - layout_optimization_002, layout_optimization_003, layout_optimization_005 and
+         wind_resource_grid_003 still need the same optimizers; in addition the random search of
+         Python is time based (it runs until a wall-clock deadline), so its result is not
+         reproducible even in Python.
        - layout_optimization_002 and wind_resource_grid_003 additionally need the heterogeneous
          inflow, which now works.
 

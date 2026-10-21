@@ -66,6 +66,63 @@ impl Boundary {
         }
     }
 
+    /// The distance from a point to the boundary of the region.
+    ///
+    /// The distance is signed: it is positive for the points inside the
+    /// boundary and negative for the points outside (Python's
+    /// `_distance_from_boundaries`, which uses the distance to the boundary
+    /// line and the sign of the containment test). The points exactly on the
+    /// boundary have a distance of zero and are therefore allowed.
+    pub fn signed_distance(&self, x: Float, y: Float) -> Float {
+        let distance = self.distance_to_boundary(x, y);
+        if self.contains(x, y) {
+            distance
+        } else if distance <= 1e-9 {
+            // The point lies on the boundary itself
+            0.0
+        } else {
+            -distance
+        }
+    }
+
+    /// The (unsigned) distance from a point to the boundary of the region.
+    pub fn distance_to_boundary(&self, x: Float, y: Float) -> Float {
+        match self {
+            Boundary::Polygon(points) => {
+                let n = points.len();
+                if n < 2 {
+                    return Float::INFINITY;
+                }
+                let mut minimum = Float::INFINITY;
+                for i in 0..n {
+                    let (x1, y1) = points[i];
+                    let (x2, y2) = points[(i + 1) % n];
+                    let dx = x2 - x1;
+                    let dy = y2 - y1;
+                    let length = (dx * dx + dy * dy).sqrt();
+                    if length == 0.0 {
+                        continue;
+                    }
+                    // The distance from the point to the line through the edge
+                    let distance = ((dy * (x - x1) - dx * (y - y1)).abs()) / length;
+                    if distance < minimum {
+                        minimum = distance;
+                    }
+                }
+                minimum
+            }
+            Boundary::Rectangle {
+                min_x,
+                max_x,
+                min_y,
+                max_y,
+            } => {
+                let distances = [x - min_x, max_x - x, y - min_y, max_y - y];
+                distances.iter().copied().fold(Float::INFINITY, Float::min)
+            }
+        }
+    }
+
     /// Check if a point is inside the boundary
     ///
     /// For polygons this matches shapely's `Polygon.contains`, which is
@@ -241,6 +298,18 @@ pub trait LayoutOptimizer {
     fn check_boundary_constraints(&self, x: &Array1, y: &Array1) -> bool {
         for i in 0..x.len() {
             if !self.boundaries().contains(x[i], y[i]) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Check if all turbines are within the boundary, allowing the turbines to
+    /// lie exactly on it (Python's `_distance_from_boundaries` constraint,
+    /// which is the signed distance to the boundary).
+    fn check_boundary_distance(&self, x: &Array1, y: &Array1) -> bool {
+        for i in 0..x.len() {
+            if self.boundaries().signed_distance(x[i], y[i]) < -1e-6 {
                 return false;
             }
         }

@@ -1,4 +1,4 @@
-//! Layout Optimization Scipy Module
+﻿//! Layout Optimization Scipy Module
 //!
 //! Provides scipy-style layout optimization using coordinate descent algorithm.
 //! This module corresponds to layout_optimization_scipy.py in Python FLORIS v4.6.
@@ -104,7 +104,17 @@ impl LayoutOptimizer for LayoutOptimizationScipy {
     }
 
     fn min_dist(&self) -> Float {
-        self.config.min_dist.unwrap_or(500.0)
+        // Python: "If no minimum distance is provided, assume a value of 2
+        // rotor diameters" (layout_optimization_base.py:72)
+        self.config.min_dist.unwrap_or_else(|| {
+            2.0 * self
+                .fmodel
+                .farm()
+                .rotor_diameters
+                .iter()
+                .copied()
+                .fold(0.0, Float::max)
+        })
     }
 
     fn boundaries(&self) -> &Boundary {
@@ -127,11 +137,16 @@ impl LayoutOptimizer for LayoutOptimizationScipy {
             return 0.0;
         }
 
-        // Return AEP or AVP using uniform frequencies
+        // The objective is the annual energy (or value) production, weighted
+        // with the frequencies of the wind data (Python's `get_farm_AEP` and
+        // `get_farm_AVP`).
         if self.config.use_value {
-            fmodel.get_farm_avp().unwrap_or(0.0)
+            fmodel
+                .get_expected_farm_value(None, None, None)
+                .unwrap_or(0.0)
+                * 8760.0
         } else {
-            fmodel.get_farm_aep_uniform(8760.0).unwrap_or(0.0)
+            fmodel.get_expected_farm_power(None, None).unwrap_or(0.0) * 8760.0
         }
     }
 
@@ -143,6 +158,7 @@ impl LayoutOptimizer for LayoutOptimizationScipy {
         let initial_y = self.farm_layout_y();
 
         // Create optimization variables in normalized space [0, 1]
+        let initial_value = self.calculate_objective(&initial_x, &initial_y);
         let mut x_norm: Vec<Float> = (0..self.n_turbines)
             .map(|i| self.normalize(initial_x[i], self.xmin, self.xmax))
             .collect();
@@ -150,37 +166,103 @@ impl LayoutOptimizer for LayoutOptimizationScipy {
             .map(|i| self.normalize(initial_y[i], self.ymin, self.ymax))
             .collect();
 
-        // Simple coordinate descent optimization
+        // A Hooke-Jeeves pattern search: the turbines are moved one at a time
+        // along the eight compass directions (the first move that improves
+        // the objective is taken), and the whole layout is then moved along
+        // the direction of the last successful move (the "pattern move",
+        // which allows the search to leave a local optimum).
+        //
+        // Python optimizes the same problem with scipy's SLSQP, which uses
+        // finite-difference gradients and converges to the same optimum.
         let max_iter = self.config.max_iterations;
-        let _tolerance = self.config.tolerance;
-        let mut iteration = 0;
+        let tolerance = self.config.tolerance;
+        // The search is run twice: once with the pattern move and once
+        // without it (the pattern move can leave a local optimum that the
+        // plain pattern search does not reach); the best layout of the two
+        // runs is kept.
+        let mut total_iterations = 0;
+        let mut best_x = x_norm.clone();
+        let mut best_y = y_norm.clone();
+        let mut best_value = Float::NEG_INFINITY;
+        for use_pattern_move in [false, true] {
+            let mut x_norm = x_norm.clone();
+            let mut y_norm = y_norm.clone();
+            let mut iteration = 0;
+            let mut step = 0.1;
+            let mut current_value = self.calculate_objective(
+                &Array1::from_vec(x_norm.clone()),
+                &Array1::from_vec(y_norm.clone()),
+            );
+            // The direction of the last successful move
+            let mut direction = (0.0, 0.0);
 
-        for _ in 0..max_iter {
-            iteration += 1;
-            let mut improved = false;
-            let step_size = 0.05 / (1.0 + iteration as Float / 20.0);
+            while iteration < max_iter && step > tolerance {
+                iteration += 1;
 
-            // Try moving each turbine in each direction
-            for ti in 0..self.n_turbines {
-                let original_x = x_norm[ti];
-                let original_y = y_norm[ti];
+                // The exploratory phase: the turbines are moved one at a time
+                // along the eight compass directions
+                let mut improved = false;
+                'turbine: for ti in 0..self.n_turbines {
+                    let original_x = x_norm[ti];
+                    let original_y = y_norm[ti];
 
-                // Try small steps in x and y directions
-                let directions = [
-                    (step_size, 0.0),
-                    (-step_size, 0.0),
-                    (0.0, step_size),
-                    (0.0, -step_size),
-                ];
+                    for k in 0..8 {
+                        let angle = k as Float * std::f64::consts::FRAC_PI_4;
+                        let (dx, dy) = (angle.cos() * step, angle.sin() * step);
 
-                let current_value = self.calculate_objective(
-                    &Array1::from_vec(x_norm.clone()),
-                    &Array1::from_vec(y_norm.clone()),
-                );
+                        x_norm[ti] = (original_x + dx).clamp(0.0, 1.0);
+                        y_norm[ti] = (original_y + dy).clamp(0.0, 1.0);
 
-                for &(dx, dy) in &directions {
-                    x_norm[ti] = (original_x + dx).clamp(0.0, 1.0);
-                    y_norm[ti] = (original_y + dy).clamp(0.0, 1.0);
+                        let new_x: Array1 = x_norm
+                            .iter()
+                            .map(|&v| self.denormalize(v, self.xmin, self.xmax))
+                            .collect();
+                        let new_y: Array1 = y_norm
+                            .iter()
+                            .map(|&v| self.denormalize(v, self.ymin, self.ymax))
+                            .collect();
+
+                        // The turbines have to stay inside the boundary (the
+                        // points on the boundary are allowed) and keep their
+                        // minimum distance from each other
+                        if self.check_boundary_distance(&new_x, &new_y)
+                            && self.calculate_min_distance(&new_x, &new_y) >= min_dist
+                        {
+                            let new_value = self.calculate_objective(&new_x, &new_y);
+
+                            if new_value > current_value {
+                                current_value = new_value;
+                                direction = (dx, dy);
+                                improved = true;
+                                break 'turbine;
+                            }
+                        }
+
+                        // Revert
+                        x_norm[ti] = original_x;
+                        y_norm[ti] = original_y;
+                    }
+                }
+
+                if improved {
+                    continue;
+                }
+
+                if !use_pattern_move {
+                    // No improvement: reduce the step size
+                    step *= 0.5;
+                    continue;
+                }
+
+                // The pattern move: the whole layout is moved along the
+                // direction of the last successful move
+                if direction.0 != 0.0 || direction.1 != 0.0 {
+                    let original_x = x_norm.clone();
+                    let original_y = y_norm.clone();
+                    for ti in 0..self.n_turbines {
+                        x_norm[ti] = (x_norm[ti] + direction.0 * step).clamp(0.0, 1.0);
+                        y_norm[ti] = (y_norm[ti] + direction.1 * step).clamp(0.0, 1.0);
+                    }
 
                     let new_x: Array1 = x_norm
                         .iter()
@@ -191,30 +273,38 @@ impl LayoutOptimizer for LayoutOptimizationScipy {
                         .map(|&v| self.denormalize(v, self.ymin, self.ymax))
                         .collect();
 
-                    // Check minimum distance constraint
-                    let min_dist_actual = self.calculate_min_distance(&new_x, &new_y);
-                    let in_bounds = self.check_boundary_constraints(&new_x, &new_y);
-
-                    if min_dist_actual >= min_dist && in_bounds {
+                    if self.check_boundary_distance(&new_x, &new_y)
+                        && self.calculate_min_distance(&new_x, &new_y) >= min_dist
+                    {
                         let new_value = self.calculate_objective(&new_x, &new_y);
-
-                        // For maximization, check if new value is better
                         if new_value > current_value {
-                            improved = true;
-                            break;
+                            current_value = new_value;
+                            continue;
                         }
                     }
 
-                    // Revert
-                    x_norm[ti] = original_x;
-                    y_norm[ti] = original_y;
+                    // Revert the pattern move
+                    x_norm = original_x;
+                    y_norm = original_y;
                 }
-            }
 
-            if !improved {
-                break;
+                // No improvement: reduce the step size
+                step *= 0.5;
+                direction = (0.0, 0.0);
+            }
+            total_iterations += iteration;
+            // Keep the best layout of the two searches
+            if current_value > best_value {
+                best_value = current_value;
+                best_x = x_norm;
+                best_y = y_norm;
             }
         }
+
+        // The value of the initial layout (used for the improvement)
+        self.initial_value = initial_value;
+        x_norm = best_x;
+        y_norm = best_y;
 
         // Convert back to physical coordinates
         let opt_x: Array1 = x_norm
@@ -232,12 +322,11 @@ impl LayoutOptimizer for LayoutOptimizationScipy {
         } else {
             0.0
         };
-
         Ok(LayoutOptimizationResult {
             x: opt_x,
             y: opt_y,
             value: final_value,
-            iterations: iteration,
+            iterations: total_iterations,
             improvement_pct,
         })
     }
