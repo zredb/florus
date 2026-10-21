@@ -1,4 +1,4 @@
-/// Core class - Top-level FLORIS model
+﻿/// Core class - Top-level FLORIS model
 use crate::core::farm::Farm;
 use crate::core::flow_field::FlowField;
 use crate::core::grid::{
@@ -54,6 +54,10 @@ pub struct Core {
     /// while a `(n_findex, n_turbines)` table (the wind resource grid) weights
     /// the power of every turbine separately.
     pub wind_data_frequencies: Option<Array2>,
+
+    /// The values (e.g. the electricity price) of the wind data
+    /// (Python wind_data.unpack_value()).
+    pub wind_data_values: Option<Array2>,
 }
 
 /// Information about wind data structure for reshaping results
@@ -97,6 +101,7 @@ impl Clone for Core {
             wind_data_info: self.wind_data_info.clone(),
             multidim_conditions: self.multidim_conditions.clone(),
             wind_data_frequencies: None,
+            wind_data_values: None,
             wake_config: self.wake_config.clone(),
         }
     }
@@ -204,6 +209,7 @@ impl Core {
             wind_data_info: None, // Default to None for YAML-based initialization
             multidim_conditions: config.flow_field.multidim_conditions.clone(),
             wind_data_frequencies: None,
+            wind_data_values: None,
             wake_config: config.wake.clone(),
         };
 

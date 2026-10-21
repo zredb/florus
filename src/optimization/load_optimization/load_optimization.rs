@@ -235,14 +235,34 @@ pub fn compute_farm_revenue(fmodel: &FlorisModel) -> anyhow::Result<Array1> {
     }
 
     let farm_power = fmodel.get_farm_power()?;
-    let revenue = farm_power.mapv(|p| p * 1.0);
+
+    // The revenue is the farm power weighted with the values of the wind data
+    // (Python: `farm_power * values`).
+    let revenue = match &fmodel.core().wind_data_values {
+        Some(values) => {
+            let values = values.column(0).to_owned();
+            if values.len() != farm_power.len() {
+                anyhow::bail!(
+                    "The number of values ({}) must match the number of conditions ({})",
+                    values.len(),
+                    farm_power.len()
+                );
+            }
+            farm_power
+                .iter()
+                .zip(values.iter())
+                .map(|(power, value)| power * value)
+                .collect()
+        }
+        None => farm_power.mapv(|p| p * 1.0),
+    };
 
     Ok(revenue)
 }
 
 pub fn compute_net_revenue(
     fmodel: &FlorisModel,
-    _a: Float,
+    a: Float,
     ambient_lti: &[Float],
     wake_slope: Float,
     max_dist_d: Float,
@@ -253,7 +273,7 @@ pub fn compute_net_revenue(
 
     let farm_voc = compute_farm_voc(
         fmodel,
-        1.0,
+        a,
         ambient_lti,
         wake_slope,
         max_dist_d,
@@ -342,8 +362,19 @@ pub fn optimize_power_setpoints(
         );
     }
 
-    if fmodel.farm().turbines.len() > 1 {
-        anyhow::bail!("Only one turbine type is currently supported for optimization");
+    // Raise an error if there is more than one turbine type specified (Python
+    // compares the turbine definitions; the name and the rotor diameter are
+    // used here)
+    let turbines = &fmodel.farm().turbines;
+    if let Some(first) = turbines.first() {
+        let same_type = turbines.iter().all(|turbine| {
+            turbine.turbine_type.name == first.turbine_type.name
+                && turbine.turbine_type.rotor_diameter == first.turbine_type.rotor_diameter
+                && turbine.turbine_type.hub_height == first.turbine_type.hub_height
+        });
+        if !same_type {
+            anyhow::bail!("Only one turbine type is currently supported for optimization");
+        }
     }
 
     let n_findex = fmodel.flow_field().n_findex;
@@ -390,46 +421,47 @@ pub fn optimize_power_setpoints(
         exp_thrust,
     )?;
 
-    for fi in 0..n_findex {
-        for ti in 0..n_turbines {
-            let sorted_idx = sorted_indices[[fi, ti]] as usize;
-
-            for derating_level in power_setpoint_levels {
+    // The turbines are optimized one after the other (in the sorted order);
+    // for every turbine the derating levels are applied to all the wind
+    // conditions at once (Python load_optimization.py:508-540).
+    for ti in 0..n_turbines {
+        for derating_level in power_setpoint_levels {
+            // Apply the derating level to the turbine for every condition
+            for fi in 0..n_findex {
+                let sorted_idx = sorted_indices[[fi, ti]] as usize;
                 power_setpoint_test[[fi, sorted_idx]] = *derating_level;
+            }
 
-                fmodel
-                    .farm_mut()
-                    .set_power_setpoints(power_setpoint_test.clone());
-                fmodel.run()?;
+            fmodel
+                .farm_mut()
+                .set_power_setpoints(power_setpoint_test.clone());
+            fmodel.run()?;
 
-                let test_net_revenue = compute_net_revenue(
-                    fmodel,
-                    a,
-                    ambient_lti,
-                    wake_slope,
-                    max_dist_d,
-                    exp_ws_std,
-                    exp_thrust,
-                )?;
+            let test_net_revenue = compute_net_revenue(
+                fmodel,
+                a,
+                ambient_lti,
+                wake_slope,
+                max_dist_d,
+                exp_ws_std,
+                exp_thrust,
+            )?;
 
-                let mut update_mask = Array::from_elem(n_findex, false);
-                for f_idx in 0..n_findex {
-                    update_mask[f_idx] = test_net_revenue[f_idx] > net_revenue_opt[f_idx];
+            // The conditions that do not improve keep their previous value
+            let mut update_mask = Array::from_elem(n_findex, false);
+            for f_idx in 0..n_findex {
+                update_mask[f_idx] = test_net_revenue[f_idx] > net_revenue_opt[f_idx];
+            }
+
+            for f_idx in 0..n_findex {
+                let sorted_idx = sorted_indices[[f_idx, ti]] as usize;
+                if !update_mask[f_idx] {
+                    power_setpoint_test[[f_idx, sorted_idx]] =
+                        power_setpoint_opt[[f_idx, sorted_idx]];
                 }
-
-                for f_idx in 0..n_findex {
-                    if !update_mask[f_idx] {
-                        power_setpoint_test[[f_idx, sorted_idx]] =
-                            power_setpoint_opt[[f_idx, sorted_idx]];
-                    }
-                }
-
-                for f_idx in 0..n_findex {
-                    if update_mask[f_idx] {
-                        power_setpoint_opt[[f_idx, sorted_idx]] =
-                            power_setpoint_test[[f_idx, sorted_idx]];
-                        net_revenue_opt[f_idx] = test_net_revenue[f_idx];
-                    }
+                power_setpoint_opt[[f_idx, sorted_idx]] = power_setpoint_test[[f_idx, sorted_idx]];
+                if update_mask[f_idx] {
+                    net_revenue_opt[f_idx] = test_net_revenue[f_idx];
                 }
             }
         }

@@ -1,4 +1,4 @@
-use crate::core::turbines::cp_ct_table::TableConditions;
+﻿use crate::core::turbines::cp_ct_table::TableConditions;
 use crate::core::turbines::operation_models::{POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED};
 use crate::core::{Core, Farm, FlowField, State, TurbineGrid};
 use crate::floris_config::{FlorisConfig, SolverConfig};
@@ -854,6 +854,8 @@ impl FlorisModel {
         let n_findex = self.core.flow_field.n_findex;
         let n_turbines = self.core.farm.n_turbines();
 
+        // The operation model of every turbine (Python
+        // `FlorisModel.get_operation_model`, floris_model.py:1030-1041).
         let mut operation_models = vec![vec![String::new(); n_turbines]; n_findex];
 
         for ti in 0..n_turbines {
@@ -861,31 +863,9 @@ impl FlorisModel {
                 continue;
             }
             let turbine_type = &self.core.farm.turbines[ti].turbine_type;
-            let rated_power = turbine_type.rated_power.unwrap_or(5e6);
-
+            let name = turbine_type.operation_model.model_name().to_string();
             for fi in 0..n_findex {
-                let velocity = self.core.flow_field.u_sorted[[fi, ti, 0, 0]];
-
-                let ct = if velocity < 3.0 {
-                    0.0
-                } else if velocity > 25.0 {
-                    0.0
-                } else if velocity < 12.0 {
-                    0.8
-                } else {
-                    0.7
-                };
-
-                let area = std::f64::consts::PI * (turbine_type.rotor_diameter / 2.0).powi(2);
-                let power = 0.5 * 1.225 * area * ct * velocity.powi(3);
-
-                operation_models[fi][ti] = if power < 0.1 * rated_power {
-                    "Idle".to_string()
-                } else if power < 0.9 * rated_power {
-                    "PartLoad".to_string()
-                } else {
-                    "FullLoad".to_string()
-                };
+                operation_models[fi][ti] = name.clone();
             }
         }
 
@@ -1610,6 +1590,7 @@ impl FlorisModel {
         // queries use them when no explicit frequencies are given (Python
         // `floris_model.py:get_expected_turbine_powers`).
         self.core.wind_data_frequencies = Some(wind_data.unpack_freq());
+        self.core.wind_data_values = Some(wind_data.unpack_value());
 
         self.core.grid = None;
         Ok(())

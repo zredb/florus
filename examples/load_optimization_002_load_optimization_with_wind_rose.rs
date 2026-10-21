@@ -1,54 +1,146 @@
-//! Example: Load Optimization with Wind Rose
+//! Example: The load optimization of a row of turbines
 //!
-//! This example demonstrates load optimization across wind conditions.
+//! This example optimizes the power setpoints of a row of three turbines so
+//! that the net revenue (the farm revenue minus the variable operating cost)
+//! is maximized, for a set of wind directions, ambient load turbulence
+//! intensities and electricity prices.
 //!
-//! Corresponds to: examples_load_optimization/002_load_optimization_with_wind_rose.py
+//! Scenario aligned 1:1 with
+//! examples_load_optimization/002_row_opt_example.py.
 
-use florus::Result;
+use florus::floris_model::FlorisModel;
+use florus::optimization::load_optimization::load_optimization::{
+    compute_farm_revenue, compute_farm_voc, compute_net_revenue, optimize_power_setpoints,
+};
+use florus::types::{Array1, Array2};
+use florus::wind_data::TimeSeries;
 
-fn main() -> Result<()> {
-    println!("=== Load Optimization with Wind Rose ===\n");
+fn main() -> anyhow::Result<()> {
+    // The parameters
+    let d = 126.0;
+    let d_spacing = 7.0;
+    let n_turbines = 3;
+    let a = 4.0e-6; // Selected to demonstrate variation in derating selection
 
-    println!("Load Optimization with Full Wind Distribution:\\n");
+    let mut fmodel = FlorisModel::from_default()?;
 
-    println!("Concept:");
-    println!("  - Optimize loads across all wind conditions");
-    println!("  - Weight by wind direction/speed frequency");
-    println!("  - Minimize cumulative damage\\n");
+    // A row of turbines
+    fmodel.set_layout(
+        &Array1::from_iter((0..n_turbines).map(|i| i as f64 * d * d_spacing)),
+        &Array1::from_vec(vec![0.0; n_turbines]),
+    )?;
+    fmodel.set_operation_model("simple-derating")?;
 
-    println!("Damage Calculation:");
-    println!("  1. For each wind condition:");
-    println!("     - Calculate turbine loads");
-    println!("     - Apply S-N curve (fatigue)");
-    println!("     - Compute damage rate");
-    println!("  2. Weight by frequency");
-    println!("  3. Sum for total lifetime damage\\n");
+    // The input conditions: two wind directions, two ambient turbulence
+    // intensities and two electricity values
+    let mut wind_directions: Vec<f64> = Vec::new();
+    let mut values: Vec<f64> = Vec::new();
+    let mut ambient_lti: Vec<f64> = Vec::new();
+    for w_i in [240.0, 270.0] {
+        for t_i in [0.1, 0.25] {
+            for v_i in [1.0e-5, 1.0e-6] {
+                wind_directions.push(w_i);
+                values.push(v_i);
+                ambient_lti.push(t_i);
+            }
+        }
+    }
+    let n = wind_directions.len();
 
-    println!("Optimization Objectives:");
-    println!("  - Minimize total damage");
-    println!("  - Subject to power constraints");
-    println!("  - Balance multiple turbines");
-    println!("  - Consider component limits\\n");
+    let mut time_series = TimeSeries::new(
+        Array1::from_vec(wind_directions.clone()),
+        Array1::from_vec(vec![8.0; n]),
+        Array1::from_vec(vec![0.06; n]),
+    )?;
+    time_series.values = Array1::from_vec(values.clone());
 
-    println!("Control Strategies:");
-    println!("  - Wake steering for load reduction");
-    println!("  - Power curtailment in high-load conditions");
-    println!("  - Coordinated farm control");
-    println!("  - Adaptive control based on wind\\n");
+    fmodel.set_wind_data(&time_series)?;
+    fmodel.run()?;
 
-    println!("Benefits:");
-    println!("  - Lifetime extension (15-25%)");
-    println!("  - Reduced maintenance frequency");
-    println!("  - Lower replacement costs");
-    println!("  - Improved availability\\n");
+    // The initial power setpoints (no derating)
+    let initial_power_setpoint = Array2::from_elem((n, n_turbines), 5.0e6);
+    fmodel.set_operation(
+        None,
+        Some(initial_power_setpoint.clone()),
+        None,
+        None,
+        None,
+        None,
+    )?;
+    fmodel.run()?;
 
-    println!("Trade-offs:");
-    println!("  - Power loss: 1-5% typical");
-    println!("  - vs. Lifetime gain: 15-25%");
-    println!("  - Net economic benefit positive");
-    println!("  - Site-specific optimization needed\\n");
+    let net_revenue_initial = compute_net_revenue(&fmodel, a, &ambient_lti, 0.3, 10.0, 1.0, 1.0)?;
+    let farm_voc_initial = compute_farm_voc(&fmodel, a, &ambient_lti, 0.3, 10.0, 1.0, 1.0)?;
+    let farm_revenue_initial = compute_farm_revenue(&fmodel)?;
 
-    println!("=== Example Complete ===");
-    println!("Note: Requires load models and multi-objective optimization.");
+    // The optimal derating levels
+    let power_setpoint_levels: Vec<f64> = (0..10)
+        .map(|i| 1.0e12 + (0.001 - 1.0e12) * i as f64 / 9.0)
+        .collect();
+    let (opt_power_setpoints, opt_net_revenue) = optimize_power_setpoints(
+        &mut fmodel,
+        a,
+        &ambient_lti,
+        0.3,
+        10.0,
+        1.0,
+        1.0,
+        Some(&initial_power_setpoint),
+        &power_setpoint_levels,
+    )?;
+
+    // The final values
+    fmodel.set_operation(
+        None,
+        Some(opt_power_setpoints.clone()),
+        None,
+        None,
+        None,
+        None,
+    )?;
+    fmodel.run()?;
+    let net_revenue_opt = compute_net_revenue(&fmodel, a, &ambient_lti, 0.3, 10.0, 1.0, 1.0)?;
+    let farm_voc_opt = compute_farm_voc(&fmodel, a, &ambient_lti, 0.3, 10.0, 1.0, 1.0)?;
+    let farm_revenue_opt = compute_farm_revenue(&fmodel)?;
+
+    println!("Wind direction [deg], ambient LTI, value [USD/MWh], initial farm revenue, initial farm VOC, initial net revenue");
+    for i in 0..n {
+        println!(
+            "{:.0}, {:.4}, {:.8}, {:.3}, {:.3}, {:.3}",
+            wind_directions[i],
+            ambient_lti[i],
+            values[i],
+            farm_revenue_initial[i],
+            farm_voc_initial[i],
+            net_revenue_initial[i]
+        );
+    }
+
+    println!("Optimized power setpoints [W]:");
+    for i in 0..n {
+        let row: Vec<String> = (0..n_turbines)
+            .map(|t| format!("{:.1}", opt_power_setpoints[[i, t]]))
+            .collect();
+        println!("  condition {i}: {}", row.join(", "));
+    }
+
+    println!(
+        "Optimized farm revenue [USD], optimized farm VOC [USD], optimized net revenue [USD]:"
+    );
+    for i in 0..n {
+        println!(
+            "  condition {i}: {:.3}, {:.3}, {:.3}",
+            farm_revenue_opt[i], farm_voc_opt[i], net_revenue_opt[i]
+        );
+    }
+
+    println!("Optimized net revenue per condition [USD]:");
+    for i in 0..n {
+        println!(
+            "  condition {i}: {:.3} (initial {:.3})",
+            opt_net_revenue[i], net_revenue_initial[i]
+        );
+    }
+
     Ok(())
 }
