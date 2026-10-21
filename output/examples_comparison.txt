@@ -5407,9 +5407,6 @@ Floating AEP increase: -1.114 GWh (-0.31%)
          equivalent exists.
    * load_optimization_001 / 002
        - Python's load optimization algorithm (structural load model) is not ported.
-   * emgauss_001 / 002
-       - They modify the wake parameters of a model at runtime (Python builds a new model from a
-         modified dictionary); FLORIS has no API to change the wake parameters of a loaded model.
    * turbopark_001
        - It builds a turbine definition at runtime (Python's build_cosine_loss_turbine_dict);
          FLORIS can only load the turbine definitions of the turbine library.
