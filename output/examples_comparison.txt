@@ -5377,6 +5377,8 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    emgauss_002        identical powers        the four deflection parameter sets match
    008_uncertain      identical powers        the nominal and the uncertain (3 and 5 deg) powers match
    uncertain_001      identical powers        the uncertain model parameters (the case sizes match)
+   uncertain_003      identical powers        the parallel and the serial results are identical (0 W difference)
+   uncertain_003      identical powers        the parallel and the serial results are identical (0 W difference)
    turbopark_001      within 1e-4         the TurbOPark and TurbOPark-Gauss waked speeds match
    load_optimization_001
                         identical values        the LTI and VOC sweeps match
@@ -5409,11 +5411,11 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    * uncertain_002
        - Needs Python's ApproxFlorisModel surrogate (floris/simulation/approx.py); no Rust
          equivalent exists.
-   * uncertain_003 and control_optimization_002
-       - The UncertainFlorisModel is available (florus::uncertain::UncertainFlorisModel), but
-       - The UncertainFlorisModel is available (florus::uncertain::UncertainFlorisModel) and the yaw
-         angles can be fixed to the nominal direction, but the parallel runner is not ported
-         (splitting the unique conditions over several chunks does not reproduce the serial
-         flow field), so these two examples remain open.
-   * load_optimization_001 / 002
-       - Python's load optimization algorithm (structural load model) is not ported.
+   * control_optimization_002
+       - The UncertainFlorisModel is available (florus::uncertain::UncertainFlorisModel) with the
+         parallel runner and the fix_yaw_to_nominal_direction option, but the yaw optimizer
+         does not accept an uncertain model yet (Python runs the optimization on the
+         expanded model).
+   * load_optimization_002
+       - The revenues, the VOCs and the net revenues match Python; the optimized power
+         setpoints still differ for a few conditions (the derating search path diverges).

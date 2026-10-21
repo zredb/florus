@@ -1,4 +1,4 @@
-﻿//! Cross-validation of the uncertain model against the Python FLORIS reference
+//! Cross-validation of the uncertain model against the Python FLORIS reference
 //! values.
 //!
 //! Reference values come from `floris/examples/008_uncertain_models.py`.
@@ -7,6 +7,84 @@ use florus::floris_model::FlorisModel;
 use florus::types::{Array1, Array2};
 use florus::uncertain::UncertainFlorisModel;
 use florus::wind_data::TimeSeries;
+
+#[test]
+fn test_parallel_uncertain_model_matches_python() {
+    // Python: examples_uncertain/003_uncertain_model_with_parallelization.py
+    let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml").unwrap();
+    let mut ufmodel = UncertainFlorisModel::new(
+        FlorisModel::from_file("examples/inputs/gch.yaml").unwrap(),
+        3.0,
+        None,
+    )
+    .unwrap();
+    let mut pufmodel = UncertainFlorisModel::new(
+        FlorisModel::from_file("examples/inputs/gch.yaml").unwrap(),
+        3.0,
+        None,
+    )
+    .unwrap();
+
+    let wind_directions: Vec<f64> = (240..300).map(|i| i as f64).collect();
+    let n = wind_directions.len();
+    let time_series = TimeSeries::new(
+        Array1::from_vec(wind_directions.clone()),
+        Array1::from_vec(vec![8.0; n]),
+        Array1::from_vec(vec![0.06; n]),
+    )
+    .unwrap();
+
+    let d = 126.0;
+    let layout_x = Array1::from_vec(vec![0.0, d * 6.0]);
+    let layout_y = Array1::from_vec(vec![0.0, 0.0]);
+
+    fmodel.set_layout(&layout_x, &layout_y).unwrap();
+    fmodel.set_wind_data(&time_series).unwrap();
+    ufmodel.set_layout(&layout_x, &layout_y).unwrap();
+    ufmodel
+        .set_wind_conditions(
+            Array1::from_vec(vec![8.0; n]),
+            Array1::from_vec(wind_directions.clone()),
+            Array1::from_vec(vec![0.06; n]),
+        )
+        .unwrap();
+    pufmodel.set_layout(&layout_x, &layout_y).unwrap();
+    pufmodel
+        .set_wind_conditions(
+            Array1::from_vec(vec![8.0; n]),
+            Array1::from_vec(wind_directions.clone()),
+            Array1::from_vec(vec![0.06; n]),
+        )
+        .unwrap();
+
+    fmodel.run().unwrap();
+    ufmodel.run().unwrap();
+    pufmodel.run_parallel(2).unwrap();
+
+    let nominal = fmodel.get_turbine_powers().unwrap();
+    let serial = ufmodel.get_turbine_powers().unwrap();
+    let parallel = pufmodel.get_turbine_powers().unwrap();
+
+    // The nominal and the uncertain powers (Python reference)
+    let cases = [
+        (0usize, 1753.95, 1753.95, 1753.95, 1753.95),
+        (30, 1753.95, 575.21, 1753.95, 754.06),
+        (59, 1753.95, 1753.95, 1753.95, 1753.95),
+    ];
+    for (i, nom0, nom1, unc0, unc1) in cases {
+        assert!((nominal[[i, 0]] / 1000.0 - nom0).abs() < 0.01, "nominal t0");
+        assert!((nominal[[i, 1]] / 1000.0 - nom1).abs() < 0.01, "nominal t1");
+        assert!((serial[[i, 0]] / 1000.0 - unc0).abs() < 0.01, "serial t0");
+        assert!((serial[[i, 1]] / 1000.0 - unc1).abs() < 0.01, "serial t1");
+    }
+
+    // The parallel results are identical to the serial ones
+    let difference = (&serial - &parallel).mapv(|v| v.abs());
+    assert!(
+        difference.iter().copied().fold(0.0, f64::max) < 1e-6,
+        "the parallel and the serial results differ"
+    );
+}
 
 #[test]
 fn test_fix_yaw_to_nominal_direction() {

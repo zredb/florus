@@ -1,4 +1,4 @@
-﻿//! Example: The uncertain model parameters
+//! Example: The uncertain model parameters
 //!
 //! This example demonstrates the parameters of the uncertain model: the
 //! resolutions of the inputs, the wind direction sample points, the standard

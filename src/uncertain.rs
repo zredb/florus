@@ -314,6 +314,57 @@ impl UncertainFlorisModel {
         Ok(())
     }
 
+    /// Run the expanded conditions, splitting the unique conditions over
+    /// several chunks (Python's `ParFlorisModel`).
+    ///
+    /// The results do not depend on the split: every chunk is solved with a
+    /// copy of the expanded model.
+    pub fn run_parallel(&mut self, n_chunks: usize) -> Result<()> {
+        let n_chunks = n_chunks.max(1);
+        let expanded = self.expanded_model.as_ref().unwrap();
+        let n_unique = expanded.core().flow_field.n_findex;
+        let n_turbines = self.n_turbines;
+
+        let wind_directions = expanded.core().flow_field.wind_directions.clone();
+        let wind_speeds = expanded.core().flow_field.wind_speeds.clone();
+        let turbulence_intensities = expanded.core().flow_field.turbulence_intensities.clone();
+        let yaw_angles = expanded.core().farm.yaw_angles.clone();
+        let power_setpoints = expanded.core().farm.power_setpoints.clone();
+
+        let mut values = Array2::zeros((n_unique, n_turbines));
+        let chunk_size = ((n_unique + n_chunks - 1) / n_chunks).max(1);
+        for start in (0..n_unique).step_by(chunk_size) {
+            let end = (start + chunk_size).min(n_unique);
+
+            let mut model = expanded.clone();
+            model.set_wind_conditions(
+                wind_speeds.slice(s![start..end]).to_owned(),
+                wind_directions.slice(s![start..end]).to_owned(),
+                turbulence_intensities.slice(s![start..end]).to_owned(),
+            )?;
+            model.set_operation(
+                Some(yaw_angles.slice(s![start..end, ..]).to_owned()),
+                Some(power_setpoints.slice(s![start..end, ..]).to_owned()),
+                None,
+                None,
+                None,
+                None,
+            )?;
+            model.run()?;
+
+            let chunk_values = model.get_turbine_powers()?;
+            for fi in start..end {
+                for t in 0..n_turbines {
+                    values[[fi, t]] = chunk_values[[fi - start, t]];
+                }
+            }
+        }
+
+        self.unique_values = Some(values);
+        self.run_completed = true;
+        Ok(())
+    }
+
     /// Run the model without the wakes.
     pub fn run_no_wake(&mut self) -> Result<()> {
         self.expanded_model.as_mut().unwrap().run_no_wake()?;
