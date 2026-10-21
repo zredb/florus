@@ -42,6 +42,11 @@ pub struct Core {
     /// of the multi-dimensional turbines.
     pub multidim_conditions: Option<crate::floris_config::MultiDimConditions>,
 
+    /// The wake configuration of the model. It can be changed at runtime
+    /// (Python rebuilds the model from a modified dictionary), which is
+    /// applied with `FlorisModel::set_wake_config`.
+    pub wake_config: crate::floris_config::WakeConfig,
+
     /// The frequencies of the wind data (Python `wind_data.unpack_freq()`).
     ///
     /// They are used by the expected-power and AEP queries when no explicit
@@ -92,6 +97,7 @@ impl Clone for Core {
             wind_data_info: self.wind_data_info.clone(),
             multidim_conditions: self.multidim_conditions.clone(),
             wind_data_frequencies: None,
+            wake_config: self.wake_config.clone(),
         }
     }
 }
@@ -198,6 +204,7 @@ impl Core {
             wind_data_info: None, // Default to None for YAML-based initialization
             multidim_conditions: config.flow_field.multidim_conditions.clone(),
             wind_data_frequencies: None,
+            wake_config: config.wake.clone(),
         };
 
         // Initialize grid based on solver type

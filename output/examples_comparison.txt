@@ -5372,6 +5372,9 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    control_optimization_001
                         identical powers        the Serial-Refine yaw angles and farm powers match
    wind_data_001      identical values        the AEP of the time series and the wind rose match
+   009_parallel       identical powers        the results do not depend on the parallelization
+   emgauss_001        identical powers        the four velocity deficit parameter sets match
+   emgauss_002        identical powers        the four deflection parameter sets match
 
  Engine gaps that were fixed in this round:
    1. Heterogeneous inflow was never applied to the velocity field -> now interpolated onto the
@@ -5410,8 +5413,6 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    * turbopark_001
        - It builds a turbine definition at runtime (Python's build_cosine_loss_turbine_dict);
          FLORIS can only load the turbine definitions of the turbine library.
-   * 009_parallel_models
-       - The parallel model runner is not ported.
    * The remaining Rust examples are still narrative placeholders or use their own scenarios:
      heterogeneous_003_het_multi_turbine (a leftover placeholder, the real
      port is heterogeneous_003_het_speedup_by_wd_ws), wind_resource_grid_004/005.

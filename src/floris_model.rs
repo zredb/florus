@@ -1795,6 +1795,31 @@ impl FlorisModel {
         types
     }
 
+    /// The wake configuration of the model.
+    ///
+    /// The configuration can be modified and applied with
+    /// `set_wake_config` (Python rebuilds the model from a modified
+    /// dictionary).
+    pub fn wake_config(&self) -> &crate::floris_config::WakeConfig {
+        &self.core.wake_config
+    }
+
+    /// Replace the wake configuration of the model.
+    ///
+    /// The wake models are rebuilt from the configuration and the model state
+    /// is invalidated, so that `run()` recomputes the wakes.
+    pub fn set_wake_config(
+        &mut self,
+        config: crate::floris_config::WakeConfig,
+    ) -> crate::Result<()> {
+        self.core.wake = crate::core::wake::WakeModelManager::from_config(&config)?;
+        self.core.wake_config = config;
+        self.core.state.initialized = false;
+        self.core.state.converged = false;
+        self.core.grid = None;
+        Ok(())
+    }
+
     pub fn set_layout(&mut self, layout_x: &Array1, layout_y: &Array1) -> crate::Result<()> {
         self.core.farm.set_layout(layout_x, layout_y)?;
         self.core.grid = None; // Reset grid when layout changes
