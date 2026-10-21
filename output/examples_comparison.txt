@@ -1,4 +1,4 @@
-﻿================================================================================
+================================================================================
  FLORUS (Rust) vs FLORIS (Python) example output comparison
  Generated: 2026-10-19 15:53:10
  Rust examples:    cargo build --release --examples, run from repo root
@@ -5402,19 +5402,11 @@ Floating AEP increase: -1.114 GWh (-0.31%)
          a bit-for-bit match is not attainable without the same optimizer.
        - layout_optimization_002 and wind_resource_grid_003 additionally need the heterogeneous
          inflow, which now works.
-   * 008_uncertain_models, uncertain_001 / 003 and control_optimization_002
-       - Need Python's UncertainFlorisModel (the wind direction uncertainty expansion and the
-         Gaussian weighting of the cases); FLORUS has no uncertainty models.
    * uncertain_002
        - Needs Python's ApproxFlorisModel surrogate (floris/simulation/approx.py); no Rust
          equivalent exists.
+   * uncertain_003 and control_optimization_002
+       - The UncertainFlorisModel is available (florus::uncertain::UncertainFlorisModel), but
+         these examples need the yaw uncertainty and the parallel runner of the yaw optimizer.
    * load_optimization_001 / 002
        - Python's load optimization algorithm (structural load model) is not ported.
-   * turbopark_001
-       - The TurbOPark models work with the cubature grid and the turbine definition is built
-         at runtime; the waked speeds match to 1e-4, except for the first condition of the wind
-         direction sweep, where the order of the two turbines with the same streamwise position
-         (225 degrees) differs from Python's.
-   * The remaining Rust examples are still narrative placeholders or use their own scenarios:
-     heterogeneous_003_het_multi_turbine (a leftover placeholder, the real
-     port is heterogeneous_003_het_speedup_by_wd_ws), wind_resource_grid_004/005.
