@@ -1,4 +1,4 @@
-//! Example: The load optimization of a row of turbines
+﻿//! Example: The load optimization of a row of turbines
 //!
 //! This example optimizes the power setpoints of a row of three turbines so
 //! that the net revenue (the farm revenue minus the variable operating cost)
