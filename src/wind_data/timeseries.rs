@@ -188,14 +188,15 @@ impl TimeSeries {
         for i in 0..self.wind_directions.len() {
             // The wind directions near 360 are wrapped to negative values for
             // the binning (Python `_wrap_wind_directions_near_360`), and the
-            // bin edges start half a step below zero.
+            // bin edges start half a step below zero (Python
+            // `to_WindRose`), so the bin index is shifted by half a step.
             let mut wd = self.wind_directions[i];
             if wd >= 360.0 - wd_step / 2.0 {
                 wd -= 360.0;
             }
             let wd_idx = ((wd + wd_step / 2.0) / wd_step).floor() as usize;
             let wd_idx = if n_wd == 0 { 0 } else { wd_idx % n_wd };
-            let ws_idx = (self.wind_speeds[i] / ws_step).floor() as usize;
+            let ws_idx = ((self.wind_speeds[i] + ws_step / 2.0) / ws_step).floor() as usize;
             let ws_idx = ws_idx.min(n_ws - 1);
             let weight = bin_weights.map(|w| w[i]).unwrap_or(1.0);
 
