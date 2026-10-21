@@ -1,4 +1,4 @@
-================================================================================
+﻿================================================================================
  FLORUS (Rust) vs FLORIS (Python) example output comparison
  Generated: 2026-10-19 15:53:10
  Rust examples:    cargo build --release --examples, run from repo root
@@ -5343,6 +5343,8 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    wind_resource_grid_002
                         identical powers        2280015.30 / 2272352.88 / 2324102.91 W
    control_types_001  identical powers        the derating sweep matches
+   control_optimization_001
+                        identical powers        the Serial-Refine yaw angles and farm powers match
    control_types_002  identical powers        1753.95 / 354.99 / 339.56 kW
    control_types_003  identical powers        the yaw sweep of the two- and three-turbine farms matches
    control_types_004  identical powers        6133.2 / 2827.1 / 6301.1 / 2076.6 kW

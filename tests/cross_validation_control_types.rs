@@ -1,4 +1,4 @@
-//! Cross-validation of the control-type examples against the Python FLORIS
+﻿//! Cross-validation of the control-type examples against the Python FLORIS
 //! reference values.
 //!
 //! Reference values come from `floris/examples/examples_control_types/`:
@@ -8,8 +8,75 @@
 //! - `005_peak_shaving.py` (peak-shaving operation model)
 
 use florus::floris_model::FlorisModel;
+use florus::optimization::yaw_optimization::yaw_optimizer_sr::YawOptimizationSR;
+use florus::optimization::yaw_optimization::YawOptimization;
 use florus::types::{Array1, Array2};
 use florus::wind_data::TimeSeries;
+
+#[test]
+fn test_yaw_optimization_single_ws_matches_python() {
+    // Python: examples_control_optimization/001_opt_yaw_single_ws.py
+    let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml").unwrap();
+    let d = 126.0;
+    fmodel
+        .set_layout(
+            &Array1::from_vec(vec![0.0, 5.0 * d, 10.0 * d]),
+            &Array1::from_vec(vec![0.0, 0.0, 0.0]),
+        )
+        .unwrap();
+
+    let wind_directions: Vec<f64> = (0..120).map(|i| 3.0 * i as f64).collect();
+    let n = wind_directions.len();
+    let time_series = TimeSeries::new(
+        Array1::from_vec(wind_directions.clone()),
+        Array1::from_vec(vec![8.0; n]),
+        Array1::from_vec(vec![0.06; n]),
+    )
+    .unwrap();
+    fmodel.set_wind_data(&time_series).unwrap();
+    fmodel.run().unwrap();
+
+    let mut yaw_opt = YawOptimizationSR::new();
+    let result = yaw_opt.optimize(&mut fmodel, None).unwrap();
+
+    // Python reference: the yaw angles stay at zero for most of the wind
+    // directions (the turbines are in a row) and the farm power is
+    // 5261863.3775 W; at 66 and 69 degrees the orientation of the farm
+    // changes the wake losses slightly, and at 270 degrees the wind is
+    // perpendicular to the row, so the optimizer yaws the turbines.
+    let exact = [
+        (0usize, 5261863.3775, [0.0, 0.0, 0.0]),
+        (22, 5261858.6925, [0.0, 0.0, 0.0]),
+        (23, 5261734.2066, [0.0, 0.0, 0.0]),
+        (40, 5261863.3757, [0.0, 0.0, 0.0]),
+        (90, 3275737.7312, [25.0, 22.65625, 0.0]),
+    ];
+    for i in 0..n {
+        assert!(
+            result.farm_powers_opt[i] <= 5261863.4 + 1.0,
+            "optimized farm power at {} deg: {} W",
+            wind_directions[i],
+            result.farm_powers_opt[i]
+        );
+    }
+    for (i, expected, yaw) in exact {
+        assert!(
+            (result.farm_powers_opt[i] - expected).abs() < 0.01,
+            "optimized farm power at {} deg: {} W (expected {expected})",
+            wind_directions[i],
+            result.farm_powers_opt[i]
+        );
+        for t in 0..3 {
+            assert!(
+                (result.yaw_angles[[i, t]] - yaw[t]).abs() < 1e-6,
+                "yaw angle of turbine {t} at {} deg: {} (expected {})",
+                wind_directions[i],
+                result.yaw_angles[[i, t]],
+                yaw[t]
+            );
+        }
+    }
+}
 
 #[test]
 fn test_derating_control_matches_python() {
