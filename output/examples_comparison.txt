@@ -5349,6 +5349,8 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    get_flow_002        identical values        the met mast velocity sweep matches
    get_flow_003        identical values        the met mast turbulence intensity sweep matches
    get_flow_004        identical values        the velocity deficit profiles match
+   turbine_001        identical values        the power, Ct and yaw sweeps of the library turbines
+   turbine_002        identical powers        1754.0 / 2548.6 kW (the flow planes differ slightly)
 
  Engine gaps that were fixed in this round:
    1. Heterogeneous inflow was never applied to the velocity field -> now interpolated onto the
@@ -5383,6 +5385,6 @@ Floating AEP increase: -1.114 GWh (-0.31%)
      008_uncertain_models, 009_parallel_models, 010_compare_farm_power_with_neighbor,
      control_optimization_001/002, control_types_003, emgauss_001/002, floating_001/003,
      heterogeneous_003_het_multi_turbine (a leftover placeholder, the real
-     port is heterogeneous_003_het_speedup_by_wd_ws), operation_models_001, turbine_001/002/003,
+     port is heterogeneous_003_het_speedup_by_wd_ws), operation_models_001,
      turbopark_001, uncertain_001/003, visualizations_001-005, wind_data_001/002/003,
      wind_resource_grid_004/005.

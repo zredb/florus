@@ -695,7 +695,68 @@ impl Farm {
 
     /// Set turbine layout
     ///
-    /// Updates the turbine positions and reinitializes related properties.
+    /// Replace the turbine types of the farm (Python `fmodel.set(turbine_type=...)`).
+    ///
+    /// The layout is kept; the operation arrays are reset to the new turbine
+    /// count.
+    pub fn set_turbine_types(&mut self, turbine_types: &[String]) -> crate::Result<()> {
+        let layout_x = self.layout_x.clone();
+        let n_turbines = layout_x.len();
+
+        if turbine_types.len() != 1 && turbine_types.len() != n_turbines {
+            anyhow::bail!(
+                "turbine_type must have the same number of entries as layout_x/layout_y or have \
+                a single turbine_type value"
+            );
+        }
+
+        let mut turbines = Vec::with_capacity(n_turbines);
+        if turbine_types.len() == 1 {
+            let turbine_path = turbine_library_path(&turbine_types[0]);
+            let turbine_type = TurbineType::load_turbine_type(&turbine_path).map_err(|e| {
+                anyhow::anyhow!("Failed to load turbine type '{}': {}", turbine_types[0], e)
+            })?;
+            let turbine_type_arc = Arc::new(turbine_type);
+            turbines = (0..n_turbines)
+                .map(|_| Turbine {
+                    turbine_type: Arc::clone(&turbine_type_arc),
+                })
+                .collect();
+        } else {
+            for t in turbine_types {
+                let turbine_path = turbine_library_path(t);
+                let turbine_type = TurbineType::load_turbine_type(&turbine_path)
+                    .map_err(|e| anyhow::anyhow!("Failed to load turbine type '{}': {}", t, e))?;
+                turbines.push(Turbine {
+                    turbine_type: Arc::new(turbine_type),
+                });
+            }
+        }
+
+        self.turbines = turbines;
+        self.state = State::default();
+
+        // The turbine properties (hub heights, rotor diameters, ...) follow the
+        // new turbine types
+        self.map_turbine_types()?;
+
+        // The operation arrays are sized to the new turbine count
+        let n_findex = if self.yaw_angles.is_empty() {
+            1
+        } else {
+            self.yaw_angles.dim().0
+        };
+        self.initialize_control_arrays(n_findex);
+        self.set_yaw_angles_to_ref_yaw(n_findex);
+        self.set_tilt_to_ref_tilt(n_findex);
+        self.set_power_setpoints_to_ref_power(n_findex);
+        self.set_awc_modes_to_ref_mode(n_findex);
+        self.set_awc_amplitudes_to_ref_amp(n_findex);
+        self.set_awc_frequencies_to_ref_freq(n_findex);
+
+        Ok(())
+    }
+
     pub fn set_layout(&mut self, layout_x: &Array1, layout_y: &Array1) -> crate::Result<()> {
         if layout_x.len() != layout_y.len() {
             anyhow::bail!("layout_x and layout_y must have the same number of entries");

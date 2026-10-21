@@ -1728,6 +1728,42 @@ impl FlorisModel {
     }
 
     /// Set turbine layout
+    /// Set the turbine types of the farm (Python `fmodel.set(turbine_type=...)`).
+    ///
+    /// The layout is kept; the operation settings are reset.
+    pub fn set_turbine_types(&mut self, turbine_types: &[String]) -> crate::Result<()> {
+        self.core.farm.set_turbine_types(turbine_types)?;
+        self.core.grid = None;
+        self.core.state.initialized = false;
+        Ok(())
+    }
+
+    /// The turbine types available in the turbine library.
+    ///
+    /// The multi-dimensional power/thrust coefficient definitions are excluded
+    /// (Python's example does the same, since they need a different
+    /// handling).
+    pub fn available_turbine_types(&self, exclude_multi_dim: bool) -> Vec<String> {
+        let mut types: Vec<String> = Vec::new();
+        if let Ok(entries) = std::fs::read_dir("turbine_library") {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("yaml") {
+                    continue;
+                }
+                let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                    continue;
+                };
+                if exclude_multi_dim && stem.contains("multi_dim") {
+                    continue;
+                }
+                types.push(stem.to_string());
+            }
+        }
+        types.sort();
+        types
+    }
+
     pub fn set_layout(&mut self, layout_x: &Array1, layout_y: &Array1) -> crate::Result<()> {
         self.core.farm.set_layout(layout_x, layout_y)?;
         self.core.grid = None; // Reset grid when layout changes
