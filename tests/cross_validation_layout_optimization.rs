@@ -146,7 +146,88 @@ fn test_layout_optimization_wind_resource_matches_python() {
     );
 }
 
-/// The optimized layout has to improve the AEP of the initial layout (the
+/// The layout optimization with heterogeneous inflow
+/// (`examples_layout_optimization/002_optimize_layout_with_heterogeneity.py`):
+/// the AEP of the initial layout must match Python, and the optimization
+/// must improve it by about the same amount.
+#[test]
+fn test_layout_optimization_with_heterogeneity_matches_python() {
+    use florus::heterogeneous_map::HeterogeneousInflowConfig;
+
+    let d = 126.0;
+    let size_d = 12.0;
+    let wind_directions = Array1::from_vec(vec![90.0, 270.0]);
+    let n_wds = wind_directions.len();
+
+    let wind_rose = WindRose::new(
+        wind_directions.clone(),
+        Array1::from_vec(vec![8.0]),
+        Array2::from_elem((n_wds, 1), 0.06),
+        Some(Array2::from_elem((n_wds, 1), 1.0 / n_wds as f64)),
+        None,
+        false,
+        None,
+        None,
+    )
+    .expect("wind rose");
+
+    let heterogeneous_config = HeterogeneousInflowConfig {
+        x: Array1::from_vec(vec![0.0, size_d * d, 0.0, size_d * d]),
+        y: Array1::from_vec(vec![-d, -d, d, d]),
+        z: None,
+        wind_speeds: None,
+        wind_directions: Some(wind_directions.clone()),
+        speed_multipliers: Array2::from_shape_fn((n_wds, 4), |(_, j)| [0.5, 1.0, 0.5, 1.0][j]),
+    };
+
+    let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml").expect("model");
+    fmodel.set_wind_data(&wind_rose).expect("wind data");
+    fmodel
+        .set_heterogeneous_inflow_config(heterogeneous_config)
+        .expect("heterogeneous inflow");
+    fmodel
+        .set_layout(
+            &Array1::from_vec(vec![0.1, 0.3 * size_d * d, 0.6 * size_d * d]),
+            &Array1::from_vec(vec![0.0, 0.0, 0.0]),
+        )
+        .expect("layout");
+    fmodel.run().expect("run");
+
+    // Python: 6198.3 MWh for the initial layout
+    let base_aep = fmodel.get_expected_farm_power(None, None).expect("aep") * 8760.0 / 1e6;
+    assert!(
+        (base_aep - 6198.3).abs() < 0.5,
+        "the AEP of the initial layout: {base_aep} MWh (expected 6198.3 MWh)"
+    );
+
+    let boundaries = Boundary::Polygon(vec![
+        (0.0, 0.0),
+        (size_d * d, 0.0),
+        (size_d * d, 0.1),
+        (0.0, 0.1),
+        (0.0, 0.0),
+    ]);
+    let config = LayoutOptimizationConfig {
+        boundaries: boundaries.clone(),
+        min_dist: Some(2.0 * d),
+        max_iterations: 40,
+        ..Default::default()
+    };
+    let mut optimizer = LayoutOptimizationScipy::new(&fmodel, boundaries)
+        .expect("optimizer")
+        .with_config(config);
+    let solution = optimizer.optimize().expect("optimize");
+
+    fmodel.set_layout(&solution.x, &solution.y).expect("layout");
+    fmodel.run().expect("run");
+    let aep = fmodel.get_expected_farm_power(None, None).expect("aep") * 8760.0 / 1e6;
+
+    // Python: 13930.0 MWh (an improvement of 124.7 %)
+    assert!(
+        (aep - 13930.0).abs() / 13930.0 < 0.05,
+        "the AEP of the optimized layout: {aep} MWh (expected 13930.0 MWh)"
+    );
+}
 /// Python example improves it by 4.5 % with scipy's SLSQP; the Rust
 /// optimizer is a pattern search, which converges to a nearby optimum).
 #[test]

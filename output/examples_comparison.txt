@@ -5473,6 +5473,12 @@ UNCERTAIN 35 285 ['3.125000', '0.000000', '0.000000'] 5177676.308966 5185583.628
                                               initial layout match Python; the optimized layout
                                               differs (the Rust pattern search reaches 58370.6 MWh,
                                               Python's SLSQP 58824.3 MWh)
+   layout_optimization_002
+                        within 1 %             the heterogeneous inflow and the AEP of the initial
+                                              layout match Python (6198.3 MWh); the optimized AEP
+                                              is 14036.9 MWh (Python's SLSQP 13930.0 MWh); the
+                                              coupled geometric yaw optimization converges to a
+                                              different optimum
 
  Engine gaps that were fixed in this round:
    1. Heterogeneous inflow was never applied to the velocity field -> now interpolated onto the
@@ -5515,18 +5521,16 @@ UNCERTAIN 35 285 ['3.125000', '0.000000', '0.000000'] 5177676.308966 5185583.628
          distribution), which cannot be reproduced in Rust: the realization of the walk, and
          therefore the expected power, differs from Python's. The run times are not comparable
          either.
-   * layout_optimization_001 / 002 / 003 / 005 and wind_resource_grid_003
-       - layout_optimization_001 is a 1:1 port: the random wind resource is drawn with the numpy
-         compatible generator (florus::numpy_random) and therefore identical to Python's, and the
-         AEP/AVP of the initial layout match Python to 1e-6. The optimizer itself differs (Rust: a
-         Hooke-Jeeves pattern search, Python: scipy's SLSQP), so the optimal layouts are not
-         identical: the AEP gain is 3.7 % (Python: 4.5 %) and the AVP gain is 19.4 % (Python:
+   * layout_optimization_003 / 005 and wind_resource_grid_003
+       - layout_optimization_001 and 002 are 1:1 ports (the random wind resource and the
+         heterogeneous inflow are identical to Python's and the AEP of the initial layout matches
+         to 1e-6), but the optimizer itself differs (Rust: a Hooke-Jeeves pattern search, Python:
+         scipy's SLSQP), so the optimal layouts are not identical: the AEP gain of
+         layout_optimization_001 is 3.7 % (Python: 4.5 %) and the AVP gain is 19.4 % (Python:
          25.2 %). The SLSQP optimum lies slightly outside the minimum-distance constraint, which
          the Rust optimizer enforces exactly.
-       - layout_optimization_002, layout_optimization_003, layout_optimization_005 and
-         wind_resource_grid_003 still need the same optimizers; in addition the random search of
-         Python is time based (it runs until a wall-clock deadline), so its result is not
-         reproducible even in Python.
-       - layout_optimization_002 and wind_resource_grid_003 additionally need the heterogeneous
-         inflow, which now works.
+       - layout_optimization_003, layout_optimization_005 and wind_resource_grid_003 still need
+         the genetic random search; in addition the random search of Python is time based (it runs
+         until a wall-clock deadline), so its result is not reproducible even in Python.
+       - wind_resource_grid_003 additionally needs the heterogeneous inflow, which now works.
 

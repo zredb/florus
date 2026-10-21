@@ -7,8 +7,18 @@ use super::layout_optimization_base::{
     Boundary, LayoutOptimizationConfig, LayoutOptimizationResult, LayoutOptimizer,
 };
 use crate::floris_model::FlorisModel;
-use crate::types::{Array1, Float};
+use crate::types::{Array1, Array2, Float};
 use crate::Result;
+
+/// The yaw angles of the geometric yaw optimization for the current layout
+/// (Python's `_get_geoyaw_angles`).
+pub fn geometric_yaw_angles(fmodel: &mut FlorisModel) -> Result<Array2> {
+    use crate::optimization::yaw_optimization::{YawOptimization, YawOptimizationGeometric};
+
+    let mut optimizer = YawOptimizationGeometric::new();
+    let result = optimizer.optimize(fmodel, None)?;
+    Ok(result.yaw_angles)
+}
 
 /// LayoutOptimizationScipy - Layout optimization using scipy-style optimization
 ///
@@ -135,6 +145,27 @@ impl LayoutOptimizer for LayoutOptimizationScipy {
         if let Err(e) = fmodel.run() {
             eprintln!("Warning: Failed to run model: {}", e);
             return 0.0;
+        }
+
+        // The yaw angles of the geometric yaw optimization (Python's
+        // `_get_geoyaw_angles`), which couple the yaw angles to the layout
+        if self.config.enable_geometric_yaw {
+            match geometric_yaw_angles(&mut fmodel) {
+                Ok(yaw_angles) => {
+                    if let Err(e) = fmodel.set_yaw_angles(yaw_angles) {
+                        eprintln!("Warning: Failed to set the yaw angles: {}", e);
+                        return 0.0;
+                    }
+                    if let Err(e) = fmodel.run() {
+                        eprintln!("Warning: Failed to run model: {}", e);
+                        return 0.0;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Warning: Failed to compute the geometric yaw angles: {}", e);
+                    return 0.0;
+                }
+            }
         }
 
         // The objective is the annual energy (or value) production, weighted

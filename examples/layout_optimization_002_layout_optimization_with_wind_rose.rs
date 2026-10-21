@@ -1,48 +1,159 @@
-//! Example: Layout Optimization with Wind Rose
+//! Example: Layout optimization with heterogeneous inflow
 //!
-//! This example demonstrates layout optimization using wind rose data.
+//! This example shows a layout optimization using the geometric yaw option.
+//! It combines elements of layout optimization and heterogeneous inflow for
+//! demonstrative purposes.
 //!
-//! Corresponds to: examples_layout_optimization/002_layout_optimization_with_wind_rose.py
+//! Heterogeneity in the inflow provides the necessary driver for coupled yaw
+//! and layout optimization to be worthwhile. First, a layout optimization is
+//! run without coupled yaw optimization; then a coupled optimization is run to
+//! show the benefits of coupled optimization when flows are heterogeneous.
+//!
+//! Scenario aligned 1:1 with
+//! examples_layout_optimization/002_optimize_layout_with_heterogeneity.py.
+//!
+//! Note: Python optimizes the layout with scipy's SLSQP solver, while
+//! FLORUS uses a pattern search, so the optimal layouts are not identical
+//! (the AEP gains agree closely).
 
-use florus::Result;
+use florus::floris_model::FlorisModel;
+use florus::heterogeneous_map::HeterogeneousInflowConfig;
+use florus::optimization::layout_optimization::layout_optimization_base::{
+    Boundary, LayoutOptimizationConfig,
+};
+use florus::optimization::layout_optimization::layout_optimization_scipy::geometric_yaw_angles;
+use florus::optimization::layout_optimization::{LayoutOptimizationScipy, LayoutOptimizer};
+use florus::types::{Array1, Array2};
+use florus::wind_data::WindRose;
 
-fn main() -> Result<()> {
-    println!("=== Layout Optimization with Wind Rose ===\n");
+fn main() -> anyhow::Result<()> {
+    // Initialize FLORIS
+    let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
-    println!("Layout Optimization with Full Wind Distribution:\\n");
+    // Setup 2 wind directions (due east and due west)
+    // and 1 wind speed with uniform probability
+    let wind_directions = Array1::from_vec(vec![90.0, 270.0]);
+    let n_wds = wind_directions.len();
+    let wind_speeds = Array1::from_vec(vec![8.0]);
 
-    println!("Key Difference from Single Condition:");
-    println!("  - Optimizes across all wind conditions");
-    println!("  - Weights by wind direction frequency");
-    println!("  - Maximizes total AEP, not single-case power\\n");
+    // Shape frequency distribution to match number of wind directions and wind speeds
+    let freq_table = Array2::from_elem((n_wds, 1), 1.0 / n_wds as f64);
 
-    println!("Process:");
-    println!("  1. Define wind rose (directions, speeds, frequencies)");
-    println!("  2. For each candidate layout:");
-    println!("     - Calculate power for each wind condition");
-    println!("     - Weight by frequency");
-    println!("     - Sum for total AEP");
-    println!("  3. Optimize layout to maximize AEP\\n");
+    // The boundaries for the turbines, specified as vertices
+    let d = 126.0; // rotor diameter for the NREL 5MW
+    let size_d = 12.0;
+    let boundaries = Boundary::Polygon(vec![
+        (0.0, 0.0),
+        (size_d * d, 0.0),
+        (size_d * d, 0.1),
+        (0.0, 0.1),
+        (0.0, 0.0),
+    ]);
 
-    println!("Benefits:");
-    println!("  - Accounts for prevailing winds");
-    println!("  - Avoids optimizing for rare conditions");
-    println!("  - More realistic performance prediction");
-    println!("  - Better financial returns\\n");
+    // Set turbine locations to 4 turbines at corners of the rectangle
+    // (optimal without flow heterogeneity)
+    let layout_x = Array1::from_vec(vec![0.1, 0.3 * size_d * d, 0.6 * size_d * d]);
+    let layout_y = Array1::from_vec(vec![0.0, 0.0, 0.0]);
 
-    println!("Challenges:");
-    println!("  - Higher computational cost");
-    println!("  - More complex optimization landscape");
-    println!("  - Longer run times");
-    println!("  - Requires good wind data\\n");
+    // Generate exaggerated heterogeneous inflow (same for all wind directions)
+    let speed_multipliers = Array2::from_shape_fn((n_wds, 4), |(_, j)| [0.5, 1.0, 0.5, 1.0][j]);
+    let x_locs = Array1::from_vec(vec![0.0, size_d * d, 0.0, size_d * d]);
+    let y_locs = Array1::from_vec(vec![-d, -d, d, d]);
 
-    println!("Typical Results:");
-    println!("  - Turbines staggered relative to prevailing wind");
-    println!("  - Aligned perpendicular to dominant directions");
-    println!("  - 5-20% AEP improvement over grid layout");
-    println!("  - Site-specific optimal patterns\\n");
+    // The configuration of the heterogeneous inflow (Python's
+    // `heterogeneous_inflow_config_by_wd`)
+    let heterogeneous_config = HeterogeneousInflowConfig {
+        x: x_locs.clone(),
+        y: y_locs.clone(),
+        z: None,
+        wind_speeds: None,
+        wind_directions: Some(wind_directions.clone()),
+        speed_multipliers: speed_multipliers.clone(),
+    };
 
-    println!("=== Example Complete ===");
-    println!("Note: Requires WindRose integration and optimization framework.");
+    // Establish a WindRose object
+    let wind_rose = WindRose::new(
+        wind_directions.clone(),
+        wind_speeds,
+        Array2::from_elem((n_wds, 1), 0.06),
+        Some(freq_table),
+        None,
+        false,
+        None,
+        None,
+    )?;
+
+    fmodel.set_wind_data(&wind_rose)?;
+    fmodel.set_heterogeneous_inflow_config(heterogeneous_config)?;
+    fmodel.set_layout(&layout_x, &layout_y)?;
+
+    // Setup and solve the layout optimization problem without heterogeneity
+    let config = LayoutOptimizationConfig {
+        boundaries: boundaries.clone(),
+        min_dist: Some(2.0 * d),
+        ..Default::default()
+    };
+    let mut layout_opt =
+        LayoutOptimizationScipy::new(&fmodel, boundaries.clone())?.with_config(config);
+
+    // Run the optimization
+    let solution = layout_opt.optimize()?;
+
+    // Get the resulting improvement in AEP
+    println!("... calcuating improvement in AEP");
+    fmodel.run()?;
+    let base_aep = fmodel.get_expected_farm_power(None, None)? * 8760.0 / 1e6;
+    fmodel.set_layout(&solution.x, &solution.y)?;
+    fmodel.run()?;
+    let opt_aep = fmodel.get_expected_farm_power(None, None)? * 8760.0 / 1e6;
+
+    let percent_gain = 100.0 * (opt_aep - base_aep) / base_aep;
+
+    // Print the results
+    println!("Optimal layout: x={:?}, y={:?}", solution.x, solution.y);
+    println!(
+        "Optimal layout improves AEP by {percent_gain:.1}% from {base_aep:.1} MWh to {opt_aep:.1} MWh"
+    );
+
+    // Rerun the layout optimization with geometric yaw enabled
+    println!("\nReoptimizing with geometric yaw enabled.");
+    fmodel.set_layout(&layout_x, &layout_y)?;
+    let config = LayoutOptimizationConfig {
+        boundaries: boundaries.clone(),
+        min_dist: Some(2.0 * d),
+        enable_geometric_yaw: true,
+        ..Default::default()
+    };
+    let mut layout_opt =
+        LayoutOptimizationScipy::new(&fmodel, boundaries.clone())?.with_config(config);
+
+    // Run the optimization
+    let solution = layout_opt.optimize()?;
+
+    // Get the resulting improvement in AEP
+    println!("... calcuating improvement in AEP");
+    fmodel.run()?;
+    let base_aep = fmodel.get_expected_farm_power(None, None)? * 8760.0 / 1e6;
+    fmodel.set_layout(&solution.x, &solution.y)?;
+    fmodel.run()?;
+    let opt_aep = fmodel.get_expected_farm_power(None, None)? * 8760.0 / 1e6;
+
+    let percent_gain = 100.0 * (opt_aep - base_aep) / base_aep;
+
+    // Print the results
+    println!("Optimal layout: x={:?}, y={:?}", solution.x, solution.y);
+    println!(
+        "Optimal layout improves AEP by {percent_gain:.1}% from {base_aep:.1} MWh to {opt_aep:.1} MWh"
+    );
+
+    // The geometric yaw angles of the optimized layout
+    let yaw_angles = geometric_yaw_angles(&mut fmodel)?;
+    println!(
+        "Turbine geometric yaw angles for wind direction {:.2} and wind speed {:.2} m/s: {:?}",
+        wind_directions[1],
+        8.0,
+        yaw_angles.row(1).to_vec()
+    );
+
     Ok(())
 }
