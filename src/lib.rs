@@ -1,4 +1,4 @@
-pub mod core;
+﻿pub mod core;
 pub mod floris_config;
 pub mod floris_model;
 pub mod heterogeneous_map;
@@ -9,6 +9,7 @@ pub mod output_formatter;
 /// This is a translation of Python FLORIS project (v4.6) to Rust for
 /// improved performance and safety.
 pub mod types;
+pub mod uncertain;
 pub mod utilities;
 pub mod visualization;
 

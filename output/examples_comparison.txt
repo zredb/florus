@@ -5375,6 +5375,7 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    009_parallel       identical powers        the results do not depend on the parallelization
    emgauss_001        identical powers        the four velocity deficit parameter sets match
    emgauss_002        identical powers        the four deflection parameter sets match
+   008_uncertain      identical powers        the nominal and the uncertain (3 and 5 deg) powers match
 
  Engine gaps that were fixed in this round:
    1. Heterogeneous inflow was never applied to the velocity field -> now interpolated onto the
