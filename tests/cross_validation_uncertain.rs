@@ -64,6 +64,12 @@ fn test_uncertain_model_matches_python() {
     ufmodel_3.run().unwrap();
     ufmodel_5.run().unwrap();
 
+    // The sizes of the expanded and unique cases (Python prints them with
+    // verbose=True)
+    assert_eq!(ufmodel_3.n_unexpanded(), 60);
+    assert_eq!(ufmodel_3.n_expanded(), 300);
+    assert_eq!(ufmodel_3.n_unique(), 72);
+
     let nominal = fmodel.get_turbine_powers().unwrap();
     let uncertain_3 = ufmodel_3.get_turbine_powers().unwrap();
     let uncertain_5 = ufmodel_5.get_turbine_powers().unwrap();

@@ -1,4 +1,4 @@
-//! The uncertain FLORIS model: the mean power of a farm for a distribution
+﻿//! The uncertain FLORIS model: the mean power of a farm for a distribution
 //! of wind direction deviations.
 //!
 //! Python `floris/uncertain_floris_model.py`: the wind conditions of the
@@ -54,6 +54,9 @@ pub struct UncertainFlorisModel {
 
     /// Whether the expanded model has been run
     pub run_completed: bool,
+
+    /// Print the sizes of the expanded and unique cases
+    pub verbose: bool,
 }
 
 impl UncertainFlorisModel {
@@ -99,6 +102,7 @@ impl UncertainFlorisModel {
             n_unexpanded: 0,
             n_turbines: 0,
             run_completed: false,
+            verbose: false,
         };
         uncertain.expand()?;
         Ok(uncertain)
@@ -241,6 +245,12 @@ impl UncertainFlorisModel {
         self.n_unexpanded = n_unexpanded;
         self.n_turbines = n_turbines;
         self.run_completed = false;
+
+        if self.verbose {
+            println!("Original num rows: {}", self.n_unexpanded);
+            println!("Expanded num rows: {}", self.map_to_expanded.len());
+            println!("Unique num rows: {}", unique_rows.len());
+        }
 
         Ok(())
     }
