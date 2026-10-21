@@ -5353,6 +5353,7 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    turbine_002        identical powers        1754.0 / 2548.6 kW (the flow planes differ slightly)
    wind_data_002      identical values        the IEC and custom turbulence intensities match
    wind_data_003      identical values        the custom and piecewise linear values match
+   004_set            identical powers        1500.0 / 339.4, 1500.0 / 850.6, 3051.1 / 657.8 kW
 
  Engine gaps that were fixed in this round:
    1. Heterogeneous inflow was never applied to the velocity field -> now interpolated onto the
@@ -5383,7 +5384,7 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    * load_optimization_001 / 002
        - Python's load optimization algorithm (structural load model) is not ported.
    * The remaining Rust examples are still narrative placeholders or use their own scenarios:
-     002_visualization, 003_wind_data_objects, 004_set, 005_getting_power, 007_sweeping_variables,
+     002_visualization, 003_wind_data_objects, 005_getting_power, 007_sweeping_variables,
      008_uncertain_models, 009_parallel_models, 010_compare_farm_power_with_neighbor,
      control_optimization_001/002, control_types_003, emgauss_001/002, floating_001/003,
      heterogeneous_003_het_multi_turbine (a leftover placeholder, the real
