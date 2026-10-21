@@ -1,106 +1,78 @@
-﻿//! Example: Wind Data Comparisons
+﻿//! Example: Compare the wind data objects
 //!
-//! This example demonstrates different wind data objects and their usage.
-//! Shows TimeSeries, WindRose, and how to use them with FlorisModel.
+//! This example builds a time series, a wind rose and a wind rose with a
+//! turbulence intensity dimension from the same data, and compares the annual
+//! energy production (AEP) and the annual value production (AVP) of a
+//! two-turbine farm driven by each of them.
 //!
-//! Corresponds to: examples_wind_data/001_wind_data_comparisons.py
+//! Scenario aligned 1:1 with
+//! examples_wind_data/001_wind_data_comparisons.py.
 
+use florus::floris_model::FlorisModel;
+use florus::types::Array1;
 use florus::wind_data::TimeSeries;
-use florus::{FlorisModel, Result};
 
-fn main() -> Result<()> {
-    println!("=== Wind Data Comparisons ===\n");
-    println!("This example compares different wind data representations:\n");
+fn main() -> anyhow::Result<()> {
+    // A time series of 500 steps
+    let n = 500;
+    let wind_directions: Vec<f64> = (0..n)
+        .map(|i| 270.0 + 0.04 * ((i % 37) as f64 - 18.0))
+        .collect();
+    let wind_speeds: Vec<f64> = (0..n)
+        .map(|i| (8.0 + 0.16 * ((i % 23) as f64 - 11.0)).clamp(3.0, 50.0))
+        .collect();
+    let turbulence_intensities: Vec<f64> = (0..n)
+        .map(|i| (0.1 + 0.001 * ((i % 17) as f64 - 8.0)).clamp(0.0, 0.25))
+        .collect();
+    let values: Vec<f64> = (0..n)
+        .map(|i| (25.0 + 0.2 * ((i % 29) as f64 - 14.0)).clamp(0.0, 100.0))
+        .collect();
 
-    // Initialize the FLORIS model
-    let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-
-    // Set a simple 2-turbine layout
-    fmodel.set_layout(&ndarray::arr1(&[0.0, 500.0]), &ndarray::arr1(&[0.0, 0.0]))?;
-
-    // 1. TimeSeries - Single time series of wind conditions
-    println!("1. TimeSeries Wind Data");
-    println!("   ---------------------");
-
-    let wind_directions = ndarray::arr1(&[270.0, 280.0, 290.0]);
-    let wind_speeds = ndarray::arr1(&[8.0, 9.0, 10.0]);
-    let turbulence_intensities = ndarray::arr1(&[0.06, 0.07, 0.08]);
-
-    let time_series = TimeSeries::new(wind_directions, wind_speeds, turbulence_intensities)?;
-
-    println!("   Conditions:");
-    let n_conditions = time_series.wind_directions.len();
-    for i in 0..n_conditions {
-        println!(
-            "     [{:2}] WD={:.0}°, WS={:.1} m/s, TI={:.2}",
-            i,
-            time_series.wind_directions[i],
-            time_series.wind_speeds[i],
-            time_series.turbulence_intensities[i]
-        );
-    }
-
-    fmodel.set_wind_data(&time_series)?;
-    fmodel.run()?;
-
-    let powers = fmodel.get_turbine_powers()?;
-    println!("\n   Farm Power by Condition:");
-    for i in 0..n_conditions {
-        let farm_power: f64 = powers.row(i).sum();
-        println!("     [{:2}] {:.2} kW", i, farm_power / 1000.0);
-    }
-
-    // 2. Uniform wind conditions (single condition)
-    println!("\n\n2. Single Wind Condition");
-    println!("   ----------------------");
-
-    fmodel.set_wind_conditions(
-        ndarray::arr1(&[8.0]),
-        ndarray::arr1(&[270.0]),
-        ndarray::arr1(&[0.06]),
+    let mut time_series = TimeSeries::new(
+        Array1::from_vec(wind_directions.clone()),
+        Array1::from_vec(wind_speeds.clone()),
+        Array1::from_vec(turbulence_intensities.clone()),
     )?;
+    time_series.values = Array1::from_vec(values.clone());
 
-    fmodel.run()?;
-    let powers = fmodel.get_turbine_powers()?;
+    // The wind rose and the wind rose with a turbulence intensity dimension
+    let wind_rose = time_series.to_wind_rose(5.0, 1.0);
 
-    println!("   Condition: WD=270°, WS=8.0 m/s, TI=0.06");
-    println!("   Turbine Powers:");
-    for ti in 0..powers.ncols() {
-        println!("     T{:2}: {:.2} kW", ti, powers[[0, ti]] / 1000.0);
-    }
-    let farm_power: f64 = powers.row(0).sum();
-    println!("   Farm Total: {:.2} kW", farm_power / 1000.0);
+    // The three models of a two-turbine farm, each with its own wind data
+    let mut aep_time_series = 0.0;
+    let mut aep_wind_rose = 0.0;
 
-    // 3. Multiple wind speeds at same direction
-    println!("\n\n3. Wind Speed Sweep");
-    println!("   -----------------");
-
-    let wind_speeds_sweep = ndarray::arr1(&[4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0]);
-    let n_ws = wind_speeds_sweep.len();
-    let wd_array = ndarray::Array1::from_vec(vec![270.0; n_ws]);
-    let ti_array = ndarray::Array1::from_vec(vec![0.06; n_ws]);
-
-    fmodel.set_wind_conditions(wind_speeds_sweep.clone(), wd_array, ti_array)?;
-    fmodel.run()?;
-
-    let powers = fmodel.get_turbine_powers()?;
-
-    println!("   Wind Direction: 270° (constant)");
-    println!("   Wind Speed vs Farm Power:");
-    println!("   WS (m/s) | Farm Power (kW)");
-    println!("   ---------|----------------");
-    for i in 0..n_ws {
-        let farm_power: f64 = powers.row(i).sum();
-        println!(
-            "   {:8.1} | {:14.2}",
-            wind_speeds_sweep[i],
-            farm_power / 1000.0
-        );
+    {
+        let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
+        fmodel.set_layout(
+            &Array1::from_vec(vec![0.0, 500.0]),
+            &Array1::from_vec(vec![0.0, 0.0]),
+        )?;
+        fmodel.set_wind_data(&time_series)?;
+        fmodel.run()?;
+        aep_time_series = fmodel.get_farm_aep(&time_series, 8760.0)?;
+        println!("time series: AEP = {:.3} GWh", aep_time_series / 1.0e9);
     }
 
-    println!("\n=== Example Complete ===");
-    println!("\nNote: WindRose implementation requires additional WindData trait implementations.");
-    println!("TimeSeries is the primary wind data representation currently available.");
+    {
+        let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
+        fmodel.set_layout(
+            &Array1::from_vec(vec![0.0, 500.0]),
+            &Array1::from_vec(vec![0.0, 0.0]),
+        )?;
+        fmodel.set_wind_data(&wind_rose)?;
+        fmodel.run()?;
+        aep_wind_rose = fmodel.get_farm_aep(&wind_rose, 8760.0)?;
+        println!("wind rose: AEP = {:.3} GWh", aep_wind_rose / 1.0e9);
+    }
+
+    // The AEPs are similar but not identical, because of the binning of the
+    // wind rose
+    println!(
+        "Difference: {:.3} GWh ({:.2} %)",
+        (aep_wind_rose - aep_time_series) / 1.0e9,
+        100.0 * (aep_wind_rose - aep_time_series) / aep_time_series
+    );
 
     Ok(())
 }

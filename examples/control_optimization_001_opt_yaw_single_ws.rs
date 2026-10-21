@@ -1,92 +1,61 @@
-//! Example: Optimize Yaw for Single Wind Speed (from examples_control_optimization folder)
+﻿//! Example: Optimize the yaw angles for a single wind speed
 //!
-//! Use the serial-refine method to optimize the yaw angles for a 3-turbine wind farm.
-//! This corresponds to `examples_control_optimization/001_opt_yaw_single_ws.py` in Python FLORIS.
+//! This example demonstrates how to perform a yaw optimization for a sweep of
+//! wind directions with a constant wind speed, using the Serial-Refine
+//! method.
+//!
+//! Scenario aligned 1:1 with
+//! examples_control_optimization/001_opt_yaw_single_ws.py: a 3-turbine row on
+//! gch.yaml, a time series with the wind directions from 0 to 357 degrees in
+//! 3 degree steps, a wind speed of 8 m/s and TI = 0.06.
 
-use florus::optimization::yaw_optimization::{
-    YawOptimization, YawOptimizationConfig, YawOptimizationSR,
-};
+use florus::floris_model::FlorisModel;
+use florus::optimization::yaw_optimization::yaw_optimizer_sr::YawOptimizationSR;
+use florus::optimization::yaw_optimization::YawOptimization;
+use florus::types::Array1;
 use florus::wind_data::TimeSeries;
-use florus::{FlorisModel, Result};
-use ndarray::Array1;
 
-fn main() -> Result<()> {
-    println!("=== Yaw Optimization - Single Wind Speed Example ===\n");
-    println!("Optimizing yaw angles using Serial-Refine method for a 3-turbine farm.\n");
-
-    // Load the default example floris object
+fn main() -> anyhow::Result<()> {
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
-    // Define an inflow that keeps wind speed and TI constant while sweeping wind directions
-    let wind_directions: Vec<f64> = (0..120).map(|i| i as f64 * 3.0).collect(); // 0 to 357 deg
+    // An inflow that keeps the wind speed and the turbulence intensity
+    // constant while sweeping the wind directions
+    let wind_directions: Vec<f64> = (0..120).map(|i| 3.0 * i as f64).collect();
     let n = wind_directions.len();
-    let wind_speeds = vec![8.0; n];
-    let turbulence_intensities = vec![0.06; n];
-
     let time_series = TimeSeries::new(
-        Array1::from(wind_directions),
-        Array1::from(wind_speeds),
-        Array1::from(turbulence_intensities),
+        Array1::from_vec(wind_directions.clone()),
+        Array1::from_vec(vec![8.0; n]),
+        Array1::from_vec(vec![0.06; n]),
     )?;
 
-    // Reinitialize as a 3-turbine using the above inflow
-    let d = 126.0; // Rotor diameter for the NREL 5 MW
+    // Reinitialize as a 3-turbine farm with the above inflow
+    let d = 126.0; // The rotor diameter of the NREL 5 MW
     fmodel.set_layout(
-        &ndarray::arr1(&[0.0, 5.0 * d, 10.0 * d]),
-        &ndarray::arr1(&[0.0, 0.0, 0.0]),
+        &Array1::from_vec(vec![0.0, 5.0 * d, 10.0 * d]),
+        &Array1::from_vec(vec![0.0, 0.0, 0.0]),
     )?;
     fmodel.set_wind_data(&time_series)?;
-
-    println!("Wind farm configuration:");
-    println!("  - Turbines: 3 (aligned in x-direction)");
-    println!("  - Spacing: 5D (630 m) between turbines");
-    println!(
-        "  - Wind directions: {} conditions (0° to 357°, step 3°)",
-        n
-    );
-    println!("  - Wind speed: 8.0 m/s (constant)");
-    println!("  - Turbulence intensity: 0.06 (constant)\n");
-
-    // Run the model before optimization
-    println!("Running baseline simulation...");
     fmodel.run()?;
-    println!("Baseline simulation completed.\n");
 
-    // Initialize optimizer object and run optimization using the Serial-Refine method
-    println!("Running yaw optimization (Serial-Refine method)...");
+    // The Serial-Refine optimizer with the Python defaults
     let mut yaw_opt = YawOptimizationSR::new();
+    let result = yaw_opt.optimize(&mut fmodel, None)?;
 
-    let config = YawOptimizationConfig {
-        minimum_yaw_angle: -30.0,
-        maximum_yaw_angle: 30.0,
-        ..Default::default()
-    };
-
-    let result = yaw_opt.optimize(&mut fmodel, Some(config))?;
-
-    println!("\nOptimization completed!");
-    println!("  - Baseline farm power: {:.0} W", result.baseline_power);
-    println!("  - Optimized farm power: {:.0} W", result.optimized_power);
-    println!("  - Power improvement: {:.0} W", result.power_improvement);
-    println!(
-        "  - Improvement percentage: {:.2}%",
-        result.improvement_percentage
-    );
-
-    // Print yaw angles for each turbine
-    println!("\nOptimal yaw angles (first wind direction):");
-    if result.yaw_angles.dim().0 > 0 {
-        for (t, &yaw) in result.yaw_angles.row(0).iter().enumerate() {
-            println!("  Turbine {}: {:.1}°", t, yaw);
-        }
+    // The optimized yaw angles and the farm powers
+    println!("Wind direction [deg], yaw t0 [deg], yaw t1 [deg], yaw t2 [deg], farm power opt [W], farm power baseline [W]");
+    let yaw_angles = &result.yaw_angles;
+    for i in 0..n {
+        let row: Vec<String> = (0..3)
+            .map(|t| format!("{:.3}", yaw_angles[[i, t]]))
+            .collect();
+        println!(
+            "{:.0}, {}, {:.1}, {:.1}",
+            wind_directions[i],
+            row.join(", "),
+            result.farm_powers_opt[i],
+            result.farm_powers_baseline[i]
+        );
     }
-
-    println!("\n=== Yaw Optimization Complete ===");
-    println!("\nKey observations:");
-    println!("  - Upstream turbine (T0) typically yaws to deflect wake");
-    println!("  - Downstream turbines benefit from wake deflection");
-    println!("  - Power uplift varies with wind direction");
-    println!("  - Maximum uplift occurs when turbines are closely aligned with wind");
 
     Ok(())
 }
