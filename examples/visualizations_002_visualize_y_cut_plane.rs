@@ -1,49 +1,50 @@
-//! Example: Visualize Y Cut Plane
+﻿//! Example: Visualize the y cut plane
 //!
-//! Demonstrates vertical plane visualization along the wind direction.
+//! This example visualizes the y cut plane of a three-turbine farm with the
+//! wind direction along the row.
 //!
-//! Corresponds to: examples_visualizations/002_visualize_y_cut_plane.py
+//! Scenario aligned 1:1 with
+//! examples_visualizations/002_visualize_y_cut_plane.py.
 
-use florus::visualization::*;
-use florus::{FlorisModel, Result};
+use florus::floris_model::FlorisModel;
+use florus::types::Array1;
+use florus::visualization::flow_visualization;
 
-fn main() -> Result<()> {
-    println!("=== Y Cut Plane Visualization ===\n");
-
+fn main() -> anyhow::Result<()> {
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
+
+    // A three turbine layout with the wind direction along the row
     fmodel.set_layout(
-        &ndarray::arr1(&[0.0, 500.0, 1000.0]),
-        &ndarray::arr1(&[0.0, 0.0, 0.0]),
+        &Array1::from_vec(vec![0.0, 500.0, 1000.0]),
+        &Array1::from_vec(vec![0.0, 0.0, 0.0]),
     )?;
     fmodel.set_wind_conditions(
-        ndarray::arr1(&[8.0]),
-        ndarray::arr1(&[270.0]),
-        ndarray::arr1(&[0.06]),
+        Array1::from_vec(vec![8.0]),
+        Array1::from_vec(vec![270.0]),
+        Array1::from_vec(vec![0.06]),
     )?;
     fmodel.run()?;
 
-    std::fs::create_dir_all("output/examples_visualizations")?;
+    // The y plane
+    let y_plane = fmodel.calculate_y_plane(200, 100, 0.0)?;
 
-    println!("Calculating Y-plane (streamwise vertical slice)...");
-    match fmodel.calculate_y_plane(200, 100, 0.0) {
-        Ok(cut_plane) => {
-            println!("  Y-plane computed successfully");
-            match visualize_cut_plane(
-                &cut_plane,
-                "output/examples_visualizations/y_cut_plane.png",
-                Some(3.0),
-                Some(9.0),
-                "coolwarm",
-                true,
-                "Y Cut Plane",
-            ) {
-                Ok(_) => println!("  Saved to output/examples_visualizations/y_cut_plane.png"),
-                Err(e) => eprintln!("  Visualization error: {}", e),
-            }
-        }
-        Err(e) => eprintln!("  Y-plane calculation error: {}", e),
-    }
+    let output_dir = "output/examples_visualizations";
+    std::fs::create_dir_all(output_dir).ok();
+    flow_visualization::visualize_cut_plane(
+        &y_plane,
+        format!("{output_dir}/002_y_cut_plane.png"),
+        Some(3.0),
+        Some(9.0),
+        "viridis",
+        true,
+        "Y Cut Plane",
+    )?;
 
-    println!("\n=== Example Complete ===");
+    // The velocity range of the plane
+    let u = &y_plane.data.u;
+    let min = u.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = u.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    println!("Y cut plane velocity range: {min:.3} .. {max:.3} m/s");
+
     Ok(())
 }

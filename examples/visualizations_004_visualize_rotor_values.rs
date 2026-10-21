@@ -1,65 +1,47 @@
-//! Example: Visualize Rotor Values (from examples_visualizations folder)
+﻿//! Example: Visualize the values at the rotors
 //!
-//! Demonstrate visualizing the flow velocities at the rotor using plot_rotor_values.
-//! This corresponds to `examples_visualizations/004_visualize_rotor_values.py` in Python FLORIS.
+//! This example plots the velocity values at the resolution of the rotor
+//! grids of the turbines.
+//!
+//! Scenario aligned 1:1 with
+//! examples_visualizations/004_visualize_rotor_values.py.
 
-use florus::visualization::*;
-use florus::{FlorisModel, Result};
+use florus::floris_model::FlorisModel;
+use florus::types::Array1;
+use florus::visualization::flow_visualization;
 
-fn main() -> Result<()> {
-    println!("=== Rotor Values Visualization Example ===\n");
-    println!("This example demonstrates visualizing flow velocities at turbine rotors.\n");
-
-    // Initialize FLORIS
+fn main() -> anyhow::Result<()> {
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
-    // Set a 2 turbine layout
-    fmodel.set_layout(&ndarray::arr1(&[0.0, 500.0]), &ndarray::arr1(&[0.0, 0.0]))?;
-    fmodel.set_wind_conditions(
-        ndarray::arr1(&[8.0]),
-        ndarray::arr1(&[270.0]),
-        ndarray::arr1(&[0.06]),
+    // A two turbine layout
+    fmodel.set_layout(
+        &Array1::from_vec(vec![0.0, 500.0]),
+        &Array1::from_vec(vec![0.0, 0.0]),
     )?;
-
-    // Create output directory
-    std::fs::create_dir_all("output/examples_visualizations")?;
-
-    println!("Running simulation...");
+    fmodel.set_wind_conditions(
+        Array1::from_vec(vec![8.0]),
+        Array1::from_vec(vec![270.0]),
+        Array1::from_vec(vec![0.06]),
+    )?;
     fmodel.run()?;
 
-    // Get the velocity field from the core
-    let core = fmodel.core();
-    let u_field = &core.flow_field.u;
+    // The values at the rotor of every turbine
+    let output_dir = "output/examples_visualizations";
+    std::fs::create_dir_all(output_dir).ok();
+    flow_visualization::plot_rotor_values(
+        &fmodel.flow_field().u,
+        0,
+        1,
+        2,
+        format!("{output_dir}/004_rotor_values.png"),
+        "viridis",
+    )?;
 
-    println!("\nVelocity field dimensions: {:?}", u_field.dim());
-    println!("  - findex: {}", u_field.dim().0);
-    println!("  - turbines: {}", u_field.dim().1);
-    println!("  - y grid points: {}", u_field.dim().2);
-    println!("  - z grid points: {}", u_field.dim().3);
-
-    // Plot the values at each rotor
-    println!("\nCreating rotor plane visualization...");
-    match plot_rotor_values(
-        u_field,
-        0, // findex
-        1, // n_rows
-        2, // n_cols
-        "output/examples_visualizations/rotor_values.png",
-        "coolwarm", // colormap
-    ) {
-        Ok(_) => {
-            println!("   ✓ Saved to output/examples_visualizations/rotor_values.png");
-            println!("   ℹ Shows velocity distribution across each turbine's rotor disk");
-            println!("   ℹ Left: Turbine 1 (upstream), Right: Turbine 2 (downstream)");
-        }
-        Err(e) => eprintln!("   ✗ Error: {}", e),
-    }
-
-    println!("\n=== Rotor Values Example Complete ===");
-    println!("\nKey observations:");
-    println!("  - Upstream turbine shows uniform velocity (~8 m/s)");
-    println!("  - Downstream turbine shows wake deficit (lower velocities)");
-    println!("  - Velocity patterns reveal wake structure and recovery");
+    // The velocity range at the rotors
+    let u = &fmodel.flow_field().u;
+    let min = u.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = u.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    println!("Rotor velocity range: {min:.3} .. {max:.3} m/s");
 
     Ok(())
 }

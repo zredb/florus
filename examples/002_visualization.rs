@@ -1,159 +1,97 @@
-//! Example 002: Visualizations
+﻿//! Example: The layout and flow visualizations
 //!
-//! This example demonstrates the use of the flow and layout visualizations in FLORUS.
-//! First, an example wind farm layout is plotted, with the turbine names and the directions
-//! and distances between turbines shown in different configurations by subplot.
-//! Next, the horizontal flow field at hub height is plotted for a single wind condition.
+//! FLORIS includes two modules for visualization:
+//!   1) `layout_visualization`: the layout of the wind farm
+//!   2) `flow_visualization`: the flow field
 //!
-//! FLORUS includes two modules for visualization:
-//!   1) flow_visualization: for visualizing the flow field
-//!   2) layout_visualization: for visualizing the layout of the wind farm
-//! The two modules can be used together to visualize the flow field and the layout
-//! of the wind farm.
+//! This example produces the layout visualizations (the turbine points, the
+//! labels and the waking directions) and the horizontal flow plane at hub
+//! height with the turbine rotors.
 //!
-//! Corresponds to `002_visualizations.py` in Python FLORIS.
+//! Scenario aligned 1:1 with examples/002_visualizations.py.
 
-use florus::visualization::*;
-use florus::{FlorisModel, Result};
+use florus::floris_model::FlorisModel;
+use florus::types::Array1;
+use florus::visualization::{flow_visualization, layout_visualization};
 
-fn main() -> Result<()> {
-    println!("=== FLORUS Visualization Example ===\n");
-
-    // Load a FlorisModel
+fn main() -> anyhow::Result<()> {
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
-    // Set the farm layout to have 8 turbines irregularly placed
-    let layout_x = vec![0.0, 500.0, 0.0, 128.0, 1000.0, 900.0, 1500.0, 1250.0];
-    let layout_y = vec![0.0, 300.0, 750.0, 1400.0, 0.0, 567.0, 888.0, 1450.0];
-    fmodel.set_layout(&ndarray::arr1(&layout_x), &ndarray::arr1(&layout_y))?;
-
-    println!("Layout visualization contains functions for visualizing the layout:");
-    println!("  - plot_turbine_points");
-    println!("  - plot_turbine_labels");
-    println!("  - plot_turbine_rotors");
-    println!("  - plot_waking_directions");
-    println!("Each can be overlaid to provide further information about the layout.");
-    println!("\nCreating layout visualization subplots...\n");
-
-    // Create output directory
-    std::fs::create_dir_all("output")?;
-
-    // Subplot 1: Turbine Points
-    println!("1. Creating turbine points plot...");
-    match plot_turbine_points(
-        &fmodel,
-        "output/layout_subplot_1_points.png",
-        None,    // All turbines
-        "black", // Color
-        10,      // Marker size
-    ) {
-        Ok(_) => println!("   ✓ Saved to output/layout_subplot_1_points.png"),
-        Err(e) => eprintln!("   ✗ Error: {}", e),
-    }
-
-    // Subplot 2: Turbine Points and Labels
-    println!("\n2. Creating turbine points and labels plot...");
-    match plot_turbine_labels(
-        &fmodel,
-        "output/layout_subplot_2_labeled.png",
-        None,  // Use default indices
-        None,  // Use default offset
-        false, // No bounding box
-    ) {
-        Ok(_) => println!("   ✓ Saved to output/layout_subplot_2_labeled.png"),
-        Err(e) => eprintln!("   ✗ Error: {}", e),
-    }
-
-    // Subplot 3: Turbine Points, Labels, and Waking Directions
-    println!("\n3. Creating turbine points, labels, and waking directions plot...");
-    match plot_waking_directions(
-        &fmodel,
-        "output/layout_subplot_3_waking.png",
-        None,    // No distance limit
-        Some(2), // Limit to 2 nearest neighbors
-    ) {
-        Ok(_) => println!("   ✓ Saved to output/layout_subplot_3_waking.png"),
-        Err(e) => eprintln!("   ✗ Error: {}", e),
-    }
-
-    // Subplot 4: Use Provided Turbine Names
-    println!("\n4. Creating plot with custom turbine names...");
-    let turbine_names = vec![
-        "T1".to_string(),
-        "T2".to_string(),
-        "T3".to_string(),
-        "T4".to_string(),
-        "T9".to_string(),
-        "T10".to_string(),
-        "T75".to_string(),
-        "T78".to_string(),
-    ];
-    match plot_turbine_labels(
-        &fmodel,
-        "output/layout_subplot_4_custom_names.png",
-        Some(&turbine_names), // Use custom names
-        None,                 // Use default offset
-        false,                // No bounding box
-    ) {
-        Ok(_) => println!("   ✓ Saved to output/layout_subplot_4_custom_names.png"),
-        Err(e) => eprintln!("   ✗ Error: {}", e),
-    }
-
-    // Visualizations of the flow field
-    println!("\n--- Flow Field Visualization ---");
-    println!("Visualizations of the flow field are made by using calculate plane methods.");
-    println!("In this example we show the horizontal plane at hub height.\n");
-
-    // For flow visualizations, set to a single condition (n_findex = 1)
-    fmodel.set_wind_conditions(
-        ndarray::arr1(&[8.0]),   // Wind speed
-        ndarray::arr1(&[290.0]), // Wind direction
-        ndarray::arr1(&[0.06]),  // Turbulence intensity
+    // A farm with 8 turbines placed irregularly
+    fmodel.set_layout(
+        &Array1::from_vec(vec![0.0, 500.0, 0.0, 128.0, 1000.0, 900.0, 1500.0, 1250.0]),
+        &Array1::from_vec(vec![0.0, 300.0, 750.0, 1400.0, 0.0, 567.0, 888.0, 1450.0]),
     )?;
 
-    println!("Running simulation for flow visualization...");
+    let output_dir = "output/examples_visualizations";
+    std::fs::create_dir_all(output_dir).ok();
+
+    // The turbine points
+    layout_visualization::plot_turbine_points(
+        &fmodel,
+        format!("{output_dir}/002_turbine_points.png"),
+        None,
+        "k",
+        10,
+    )?;
+
+    // The turbine points and their labels
+    layout_visualization::plot_turbine_labels(
+        &fmodel,
+        format!("{output_dir}/002_turbine_labels.png"),
+        None,
+        None,
+        false,
+    )?;
+
+    // The turbine points, the labels and the waking directions
+    layout_visualization::plot_waking_directions(
+        &fmodel,
+        format!("{output_dir}/002_waking_directions.png"),
+        None,
+        Some(2),
+    )?;
+
+    // The flow field: the model is set to a single condition
+    fmodel.set_wind_conditions(
+        Array1::from_vec(vec![8.0]),
+        Array1::from_vec(vec![290.0]),
+        Array1::from_vec(vec![0.06]),
+    )?;
     fmodel.run()?;
 
-    // Plot the flow field
-    println!("\n5. Creating horizontal flow field visualization...");
-    match visualize_horizontal_plane(
+    let horizontal_plane = fmodel.calculate_horizontal_plane(90.0, 200, 100)?;
+    flow_visualization::visualize_cut_plane(
+        &horizontal_plane,
+        format!("{output_dir}/002_horizontal_plane.png"),
+        None,
+        None,
+        "viridis",
+        true,
+        "Horizontal flow at hub height",
+    )?;
+
+    // The turbine rotors and the labels on top of the flow field
+    let turbine_names = ["T1", "T2", "T3", "T4", "T9", "T10", "T75", "T78"];
+    flow_visualization::visualize_cut_plane_with_rotors_and_labels(
+        &horizontal_plane,
         &fmodel,
-        "output/horizontal_flow_with_rotors.png",
-        Some(3.0),  // Min wind speed for color scale
-        Some(12.0), // Max wind speed for color scale
-        Some("Horizontal Flow with Turbine Rotors and Labels"),
-    ) {
-        Ok(_) => println!("   ✓ Saved to output/horizontal_flow_with_rotors.png"),
-        Err(e) => eprintln!("   ✗ Error: {}", e),
-    }
+        format!("{output_dir}/002_horizontal_plane_with_rotors.png"),
+        None,
+        None,
+        "viridis",
+        &turbine_names,
+        true,
+        true,
+        "Horizontal flow with the turbine rotors and labels",
+    )?;
 
-    // Plot turbine rotors with yaw angles
-    println!("\n6. Setting yaw angles and plotting rotors on flow field...");
-    fmodel.set_yaw_angles(ndarray::arr2(&[[
-        0.0, 10.0, 5.0, 15.0, 0.0, 20.0, 10.0, 5.0,
-    ]]))?;
-
-    match plot_turbine_rotors(
-        &fmodel,
-        "output/flow_field_with_rotors.png",
-        "black",
-        Some(290.0), // Use current wind direction
-    ) {
-        Ok(_) => println!("   ✓ Saved to output/flow_field_with_rotors.png"),
-        Err(e) => eprintln!("   ✗ Error: {}", e),
-    }
-
-    println!("\n=== Visualization Complete ===");
-    println!("All visualizations saved to 'output/' directory");
-    println!("\nGenerated files:");
-    println!("  Layout visualizations:");
-    println!("    - layout_subplot_1_points.png");
-    println!("    - layout_subplot_2_labeled.png");
-    println!("    - layout_subplot_3_waking.png");
-    println!("    - layout_subplot_4_custom_names.png");
-    println!("  Flow field visualizations:");
-    println!("    - horizontal_flow_with_rotors.png");
-    println!("    - flow_field_with_rotors.png");
+    println!("The visualizations were written to {output_dir}:");
+    println!("  002_turbine_points.png");
+    println!("  002_turbine_labels.png");
+    println!("  002_waking_directions.png");
+    println!("  002_horizontal_plane.png");
+    println!("  002_horizontal_plane_with_rotors.png");
 
     Ok(())
 }

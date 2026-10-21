@@ -5359,6 +5359,12 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    007_sweeping      identical powers        all six variable sweeps match
    010_neighbor      within 0.5 kW        the farm power with a neighboring farm (0.01 % wake difference)
    003_wind_data     identical powers        the time series and wind rose powers match
+   002_visualization  equivalent             the layout and flow visualizations (PNG files)
+   visualizations_001 equivalent            the layout visualizations (PNG files)
+   visualizations_002 equivalent            the y cut plane (PNG file)
+   visualizations_003 equivalent            the cross plane (PNG file)
+   visualizations_004 equivalent            the rotor values (PNG file)
+   visualizations_005 equivalent            the horizontal plane with a turbine scan (PNG file)
 
  Engine gaps that were fixed in this round:
    1. Heterogeneous inflow was never applied to the velocity field -> now interpolated onto the
@@ -5389,7 +5395,6 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    * load_optimization_001 / 002
        - Python's load optimization algorithm (structural load model) is not ported.
    * The remaining Rust examples are still narrative placeholders or use their own scenarios:
-     002_visualization,
      008_uncertain_models, 009_parallel_models,
      control_optimization_001/002, emgauss_001/002, floating_001/003,
      heterogeneous_003_het_multi_turbine (a leftover placeholder, the real

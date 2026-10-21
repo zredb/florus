@@ -1,46 +1,46 @@
-//! Example: Visualize Cross Plane
+﻿//! Example: Visualize the cross plane
 //!
-//! Demonstrates vertical plane visualization perpendicular to the wind direction.
+//! This example visualizes the cross plane downstream of a single turbine.
 //!
-//! Corresponds to: examples_visualizations/003_visualize_cross_plane.py
+//! Scenario aligned 1:1 with
+//! examples_visualizations/003_visualize_cross_plane.py.
 
-use florus::visualization::*;
-use florus::{FlorisModel, Result};
+use florus::floris_model::FlorisModel;
+use florus::types::Array1;
+use florus::visualization::flow_visualization;
 
-fn main() -> Result<()> {
-    println!("=== Cross Plane Visualization ===\n");
-
+fn main() -> anyhow::Result<()> {
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-    fmodel.set_layout(&ndarray::arr1(&[0.0]), &ndarray::arr1(&[0.0]))?;
+
+    // A single turbine
+    fmodel.set_layout(&Array1::from_vec(vec![0.0]), &Array1::from_vec(vec![0.0]))?;
     fmodel.set_wind_conditions(
-        ndarray::arr1(&[8.0]),
-        ndarray::arr1(&[270.0]),
-        ndarray::arr1(&[0.06]),
+        Array1::from_vec(vec![8.0]),
+        Array1::from_vec(vec![270.0]),
+        Array1::from_vec(vec![0.06]),
     )?;
     fmodel.run()?;
 
-    std::fs::create_dir_all("output/examples_visualizations")?;
+    // The cross plane 500 m downstream of the turbine
+    let cross_plane = fmodel.calculate_cross_plane(100, 100, 500.0)?;
 
-    println!("Calculating cross-plane (perpendicular to wind at 500m downstream)...");
-    match fmodel.calculate_cross_plane(100, 100, 500.0) {
-        Ok(cut_plane) => {
-            println!("  Cross-plane computed successfully");
-            match visualize_cut_plane(
-                &cut_plane,
-                "output/examples_visualizations/cross_plane.png",
-                Some(3.0),
-                Some(9.0),
-                "coolwarm",
-                true,
-                "Cross Plane at 500m",
-            ) {
-                Ok(_) => println!("  Saved to output/examples_visualizations/cross_plane.png"),
-                Err(e) => eprintln!("  Visualization error: {}", e),
-            }
-        }
-        Err(e) => eprintln!("  Cross-plane calculation error: {}", e),
-    }
+    let output_dir = "output/examples_visualizations";
+    std::fs::create_dir_all(output_dir).ok();
+    flow_visualization::visualize_cut_plane(
+        &cross_plane,
+        format!("{output_dir}/003_cross_plane.png"),
+        Some(3.0),
+        Some(9.0),
+        "viridis",
+        true,
+        "Cross Plane",
+    )?;
 
-    println!("\n=== Example Complete ===");
+    // The velocity range of the plane
+    let u = &cross_plane.data.u;
+    let min = u.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = u.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    println!("Cross plane velocity range: {min:.3} .. {max:.3} m/s");
+
     Ok(())
 }

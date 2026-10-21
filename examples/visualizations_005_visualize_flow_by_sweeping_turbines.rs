@@ -1,71 +1,49 @@
-//! Example: Visualize Flow by Sweeping Turbines (from examples_visualizations folder)
+﻿//! Example: Visualize the flow by sweeping the turbines
 //!
-//! Demonstrate the use calculate_horizontal_plane_with_turbines.
-//! This corresponds to `examples_visualizations/005_visualize_flow_by_sweeping_turbines.py` in Python FLORIS.
+//! Some wake models do not have a visualization method included; for these
+//! cases a slower version can be used, which scans a turbine model to produce
+//! the horizontal flow field.
 //!
-//! Note: Full implementation requires calculate_horizontal_plane_with_turbines() method.
-//! This example uses standard horizontal plane calculation as a placeholder.
+//! Scenario aligned 1:1 with
+//! examples_visualizations/005_visualize_flow_by_sweeping_turbines.py.
 
-use florus::visualization::*;
-use florus::{FlorisModel, Result};
+use florus::floris_model::FlorisModel;
+use florus::types::Array1;
+use florus::visualization::flow_visualization;
 
-fn main() -> Result<()> {
-    println!("=== Flow Visualization by Sweeping Turbines Example ===\n");
-    println!("This example demonstrates turbine scanning for flow visualization.");
-    println!("Note: Full implementation requires calculate_horizontal_plane_with_turbines().\n");
-
-    // Initialize FLORIS
+fn main() -> anyhow::Result<()> {
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
-    // Set a 2 turbine layout
-    fmodel.set_layout(&ndarray::arr1(&[0.0, 500.0]), &ndarray::arr1(&[0.0, 0.0]))?;
-    fmodel.set_wind_conditions(
-        ndarray::arr1(&[8.0]),
-        ndarray::arr1(&[270.0]),
-        ndarray::arr1(&[0.06]),
+    // A two turbine layout
+    fmodel.set_layout(
+        &Array1::from_vec(vec![0.0, 500.0]),
+        &Array1::from_vec(vec![0.0, 0.0]),
     )?;
-
-    // Create output directory
-    std::fs::create_dir_all("output/examples_visualizations")?;
-
-    println!("Running simulation...");
+    fmodel.set_wind_conditions(
+        Array1::from_vec(vec![8.0]),
+        Array1::from_vec(vec![270.0]),
+        Array1::from_vec(vec![0.06]),
+    )?;
     fmodel.run()?;
 
-    println!(
-        "\nNote: The 'calculate_horizontal_plane_with_turbines' method is not yet implemented."
-    );
-    println!("This method would:");
-    println!("  - Scan across the flow field using turbine models");
-    println!("  - Calculate velocities at each point by applying wake models");
-    println!("  - Useful for wake models without native visualization support\n");
+    let output_dir = "output/examples_visualizations";
+    std::fs::create_dir_all(output_dir).ok();
 
-    // Use standard horizontal plane as demonstration
-    println!("Creating standard horizontal plane visualization as demonstration...");
-    match visualize_horizontal_plane(
+    // The horizontal plane, scanned over the turbines
+    flow_visualization::visualize_horizontal_plane(
         &fmodel,
-        "output/examples_visualizations/sweep_turbines_demo.png",
-        Some(3.0), // Min speed
-        Some(9.0), // Max speed
-        Some("Horizontal Plane (Turbine Sweep Method Not Implemented)"),
-    ) {
-        Ok(_) => {
-            println!("   ✓ Saved to output/examples_visualizations/sweep_turbines_demo.png");
-            println!("   ℹ This shows standard horizontal plane calculation");
-            println!("   ℹ True turbine sweep would scan points using wake model directly");
-        }
-        Err(e) => eprintln!("   ✗ Error: {}", e),
-    }
+        format!("{output_dir}/005_horizontal_plane_scan.png"),
+        Some(3.0),
+        Some(9.0),
+        Some("Horizontal (turbine scan method)"),
+    )?;
 
-    println!("\n=== Sweeping Turbines Example Complete ===");
-    println!("\nTo fully implement turbine sweep visualization:");
-    println!("  1. Add calculate_horizontal_plane_with_turbines() to flow_visualization module");
-    println!("  2. Create grid of points across horizontal plane");
-    println!("  3. For each point, calculate velocity by applying wake models");
-    println!("  4. Return CutPlane object with interpolated values");
-    println!("\nUse case:");
-    println!("  - Some wake models may not have native visualization methods");
-    println!("  - Turbine sweep provides a generic way to visualize any wake model");
-    println!("  - Slower but more flexible than direct flow field extraction");
+    // The velocity range of the plane
+    let plane = fmodel.calculate_horizontal_plane(90.0, 100, 50)?;
+    let u = &plane.data.u;
+    let min = u.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = u.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    println!("Horizontal plane velocity range: {min:.3} .. {max:.3} m/s");
 
     Ok(())
 }
