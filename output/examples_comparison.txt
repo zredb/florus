@@ -5365,6 +5365,8 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    visualizations_003 equivalent            the cross plane (PNG file)
    visualizations_004 equivalent            the rotor values (PNG file)
    visualizations_005 equivalent            the horizontal plane with a turbine scan (PNG file)
+   operation_models_001
+                        identical powers        the yaw losses of the four operation models match
 
  Engine gaps that were fixed in this round:
    1. Heterogeneous inflow was never applied to the velocity field -> now interpolated onto the
