@@ -314,11 +314,42 @@ impl FlorisModel {
 
     /// Get farm power
     pub fn get_farm_power(&self) -> crate::Result<Array1> {
-        let powers = self.get_turbine_powers()?;
-        let mut farm_power = Array1::zeros(self.core.flow_field.n_findex);
+        self.get_farm_power_weighted(None)
+    }
 
-        for i in 0..self.core.flow_field.n_findex {
-            farm_power[i] = powers.row(i).sum();
+    /// The farm power with per-turbine weights (Python
+    /// `get_farm_power(turbine_weights=...)`).
+    ///
+    /// The weights have the shape `(n_findex, n_turbines)`; the turbines with
+    /// a weight of zero do not contribute to the farm power, but they still
+    /// affect the flow.
+    pub fn get_farm_power_weighted(
+        &self,
+        turbine_weights: Option<&Array2>,
+    ) -> crate::Result<Array1> {
+        let powers = self.get_turbine_powers()?;
+        let n_findex = self.core.flow_field.n_findex;
+        let n_turbines = self.core.farm.n_turbines();
+
+        if let Some(weights) = turbine_weights {
+            if weights.shape() != [n_findex, n_turbines] {
+                anyhow::bail!(
+                    "turbine_weights shape {:?} doesn't match expected [{}, {}]",
+                    weights.shape(),
+                    n_findex,
+                    n_turbines
+                );
+            }
+        }
+
+        let mut farm_power = Array1::zeros(n_findex);
+        for fi in 0..n_findex {
+            let mut sum = 0.0;
+            for ti in 0..n_turbines {
+                let weight = turbine_weights.map(|w| w[[fi, ti]]).unwrap_or(1.0);
+                sum += weight * powers[[fi, ti]];
+            }
+            farm_power[fi] = sum;
         }
 
         Ok(farm_power)

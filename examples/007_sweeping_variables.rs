@@ -1,177 +1,179 @@
-﻿/// Example 7: Sweeping Variables
-///
-/// Demonstrate methods for sweeping across variables. Wind directions, wind speeds,
-/// turbulence intensities, as well as control inputs are passed as arrays and can be
-/// swept and run in one call to run().
-///
-/// This example demonstrates sweeping:
-///     1) Wind speeds
-///     2) Wind directions
-///     3) Turbulence intensities
-///     4) Yaw angles
-use florus::{Array1, Array2, FlorisModel};
+//! Example: Sweeping the model variables
+//!
+//! This example demonstrates sweeping:
+//!     1) The wind speeds
+//!     2) The wind directions
+//!     3) The turbulence intensities
+//!     4) The yaw angles
+//!     5) The power setpoints
+//!     6) The disabled turbines
+//!
+//! Scenario aligned 1:1 with examples/007_sweeping_variables.py.
 
-fn main() -> florus::Result<()> {
+use florus::floris_model::FlorisModel;
+use florus::types::{Array1, Array2};
+use florus::wind_data::TimeSeries;
+
+fn main() -> anyhow::Result<()> {
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml")?;
 
-    // Set to a 2 turbine layout
-    let d = 126.0;
+    // A two-turbine layout
     fmodel.set_layout(
-        &Array1::from_vec(vec![0.0, 5.0 * d]),
+        &Array1::from_vec(vec![0.0, 126.0 * 5.0]),
         &Array1::from_vec(vec![0.0, 0.0]),
     )?;
 
-    println!("Layout: 2 turbines at [0, {:.0}]m", 5.0 * d);
-    println!("  n_turbines: {}", fmodel.n_turbines());
-
-    //////////////////////////////////////////////////
-    // Sweep wind speeds
-    //////////////////////////////////////////////////
-
-    println!("\n========== Sweep Wind Speeds ==========");
-    let wind_speeds: Vec<f64> = (50..100).map(|x| x as f64 / 10.0).collect(); // 5.0 to 9.9 m/s
-    let n_ws = wind_speeds.len();
-    let wind_directions = vec![270.0; n_ws];
-    let turbulence_intensities = vec![0.06; n_ws];
-
-    fmodel.set_wind_conditions(
+    // 1) Sweep the wind speeds (the wind direction and the turbulence
+    // intensity are constant)
+    let wind_speeds: Vec<f64> = (0..50).map(|i| 5.0 + 0.1 * i as f64).collect();
+    let n = wind_speeds.len();
+    let time_series = TimeSeries::new(
+        Array1::from_vec(vec![270.0; n]),
         Array1::from_vec(wind_speeds.clone()),
-        Array1::from_vec(wind_directions),
-        Array1::from_vec(turbulence_intensities),
+        Array1::from_vec(vec![0.06; n]),
     )?;
-
+    fmodel.set_wind_data(&time_series)?;
     fmodel.run()?;
-    let turbine_powers = fmodel.get_turbine_powers()?;
-
-    println!("Wind speed sweep results (first 5):");
-    for i in 0..5.min(n_ws) {
+    let powers = fmodel.get_turbine_powers()?;
+    println!("Wind speed sweep [m/s], upstream [kW], downstream [kW]:");
+    for i in 0..n {
         println!(
-            "  WS={:.1} m/s: T1={:.0} kW, T2={:.0} kW",
+            "{:.1}, {:.1}, {:.1}",
             wind_speeds[i],
-            turbine_powers[[i, 0]] / 1000.0,
-            turbine_powers[[i, 1]] / 1000.0
+            powers[[i, 0]] / 1000.0,
+            powers[[i, 1]] / 1000.0
         );
     }
 
-    println!("\nExample 7 completed successfully!");
-
-    //////////////////////////////////////////////////
-    // Sweep wind directions (separate model)
-    //////////////////////////////////////////////////
-
-    println!("\n========== Sweep Wind Directions ==========");
-    let mut fmodel_wd = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-    fmodel_wd.set_layout(
-        &Array1::from_vec(vec![0.0, 5.0 * d]),
-        &Array1::from_vec(vec![0.0, 0.0]),
-    )?;
-
-    let wind_directions: Vec<f64> = (250..290).map(|x| x as f64).collect();
-    let n_wd = wind_directions.len();
-    let wind_speeds = vec![8.0; n_wd];
-    let turbulence_intensities = vec![0.06; n_wd];
-
-    fmodel_wd.set_wind_conditions(
-        Array1::from_vec(wind_speeds),
+    // 2) Sweep the wind directions
+    let wind_directions: Vec<f64> = (250..290).map(|i| i as f64).collect();
+    let n = wind_directions.len();
+    let time_series = TimeSeries::new(
         Array1::from_vec(wind_directions.clone()),
-        Array1::from_vec(turbulence_intensities),
+        Array1::from_vec(vec![8.0; n]),
+        Array1::from_vec(vec![0.06; n]),
     )?;
-
-    fmodel_wd.run()?;
-    let turbine_powers = fmodel_wd.get_turbine_powers()?;
-
-    println!("Wind direction sweep results (sample):");
-    for &wd in &[250.0, 260.0, 270.0, 280.0, 289.0] {
-        let idx = (wd - 250.0) as usize;
-        if idx < n_wd {
-            println!(
-                "  WD={:.0}°: T1={:.0} kW, T2={:.0} kW",
-                wd,
-                turbine_powers[[idx, 0]] / 1000.0,
-                turbine_powers[[idx, 1]] / 1000.0
-            );
-        }
+    fmodel.set_wind_data(&time_series)?;
+    fmodel.run()?;
+    let powers = fmodel.get_turbine_powers()?;
+    println!("Wind direction sweep [deg], upstream [kW], downstream [kW]:");
+    for i in 0..n {
+        println!(
+            "{:.0}, {:.1}, {:.1}",
+            wind_directions[i],
+            powers[[i, 0]] / 1000.0,
+            powers[[i, 1]] / 1000.0
+        );
     }
 
-    //////////////////////////////////////////////////
-    // Sweep turbulence intensities (separate model)
-    //////////////////////////////////////////////////
-
-    println!("\n========== Sweep Turbulence Intensities ==========");
-    let mut fmodel_ti = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-    fmodel_ti.set_layout(
-        &Array1::from_vec(vec![0.0, 5.0 * d]),
-        &Array1::from_vec(vec![0.0, 0.0]),
-    )?;
-
-    let turbulence_intensities: Vec<f64> = (3..20).map(|x| x as f64 / 100.0).collect(); // 0.03 to 0.19
-    let n_ti = turbulence_intensities.len();
-    let wind_speeds = vec![8.0; n_ti];
-    let wind_directions = vec![270.0; n_ti];
-
-    fmodel_ti.set_wind_conditions(
-        Array1::from_vec(wind_speeds),
-        Array1::from_vec(wind_directions),
+    // 3) Sweep the turbulence intensities
+    let turbulence_intensities: Vec<f64> = (0..17).map(|i| 0.03 + 0.01 * i as f64).collect();
+    let n = turbulence_intensities.len();
+    let time_series = TimeSeries::new(
+        Array1::from_vec(vec![270.0; n]),
+        Array1::from_vec(vec![8.0; n]),
         Array1::from_vec(turbulence_intensities.clone()),
     )?;
-
-    fmodel_ti.run()?;
-    let turbine_powers = fmodel_ti.get_turbine_powers()?;
-
-    println!("Turbulence intensity sweep results (sample):");
-    for &ti in &[0.03, 0.06, 0.10, 0.15, 0.19] {
-        let idx = ((ti - 0.03) * 100.0) as usize;
-        if idx < n_ti {
-            println!(
-                "  TI={:.2}: T1={:.0} kW, T2={:.0} kW",
-                ti,
-                turbine_powers[[idx, 0]] / 1000.0,
-                turbine_powers[[idx, 1]] / 1000.0
-            );
-        }
-    }
-
-    //////////////////////////////////////////////////
-    // Sweep the upstream yaw angle (separate model)
-    //////////////////////////////////////////////////
-
-    println!("\n========== Sweep Upstream Yaw Angle ==========");
-    let mut fmodel_yaw = FlorisModel::from_file("examples/inputs/gch.yaml")?;
-    fmodel_yaw.set_layout(
-        &Array1::from_vec(vec![0.0, 5.0 * d]),
-        &Array1::from_vec(vec![0.0, 0.0]),
-    )?;
-
-    let n_yaw = 21;
-    let wind_directions = vec![270.0; n_yaw];
-    let wind_speeds = vec![8.0; n_yaw];
-    let turbulence_intensities = vec![0.06; n_yaw];
-
-    fmodel_yaw.set_wind_conditions(
-        Array1::from_vec(wind_speeds),
-        Array1::from_vec(wind_directions),
-        Array1::from_vec(turbulence_intensities),
-    )?;
-
-    // Create yaw angles array: upstream turbine sweeps from -30 to 30 degrees
-    let yaw_angles_upstream: Vec<f64> = (-30..=30).step_by(3).map(|x| x as f64).collect();
-    let mut yaw_angles = Array2::zeros((n_yaw, 2));
-    for (i, &yaw) in yaw_angles_upstream.iter().enumerate() {
-        yaw_angles[[i, 0]] = yaw;
-        yaw_angles[[i, 1]] = 0.0; // Downstream turbine has no yaw
-    }
-
-    fmodel_yaw.set_yaw_angles(yaw_angles)?;
-    fmodel_yaw.run()?;
-    let turbine_powers = fmodel_yaw.get_turbine_powers()?;
-
-    println!("Yaw angle sweep results:");
-    for (i, &yaw) in yaw_angles_upstream.iter().enumerate() {
+    fmodel.set_wind_data(&time_series)?;
+    fmodel.run()?;
+    let powers = fmodel.get_turbine_powers()?;
+    println!("Turbulence intensity sweep, upstream [kW], downstream [kW]:");
+    for i in 0..n {
         println!(
-            "  Yaw={:.0}°: T1={:.0} kW, T2={:.0} kW",
-            yaw,
-            turbine_powers[[i, 0]] / 1000.0,
-            turbine_powers[[i, 1]] / 1000.0
+            "{:.2}, {:.1}, {:.1}",
+            turbulence_intensities[i],
+            powers[[i, 0]] / 1000.0,
+            powers[[i, 1]] / 1000.0
+        );
+    }
+
+    // 4) Sweep the upstream yaw angle
+    let n_yaw = 100;
+    let yaw_angles_upstream: Vec<f64> = (0..n_yaw)
+        .map(|i| -30.0 + 60.0 * i as f64 / (n_yaw - 1) as f64)
+        .collect();
+    let time_series = TimeSeries::new(
+        Array1::from_vec(vec![270.0; n_yaw]),
+        Array1::from_vec(vec![8.0; n_yaw]),
+        Array1::from_vec(vec![0.06; n_yaw]),
+    )?;
+    fmodel.set_wind_data(&time_series)?;
+    let mut yaw_angles = Array2::zeros((n_yaw, 2));
+    for (i, yaw) in yaw_angles_upstream.iter().enumerate() {
+        yaw_angles[[i, 0]] = *yaw;
+    }
+    fmodel.set_yaw_angles(yaw_angles)?;
+    fmodel.run()?;
+    let powers = fmodel.get_turbine_powers()?;
+    println!("Upstream yaw angle sweep [deg], upstream [kW], downstream [kW]:");
+    for i in 0..n_yaw {
+        println!(
+            "{:.3}, {:.1}, {:.1}",
+            yaw_angles_upstream[i],
+            powers[[i, 0]] / 1000.0,
+            powers[[i, 1]] / 1000.0
+        );
+    }
+
+    // 5) Sweep the upstream power rating (the derating needs the
+    // simple-derating operation model)
+    fmodel.reset_operation();
+    fmodel.set_operation_model("simple-derating")?;
+
+    let rated_power = 5.0e6;
+    let n_derating_levels = 150;
+    let upstream_power_setpoint: Vec<f64> = (0..n_derating_levels)
+        .map(|i| rated_power * 0.5 * i as f64 / (n_derating_levels - 1) as f64)
+        .collect();
+    let time_series = TimeSeries::new(
+        Array1::from_vec(vec![270.0; n_derating_levels]),
+        Array1::from_vec(vec![8.0; n_derating_levels]),
+        Array1::from_vec(vec![0.06; n_derating_levels]),
+    )?;
+    fmodel.set_wind_data(&time_series)?;
+    let mut power_setpoints = Array2::from_elem((n_derating_levels, 2), rated_power);
+    for (i, setpoint) in upstream_power_setpoint.iter().enumerate() {
+        power_setpoints[[i, 0]] = *setpoint;
+    }
+    fmodel.set_operation(None, Some(power_setpoints), None, None, None, None)?;
+    fmodel.run()?;
+    let powers = fmodel.get_turbine_powers()?;
+    println!("Upstream power setpoint sweep [kW], upstream [kW], downstream [kW]:");
+    for i in 0..n_derating_levels {
+        println!(
+            "{:.1}, {:.1}, {:.1}",
+            upstream_power_setpoint[i] / 1000.0,
+            powers[[i, 0]] / 1000.0,
+            powers[[i, 1]] / 1000.0
+        );
+    }
+
+    // 6) Sweep through the disabling turbine combinations
+    fmodel.reset_operation();
+    let disable_combinations = [[false, false], [true, false], [false, true], [true, true]];
+    let names = ["None", "T0", "T1", "T0 & T1"];
+    let n_combinations = disable_combinations.len();
+    let time_series = TimeSeries::new(
+        Array1::from_vec(vec![270.0; n_combinations]),
+        Array1::from_vec(vec![8.0; n_combinations]),
+        Array1::from_vec(vec![0.06; n_combinations]),
+    )?;
+    fmodel.set_wind_data(&time_series)?;
+    let mut disable_turbines = ndarray::Array2::<bool>::from_elem((n_combinations, 2), false);
+    for (i, combination) in disable_combinations.iter().enumerate() {
+        disable_turbines[[i, 0]] = combination[0];
+        disable_turbines[[i, 1]] = combination[1];
+    }
+    fmodel.set_operation(None, None, None, None, None, Some(disable_turbines))?;
+    fmodel.run()?;
+    let powers = fmodel.get_turbine_powers()?;
+    println!("Disabled turbine combinations, upstream [kW], downstream [kW]:");
+    for i in 0..n_combinations {
+        println!(
+            "{}, {:.1}, {:.1}",
+            names[i],
+            powers[[i, 0]] / 1000.0,
+            powers[[i, 1]] / 1000.0
         );
     }
 
