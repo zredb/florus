@@ -7,11 +7,6 @@
 //! Scenario aligned 1:1 with
 //! examples_wind_resource_grid/002_set_floris_with_wrg.py.
 //!
-//! Known gap: the WRG parser does not yet reproduce Python's per-turbine
-//! wind roses (the Rust file is read with a different grid-point layout),
-//! so the expected powers differ from Python's. The grid metadata, the
-//! Weibull-based frequency construction and the layout application are
-//! implemented; the remaining difference is in the file parsing.
 
 use florus::floris_model::FlorisModel;
 use florus::types::Array1;

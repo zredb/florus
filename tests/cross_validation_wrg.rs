@@ -1,0 +1,51 @@
+//! Cross-validation of the wind resource grid (WRG) against the Python
+//! FLORIS reference values.
+//!
+//! Reference values come from
+//! `floris/examples/examples_wind_resource_grid/002_set_floris_with_wrg.py`.
+
+use florus::floris_model::FlorisModel;
+use florus::types::Array1;
+use florus::wind_data::WindRoseWRG;
+
+#[test]
+fn test_wrg_expected_powers_match_python() {
+    // Python: examples_wind_resource_grid/002_set_floris_with_wrg.py
+    let mut wind_rose_wrg = WindRoseWRG::new("examples/inputs/wrg_example.wrg", None, None, None)
+        .expect("failed to read the WRG file");
+
+    // Use 2 m/s steps and a fixed TI of 7% for all wind directions
+    wind_rose_wrg.set_wind_speeds(Array1::from_iter((0..13).map(|i| i as f64 * 2.0)));
+    wind_rose_wrg.set_ti_table(0.07);
+
+    // A line of turbines along the diagonals of the WRG grid
+    let layout_x = Array1::from_vec(vec![0.0, 500.0, 1000.0]);
+    let layout_y = Array1::from_vec(vec![0.0, 1000.0, 2000.0]);
+    wind_rose_wrg
+        .set_layout(layout_x.clone(), layout_y.clone())
+        .unwrap();
+
+    let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml").unwrap();
+    fmodel.set_layout(&layout_x, &layout_y).unwrap();
+    fmodel.set_wind_data(&wind_rose_wrg).unwrap();
+    fmodel.run().unwrap();
+
+    // Python reference (W)
+    let expected = [2280015.29955901, 2272352.87711173, 2324102.91346193];
+    let powers = fmodel.get_expected_turbine_powers(None).unwrap();
+    for t in 0..3 {
+        assert!(
+            (powers[t] - expected[t]).abs() < 1.0,
+            "turbine {t}: {} W (expected {})",
+            powers[t],
+            expected[t]
+        );
+    }
+
+    // The farm power
+    let farm_power = fmodel.get_expected_farm_power(None, None).unwrap();
+    assert!(
+        (farm_power - 6876471.090132672).abs() < 10.0,
+        "farm power {farm_power} W"
+    );
+}

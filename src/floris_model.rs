@@ -1,4 +1,4 @@
-use crate::core::turbines::cp_ct_table::TableConditions;
+﻿use crate::core::turbines::cp_ct_table::TableConditions;
 use crate::core::turbines::operation_models::{POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED};
 use crate::core::{Core, Farm, FlowField, State, TurbineGrid};
 use crate::floris_config::{FlorisConfig, SolverConfig};
@@ -437,9 +437,24 @@ impl FlorisModel {
         let n_findex = self.core.flow_field.n_findex;
         let n_turbines = self.core.farm.n_turbines();
 
-        // Determine frequencies to use
+        // Determine frequencies to use (Python floris_model.py:633-643)
         let frequencies = if let Some(f) = freq {
             f
+        } else if let Some(stored) = &self.core.wind_data_frequencies {
+            // A (n_findex, n_turbines) table (the wind resource grid) weights
+            // the power of every turbine separately
+            if stored.shape()[1] > 1 && stored.shape()[1] == n_turbines {
+                let mut expected_powers = Array1::zeros(n_turbines);
+                for ti in 0..n_turbines {
+                    let mut weighted_sum = 0.0;
+                    for fi in 0..n_findex {
+                        weighted_sum += stored[[fi, ti]] * turbine_powers[[fi, ti]];
+                    }
+                    expected_powers[ti] = weighted_sum;
+                }
+                return Ok(expected_powers);
+            }
+            stored.column(0).to_owned()
         } else {
             // Default: uniform frequencies
             Array1::from_elem(n_findex, 1.0 / n_findex as Float)
@@ -510,21 +525,6 @@ impl FlorisModel {
         let n_findex = self.core.flow_field.n_findex;
         let n_turbines = self.core.farm.n_turbines();
 
-        // Determine frequencies
-        let frequencies = if let Some(f) = freq {
-            f
-        } else {
-            Array1::from_elem(n_findex, 1.0 / n_findex as Float)
-        };
-
-        if frequencies.len() != n_findex {
-            anyhow::bail!(
-                "Frequency array length ({}) must match n_findex ({})",
-                frequencies.len(),
-                n_findex
-            );
-        }
-
         // Get turbine powers and apply weights
         let turbine_powers = self.get_turbine_powers()?;
 
@@ -548,6 +548,34 @@ impl FlorisModel {
             for ti in 0..n_turbines {
                 weighted_powers[[fi, ti]] *= weights[[fi, ti]];
             }
+        }
+
+        // Determine frequencies (Python floris_model.py:811-825)
+        let frequencies = if let Some(f) = freq {
+            f
+        } else if let Some(stored) = &self.core.wind_data_frequencies {
+            if stored.shape()[1] > 1 && stored.shape()[1] == n_turbines {
+                // A (n_findex, n_turbines) table weights the power of every
+                // turbine separately
+                let mut expected_power = 0.0;
+                for fi in 0..n_findex {
+                    for ti in 0..n_turbines {
+                        expected_power += stored[[fi, ti]] * weighted_powers[[fi, ti]];
+                    }
+                }
+                return Ok(expected_power);
+            }
+            stored.column(0).to_owned()
+        } else {
+            Array1::from_elem(n_findex, 1.0 / n_findex as Float)
+        };
+
+        if frequencies.len() != n_findex {
+            anyhow::bail!(
+                "Frequency array length ({}) must match n_findex ({})",
+                frequencies.len(),
+                n_findex
+            );
         }
 
         // Calculate farm power for each findex
@@ -1547,6 +1575,11 @@ impl FlorisModel {
             crate::floris_config::MultiDimConditions { values }
         });
 
+        // Keep the frequencies of the wind data: the expected-power and AEP
+        // queries use them when no explicit frequencies are given (Python
+        // `floris_model.py:get_expected_turbine_powers`).
+        self.core.wind_data_frequencies = Some(wind_data.unpack_freq());
+
         self.core.grid = None;
         Ok(())
     }
@@ -1577,6 +1610,10 @@ impl FlorisModel {
 
         // Clear wind_data_info for flat TimeSeries mode
         self.core.wind_data_info = None;
+
+        // The explicit wind conditions replace the wind data: uniform
+        // frequencies are used for the expected-power queries
+        self.core.wind_data_frequencies = None;
 
         // Mark farm as uninitialized so it will be properly reinitialized on next run()
         self.core.farm.state.initialized = false;

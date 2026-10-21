@@ -520,21 +520,32 @@ impl WindRoseWRG {
 
         // Update flattened data from first wind rose
         if let Some(first_rose) = self.wind_roses.first() {
-            self.wd_flat = first_rose.wind_directions.clone();
-            self.ws_flat = first_rose.wind_speeds.clone();
+            let n_wd = first_rose.wind_directions.len();
+            let n_ws = first_rose.wind_speeds.len();
+
+            // The flattened wind directions and speeds of every (wd, ws)
+            // combination, in the same order as `WindRose::unpack`
+            // (Python wind_data.py: the frequency table is flattened in the
+            // C order, i.e. the wind direction is the slowest index).
+            let mut wd_flat = Vec::with_capacity(n_wd * n_ws);
+            let mut ws_flat = Vec::with_capacity(n_wd * n_ws);
+            for i in 0..n_wd {
+                for j in 0..n_ws {
+                    wd_flat.push(first_rose.wind_directions[i]);
+                    ws_flat.push(first_rose.wind_speeds[j]);
+                }
+            }
+            self.wd_flat = Array1::from_vec(wd_flat);
+            self.ws_flat = Array1::from_vec(ws_flat);
+
+            // The conditions that occur in at least one of the wind roses
             self.nonzero_freq_mask = (0..self.wd_flat.len())
-                .map(|i| {
-                    for rose in &self.wind_roses {
-                        let freq = &rose.freq_table;
-                        if freq[[
-                            i % first_rose.wind_directions.len(),
-                            i / first_rose.wind_directions.len(),
-                        ]] > 0.0
-                        {
-                            return true;
-                        }
-                    }
-                    false
+                .map(|index| {
+                    let i = index / n_ws;
+                    let j = index % n_ws;
+                    self.wind_roses
+                        .iter()
+                        .any(|rose| rose.freq_table[[i, j]] > 0.0)
                 })
                 .collect();
         }
@@ -644,9 +655,13 @@ impl WindData for WindRoseWRG {
             }
 
             // Copy frequency column
-            for j in 0..n_conditions {
+            let n_rows = freq_2d.shape()[0].min(n_conditions);
+            for j in 0..n_rows {
                 freq_table_unpack[[j, i]] = freq_2d[[j, 0]];
-                value_table_unpack[[j, i]] = value_2d[[j, 0]];
+                // The value table is empty when the wind roses carry no values
+                if value_2d.shape()[0] > j {
+                    value_table_unpack[[j, i]] = value_2d[[j, 0]];
+                }
             }
         }
 

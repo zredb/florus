@@ -41,6 +41,14 @@ pub struct Core {
     /// `flow_field.multidim_conditions`). They select the power/thrust table
     /// of the multi-dimensional turbines.
     pub multidim_conditions: Option<crate::floris_config::MultiDimConditions>,
+
+    /// The frequencies of the wind data (Python `wind_data.unpack_freq()`).
+    ///
+    /// They are used by the expected-power and AEP queries when no explicit
+    /// frequencies are given: a single column weights every wind condition,
+    /// while a `(n_findex, n_turbines)` table (the wind resource grid) weights
+    /// the power of every turbine separately.
+    pub wind_data_frequencies: Option<Array2>,
 }
 
 /// Information about wind data structure for reshaping results
@@ -83,6 +91,7 @@ impl Clone for Core {
             state: self.state.clone(),
             wind_data_info: self.wind_data_info.clone(),
             multidim_conditions: self.multidim_conditions.clone(),
+            wind_data_frequencies: None,
         }
     }
 }
@@ -169,6 +178,7 @@ impl Core {
             state,
             wind_data_info: None, // Default to None for YAML-based initialization
             multidim_conditions: config.flow_field.multidim_conditions.clone(),
+            wind_data_frequencies: None,
         };
 
         // Initialize grid based on solver type
