@@ -9,7 +9,13 @@
 use crate::floris_model::FlorisModel;
 use crate::types::{Array1, Array2, Array3, Float};
 use anyhow::Result;
+use ndarray::s;
 use std::collections::HashMap;
+
+/// Shift a value to the range (-180, 180] (Python `floris.utilities.wrap_180`).
+fn wrap_180(angle: Float) -> Float {
+    ((angle + 180.0) % 360.0) - 180.0
+}
 
 /// A hashable key of a row of inputs (the float values are converted to their
 /// bit patterns, so that the rows can be compared exactly).
@@ -57,6 +63,15 @@ pub struct UncertainFlorisModel {
 
     /// Print the sizes of the expanded and unique cases
     pub verbose: bool,
+
+    /// Fix the yaw angles to the nominal wind direction, so that they are
+    /// shifted together with the wind direction (Python
+    /// `fix_yaw_to_nominal_direction`).
+    pub fix_yaw_to_nominal_direction: bool,
+
+    /// The turbine values of the unique conditions (set by `run` and
+    /// `run_parallel`).
+    unique_values: Option<Array2>,
 }
 
 impl UncertainFlorisModel {
@@ -103,9 +118,16 @@ impl UncertainFlorisModel {
             n_turbines: 0,
             run_completed: false,
             verbose: false,
+            fix_yaw_to_nominal_direction: false,
+            unique_values: None,
         };
         uncertain.expand()?;
         Ok(uncertain)
+    }
+
+    /// Expand the conditions again (after changing the parameters).
+    pub fn expand_public(&mut self) -> Result<()> {
+        self.expand()
     }
 
     /// The model with the unique expanded conditions
@@ -187,6 +209,16 @@ impl UncertainFlorisModel {
             for row in &inputs {
                 let mut expanded_row = row.clone();
                 expanded_row[0] = (expanded_row[0] + point).rem_euclid(360.0);
+
+                // The yaw angles follow the wind direction when they are fixed
+                // to the nominal direction (Python
+                // `_expand_wind_directions`, uncertain_floris_model.py:892-897)
+                if self.fix_yaw_to_nominal_direction {
+                    for t in 0..n_turbines {
+                        expanded_row[3 + t] = wrap_180(expanded_row[3 + t] + point);
+                    }
+                }
+
                 expanded.push(expanded_row);
             }
         }
@@ -276,6 +308,8 @@ impl UncertainFlorisModel {
     /// Run the model with the expanded conditions.
     pub fn run(&mut self) -> Result<()> {
         self.expanded_model.as_mut().unwrap().run()?;
+        let powers = self.expanded_model.as_ref().unwrap().get_turbine_powers()?;
+        self.unique_values = Some(powers);
         self.run_completed = true;
         Ok(())
     }
@@ -289,7 +323,10 @@ impl UncertainFlorisModel {
 
     /// The turbine powers, averaged over the wind direction distribution.
     pub fn get_turbine_powers(&self) -> Result<Array2> {
-        let unique_powers = self.expanded_model.as_ref().unwrap().get_turbine_powers()?;
+        let unique_powers = match &self.unique_values {
+            Some(values) => values.clone(),
+            None => self.expanded_model.as_ref().unwrap().get_turbine_powers()?,
+        };
         Ok(self.map_turbine_values(&unique_powers))
     }
 

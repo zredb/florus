@@ -1,12 +1,58 @@
-//! Cross-validation of the uncertain model against the Python FLORIS reference
+﻿//! Cross-validation of the uncertain model against the Python FLORIS reference
 //! values.
 //!
 //! Reference values come from `floris/examples/008_uncertain_models.py`.
 
 use florus::floris_model::FlorisModel;
-use florus::types::Array1;
+use florus::types::{Array1, Array2};
 use florus::uncertain::UncertainFlorisModel;
 use florus::wind_data::TimeSeries;
+
+#[test]
+fn test_fix_yaw_to_nominal_direction() {
+    // The yaw angles follow the wind direction when they are fixed to the
+    // nominal direction (Python `fix_yaw_to_nominal_direction`).
+    let mut model = FlorisModel::from_file("examples/inputs/gch.yaml").unwrap();
+    model
+        .set_layout(
+            &Array1::from_vec(vec![0.0, 630.0]),
+            &Array1::from_vec(vec![0.0, 0.0]),
+        )
+        .unwrap();
+    model
+        .set_wind_conditions(
+            Array1::from_vec(vec![8.0]),
+            Array1::from_vec(vec![270.0]),
+            Array1::from_vec(vec![0.06]),
+        )
+        .unwrap();
+    model
+        .set_yaw_angles(Array2::from_shape_vec((1, 2), vec![10.0, 0.0]).unwrap())
+        .unwrap();
+
+    let mut uncertain = UncertainFlorisModel::new(model, 3.0, Some(vec![-6.0, 0.0, 6.0])).unwrap();
+    uncertain.fix_yaw_to_nominal_direction = true;
+    uncertain.expand_public().unwrap();
+
+    // The yaw angles of the expanded conditions are shifted with the wind
+    // direction
+    let expanded = uncertain.expanded_model().unwrap();
+    let yaw_angles = &expanded.core().farm.yaw_angles;
+    let wind_directions = &expanded.core().flow_field.wind_directions;
+    for i in 0..yaw_angles.shape()[0] {
+        let offset = (wind_directions[i] - 270.0).rem_euclid(360.0);
+        let expected = if offset > 180.0 {
+            10.0 + offset - 360.0
+        } else {
+            10.0 + offset
+        };
+        assert!(
+            (yaw_angles[[i, 0]] - expected).abs() < 1e-9,
+            "yaw angle of condition {i}: {} (expected {expected})",
+            yaw_angles[[i, 0]]
+        );
+    }
+}
 
 #[test]
 fn test_uncertain_model_matches_python() {
