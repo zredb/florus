@@ -49,6 +49,28 @@ pub fn tand(degrees: Float) -> Float {
 }
 
 // ============================================================================
+// Array Generation
+// ============================================================================
+
+/// Evenly spaced numbers over the closed interval [start, stop].
+///
+/// Mirrors `numpy.linspace`: the values are computed as `start + step * i` and
+/// the last element is set exactly to `stop`, so that no cancellation error
+/// accumulates at the end of a wide range.
+pub fn linspace(start: Float, stop: Float, num: usize) -> Vec<Float> {
+    if num == 0 {
+        return Vec::new();
+    }
+    if num == 1 {
+        return vec![start];
+    }
+    let step = (stop - start) / (num as Float - 1.0);
+    let mut values: Vec<Float> = (0..num).map(|i| start + step * i as Float).collect();
+    values[num - 1] = stop;
+    values
+}
+
+// ============================================================================
 // Angle Wrapping Functions
 // ============================================================================
 
@@ -579,6 +601,25 @@ pub fn is_all_scalar_dict(dictionary: &Value) -> bool {
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
+
+    #[test]
+    fn test_linspace_matches_numpy() {
+        // numpy.linspace(0.0, 1.0, 5)
+        let values = linspace(0.0, 1.0, 5);
+        assert_eq!(values.len(), 5);
+        for (i, value) in values.iter().enumerate() {
+            assert_relative_eq!(*value, i as f64 / 4.0, epsilon = 1e-12);
+        }
+
+        // The last element is exactly the stop value (no cancellation error)
+        let values = linspace(1.0e12, 0.001, 10);
+        assert_eq!(values[9], 0.001);
+        assert_eq!(values[0], 1.0e12);
+
+        // Degenerate cases
+        assert!(linspace(0.0, 1.0, 0).is_empty());
+        assert_eq!(linspace(3.0, 9.0, 1), vec![3.0]);
+    }
 
     #[test]
     fn test_cosd() {

@@ -406,9 +406,16 @@ pub fn optimize_power_setpoints(
     drop(grid);
     drop(grid_option);
 
-    fmodel
-        .farm_mut()
-        .set_power_setpoints(power_setpoint_initial.clone());
+    // The setpoints are set through the model so that the state is invalidated
+    // and the sorted setpoints are recomputed on the next run.
+    fmodel.set_operation(
+        None,
+        Some(power_setpoint_initial.clone()),
+        None,
+        None,
+        None,
+        None,
+    )?;
     fmodel.run()?;
 
     let mut net_revenue_opt = compute_net_revenue(
@@ -432,9 +439,14 @@ pub fn optimize_power_setpoints(
                 power_setpoint_test[[fi, sorted_idx]] = *derating_level;
             }
 
-            fmodel
-                .farm_mut()
-                .set_power_setpoints(power_setpoint_test.clone());
+            fmodel.set_operation(
+                None,
+                Some(power_setpoint_test.clone()),
+                None,
+                None,
+                None,
+                None,
+            )?;
             fmodel.run()?;
 
             let test_net_revenue = compute_net_revenue(

@@ -1,15 +1,18 @@
-//! Cross-validation of the load optimization examples against the Python FLORIS
+﻿//! Cross-validation of the load optimization examples against the Python FLORIS
 //! reference values.
 //!
 //! Reference values come from `floris/examples/examples_load_optimization/`:
 //! - `001_lti_and_voc.py` (the load turbulence intensity and the VOC)
 //! - `002_row_opt_example.py` (the load optimization of a row of turbines)
 
+use florus::core::turbines::{POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED};
 use florus::floris_model::FlorisModel;
 use florus::optimization::load_optimization::load_optimization::{
     compute_farm_revenue, compute_farm_voc, compute_lti, compute_net_revenue, compute_turbine_voc,
+    optimize_power_setpoints,
 };
 use florus::types::{Array1, Array2};
+use florus::utilities::linspace;
 use florus::wind_data::TimeSeries;
 
 #[test]
@@ -220,5 +223,44 @@ fn test_load_optimization_revenue_matches_python() {
             "net revenue of condition {i}: {} (expected {net})",
             net_revenue[i]
         );
+    }
+
+    // The optimized power setpoints (Python reference: the derating search
+    // picks the same levels)
+    let power_setpoint_levels = linspace(POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED, 10);
+    let (opt_power_setpoints, _) = optimize_power_setpoints(
+        &mut fmodel,
+        a,
+        &ambient_lti,
+        0.3,
+        10.0,
+        1.0,
+        1.0,
+        Some(&Array2::from_elem((n, n_turbines), 5.0e6)),
+        &power_setpoint_levels,
+    )
+    .unwrap();
+
+    // Python reference (the three power setpoints of every condition; the
+    // disabled level is POWER_SETPOINT_DISABLED = 0.001 W)
+    let expected_setpoints = [
+        [5000000.0, 5000000.0, 5000000.0],
+        [5000000.0, 5000000.0, 5000000.0],
+        [5000000.0, 5000000.0, 5000000.0],
+        [0.001, 0.001, 0.001],
+        [5000000.0, 0.001, 5000000.0],
+        [0.001, 0.001, 5000000.0],
+        [5000000.0, 0.001, 5000000.0],
+        [0.001, 0.001, 0.001],
+    ];
+    for (i, expected) in expected_setpoints.iter().enumerate() {
+        for t in 0..n_turbines {
+            assert!(
+                (opt_power_setpoints[[i, t]] - expected[t]).abs() < 1e-6,
+                "power setpoint of turbine {t} in condition {i}: {} W (expected {})",
+                opt_power_setpoints[[i, t]],
+                expected[t]
+            );
+        }
     }
 }

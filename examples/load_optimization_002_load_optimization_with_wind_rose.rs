@@ -8,11 +8,13 @@
 //! Scenario aligned 1:1 with
 //! examples_load_optimization/002_row_opt_example.py.
 
+use florus::core::turbines::{POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED};
 use florus::floris_model::FlorisModel;
 use florus::optimization::load_optimization::load_optimization::{
     compute_farm_revenue, compute_farm_voc, compute_net_revenue, optimize_power_setpoints,
 };
 use florus::types::{Array1, Array2};
+use florus::utilities::linspace;
 use florus::wind_data::TimeSeries;
 
 fn main() -> anyhow::Result<()> {
@@ -73,10 +75,9 @@ fn main() -> anyhow::Result<()> {
     let farm_voc_initial = compute_farm_voc(&fmodel, a, &ambient_lti, 0.3, 10.0, 1.0, 1.0)?;
     let farm_revenue_initial = compute_farm_revenue(&fmodel)?;
 
-    // The optimal derating levels
-    let power_setpoint_levels: Vec<f64> = (0..10)
-        .map(|i| 1.0e12 + (0.001 - 1.0e12) * i as f64 / 9.0)
-        .collect();
+    // The optimal derating levels (Python: np.linspace(POWER_SETPOINT_DEFAULT,
+    // POWER_SETPOINT_DISABLED, 10))
+    let power_setpoint_levels = linspace(POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED, 10);
     let (opt_power_setpoints, opt_net_revenue) = optimize_power_setpoints(
         &mut fmodel,
         a,
@@ -119,7 +120,7 @@ fn main() -> anyhow::Result<()> {
     println!("Optimized power setpoints [W]:");
     for i in 0..n {
         let row: Vec<String> = (0..n_turbines)
-            .map(|t| format!("{:.1}", opt_power_setpoints[[i, t]]))
+            .map(|t| format!("{:.3}", opt_power_setpoints[[i, t]]))
             .collect();
         println!("  condition {i}: {}", row.join(", "));
     }
