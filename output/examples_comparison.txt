@@ -5377,6 +5377,7 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    emgauss_002        identical powers        the four deflection parameter sets match
    008_uncertain      identical powers        the nominal and the uncertain (3 and 5 deg) powers match
    uncertain_001      identical powers        the uncertain model parameters (the case sizes match)
+   turbopark_001      within 1e-4         the TurbOPark and TurbOPark-Gauss waked speeds match
 
  Engine gaps that were fixed in this round:
    1. Heterogeneous inflow was never applied to the velocity field -> now interpolated onto the
@@ -5410,8 +5411,10 @@ Floating AEP increase: -1.114 GWh (-0.31%)
    * load_optimization_001 / 002
        - Python's load optimization algorithm (structural load model) is not ported.
    * turbopark_001
-       - It builds a turbine definition at runtime (Python's build_cosine_loss_turbine_dict);
-         FLORIS can only load the turbine definitions of the turbine library.
+       - The TurbOPark models work with the cubature grid and the turbine definition is built
+         at runtime; the waked speeds match to 1e-4, except for the first condition of the wind
+         direction sweep, where the order of the two turbines with the same streamwise position
+         (225 degrees) differs from Python's.
    * The remaining Rust examples are still narrative placeholders or use their own scenarios:
      heterogeneous_003_het_multi_turbine (a leftover placeholder, the real
      port is heterogeneous_003_het_speedup_by_wd_ws), wind_resource_grid_004/005.

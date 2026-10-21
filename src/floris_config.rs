@@ -1,4 +1,4 @@
-//! FLORIS Configuration Structures
+﻿//! FLORIS Configuration Structures
 //!
 //! This module contains configuration structures that correspond to the
 //! FLORIS YAML configuration file format (gch.yaml).
@@ -547,6 +547,8 @@ pub enum DeflectionModelConfig {
         mixing_gain_deflection: Float,
         yaw_added_mixing_gain: Float,
     },
+    /// No wake deflection (Python's `none` deflection model).
+    None,
 }
 
 impl Default for DeflectionModelConfig {
@@ -569,6 +571,7 @@ impl DeflectionModelConfig {
             DeflectionModelConfig::Gauss { .. } => "gauss".to_string(),
             DeflectionModelConfig::Jimenez { .. } => "jimenez".to_string(),
             DeflectionModelConfig::EmpiricalGauss { .. } => "empirical_gauss".to_string(),
+            DeflectionModelConfig::None => "none".to_string(),
         }
     }
 }
@@ -814,6 +817,11 @@ fn parse_deflection_model(
                 mixing_gain_deflection,
                 yaw_added_mixing_gain,
             })
+        }
+        "none" => {
+            // No wake deflection (Python's "none" deflection model, used by
+            // the TurbOPark models).
+            Ok(DeflectionModelConfig::None)
         }
         _ => Err(format!("Unknown deflection model: {}", model_name)),
     }

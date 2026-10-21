@@ -1,4 +1,4 @@
-//! Wake Model Manager
+﻿//! Wake Model Manager
 //!
 //! Manages all wake models (velocity, deflection, turbulence, combination)
 
@@ -238,6 +238,11 @@ impl WakeModelManager {
                         *mixing_gain_deflection,
                         *yaw_added_mixing_gain,
                     )
+                ))
+            }
+            DeflectionModelConfig::None => {
+                Ok(Box::new(
+                    crate::core::wake_deflection::none::NoneVelocityDeflection::new(),
                 ))
             }
         }

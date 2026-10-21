@@ -426,7 +426,7 @@ impl Core {
                         "The turbopark model has been superseded by the turboparkgauss model. \
                          We recommend using `velocity_model: turboparkgauss` instead."
                     );
-                    anyhow::bail!("turbopark solver not yet implemented for TurbineCubatureGrid");
+                    turbopark_solver(&self.farm, &mut self.flow_field, cubature_grid, &self.wake)?;
                 }
                 "empirical_gauss" => {
                     empirical_gauss_solver(

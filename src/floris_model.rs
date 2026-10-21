@@ -1795,6 +1795,18 @@ impl FlorisModel {
         types
     }
 
+    /// Replace the turbine type of every turbine of the farm with a runtime
+    /// definition (Python `fmodel.set(turbine_type=[...])`).
+    pub fn set_turbine_type(
+        &mut self,
+        turbine_type: &crate::core::turbines::turbine_type::TurbineType,
+    ) -> crate::Result<()> {
+        self.core.farm.set_turbine_type(turbine_type);
+        self.core.grid = None;
+        self.core.state.initialized = false;
+        Ok(())
+    }
+
     /// The wake configuration of the model.
     ///
     /// The configuration can be modified and applied with

@@ -695,6 +695,20 @@ impl Farm {
 
     /// Set turbine layout
     ///
+    /// Replace the turbine type of every turbine of the farm (Python
+    /// `fmodel.set(turbine_type=[...])` with a runtime definition).
+    pub fn set_turbine_type(&mut self, turbine_type: &TurbineType) {
+        let arc = Arc::new(turbine_type.clone());
+        self.turbines = self
+            .turbines
+            .iter()
+            .map(|_turbine| Turbine {
+                turbine_type: Arc::clone(&arc),
+            })
+            .collect();
+        self.map_turbine_types().ok();
+    }
+
     /// Replace the turbine types of the farm (Python `fmodel.set(turbine_type=...)`).
     ///
     /// The layout is kept; the operation arrays are reset to the new turbine

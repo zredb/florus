@@ -72,6 +72,121 @@ pub struct TurbineType {
 }
 
 impl TurbineType {
+    /// Build a turbine definition from power and thrust curves (Python
+    /// `floris.turbine_library.build_cosine_loss_turbine_dict`).
+    ///
+    /// The wind speeds are required; either the power or the power coefficient
+    /// and either the thrust or the thrust coefficient must be given. The power
+    /// coefficient is converted to power with the generator efficiency, and the
+    /// thrust (in kN) to a thrust coefficient.
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_cosine_loss(
+        name: &str,
+        wind_speed: &[f64],
+        power: Option<&[f64]>,
+        power_coefficient: Option<&[f64]>,
+        thrust: Option<&[f64]>,
+        thrust_coefficient: Option<&[f64]>,
+        generator_efficiency: Option<f64>,
+        hub_height: f64,
+        rotor_diameter: f64,
+        tsr: f64,
+        ref_air_density: f64,
+        ref_tilt: f64,
+        cosine_loss_exponent_yaw: f64,
+        cosine_loss_exponent_tilt: f64,
+    ) -> anyhow::Result<TurbineType> {
+        let n = wind_speed.len();
+        let area = std::f64::consts::PI * rotor_diameter * rotor_diameter / 4.0;
+
+        // The power curve [kW]
+        let power = match (power, power_coefficient) {
+            (Some(power), _) => power.to_vec(),
+            (None, Some(cp)) => {
+                let efficiency = generator_efficiency.ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "generator_efficiency must be specified to convert power_coefficient to power."
+                    )
+                })?;
+                let mut values = vec![0.0; n];
+                for i in 0..n {
+                    if cp[i] != 0.0 || wind_speed[i] != 0.0 {
+                        values[i] = cp[i]
+                            * 0.5
+                            * ref_air_density
+                            * area
+                            * efficiency
+                            * wind_speed[i].powi(3)
+                            / 1000.0;
+                    }
+                }
+                values
+            }
+            (None, None) => {
+                anyhow::bail!("Either power or power_coefficient must be specified.")
+            }
+        };
+
+        // The thrust coefficient curve
+        let thrust_coefficient = match (thrust_coefficient, thrust) {
+            (Some(ct), _) => ct.to_vec(),
+            (None, Some(thrust)) => {
+                let mut values = vec![0.0; n];
+                for i in 0..n {
+                    if thrust[i] != 0.0 || wind_speed[i] != 0.0 {
+                        values[i] = (thrust[i] * 1000.0)
+                            / (0.5 * ref_air_density * area * wind_speed[i].powi(2));
+                    }
+                }
+                values
+            }
+            (None, None) => {
+                anyhow::bail!("Either thrust or thrust_coefficient must be specified.")
+            }
+        };
+
+        let cp_ct_table = CpCtTable::OneDimensional(OneDimTable {
+            wind_speeds: ndarray::Array1::from_vec(wind_speed.to_vec()),
+            cp_values: ndarray::Array1::from_vec(power),
+            ct_values: ndarray::Array1::from_vec(thrust_coefficient),
+            interpolation: InterpolationMethod::Linear,
+        });
+
+        Ok(TurbineType {
+            name: name.to_string(),
+            rotor_diameter,
+            hub_height,
+            tsr: Some(tsr),
+            rated_power: None,
+            cut_in_wind_speed: None,
+            cut_out_wind_speed: None,
+            rated_wind_speed: None,
+            max_yaw_angle: None,
+            yaw_rate_limit: None,
+            generator_efficiency,
+            drive_train_efficiency: None,
+            additional_losses: None,
+            ti_ref: None,
+            power_thrust_table: PowerTrustParams {
+                cp_ct_table,
+                ref_air_density: Some(ref_air_density),
+                ref_tilt: Some(ref_tilt),
+                cosine_loss_exponent_yaw: Some(cosine_loss_exponent_yaw),
+                cosine_loss_exponent_tilt: Some(cosine_loss_exponent_tilt),
+                generator_efficiency: generator_efficiency.unwrap_or(1.0),
+                ti_ref: 0.05,
+                peak_shaving_fraction: None,
+                peak_shaving_ti_threshold: None,
+                power_thrust_data_file: None,
+                helix: None,
+                controller_dependent_turbine_parameters: None,
+            },
+            floating_tilt_table: None,
+            correct_cp_ct_for_tilt: false,
+            operation_model: Box::new(operation_models::cosine_loss::CosineLossTurbine),
+        })
+    }
+
     /// Create a new TurbineType with a different operation model
     pub fn with_operation_model(&self, model_name: &str) -> TurbineType {
         let om = match model_name {
