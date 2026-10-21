@@ -48,6 +48,40 @@ fn round_to_resolution(value: Float, resolution: Float) -> Float {
     scaled.round() * resolution
 }
 
+/// The resolutions of the expanded inputs (Python's `_get_rounded_inputs`).
+///
+/// The inputs of every condition are rounded to these resolutions before the
+/// conditions are expanded, so that conditions which only differ below the
+/// resolution are solved only once.
+#[derive(Debug, Clone, Copy)]
+pub struct UncertainResolutions {
+    /// The wind direction resolution [deg]
+    pub wd: Float,
+    /// The wind speed resolution [m/s]
+    pub ws: Float,
+    /// The turbulence intensity resolution
+    pub ti: Float,
+    /// The yaw angle resolution [deg]
+    pub yaw: Float,
+    /// The power setpoint resolution [W]
+    pub power_setpoint: Float,
+    /// The AWC amplitude resolution [deg]
+    pub awc_amplitude: Float,
+}
+
+impl Default for UncertainResolutions {
+    fn default() -> Self {
+        Self {
+            wd: 1.0,
+            ws: 1.0,
+            ti: 0.01,
+            yaw: 1.0,
+            power_setpoint: 100.0,
+            awc_amplitude: 0.1,
+        }
+    }
+}
+
 /// A model with an uncertainty in the wind direction.
 ///
 /// The wind direction of every condition is perturbed with the sample points
@@ -66,6 +100,9 @@ pub struct UncertainFlorisModel {
 
     /// The normalized Gaussian weights of the sample points
     pub weights: Array1,
+
+    /// The resolutions of the expanded inputs
+    pub resolutions: UncertainResolutions,
 
     /// The model with the unique expanded conditions
     expanded_model: Option<FlorisModel>,
@@ -133,6 +170,7 @@ impl UncertainFlorisModel {
             wd_std,
             wd_sample_points: sample_points,
             weights,
+            resolutions: UncertainResolutions::default(),
             expanded_model: None,
             map_to_expanded: Array1::zeros(0),
             n_unexpanded: 0,
@@ -144,6 +182,24 @@ impl UncertainFlorisModel {
         };
         uncertain.expand()?;
         Ok(uncertain)
+    }
+
+    /// Set the resolutions of the expanded inputs and expand the conditions
+    /// again.
+    pub fn with_resolutions(mut self, resolutions: UncertainResolutions) -> Self {
+        self.resolutions = resolutions;
+        self
+    }
+
+    /// Set the wind speed resolution of the expanded inputs and expand the
+    /// conditions again.
+    ///
+    /// A coarser wind speed resolution reduces the number of conditions
+    /// that have to be solved (the approximate model of Python's
+    /// `ApproxFlorisModel`).
+    pub fn with_ws_resolution(mut self, ws_resolution: Float) -> Self {
+        self.resolutions.ws = ws_resolution;
+        self
     }
 
     /// Expand the conditions again (after changing the parameters).
@@ -209,13 +265,17 @@ impl UncertainFlorisModel {
         // direction, the wind speed and the turbulence intensity, then the
         // yaw angles, the power setpoints and the AWC amplitudes.
         for row in inputs.iter_mut() {
-            row[0] = round_to_resolution(row[0], 1.0);
-            row[1] = round_to_resolution(row[1], 1.0);
-            row[2] = round_to_resolution(row[2], 0.01);
+            row[0] = round_to_resolution(row[0], self.resolutions.wd);
+            row[1] = round_to_resolution(row[1], self.resolutions.ws);
+            row[2] = round_to_resolution(row[2], self.resolutions.ti);
             for t in 0..n_turbines {
-                row[3 + t] = round_to_resolution(row[3 + t], 1.0);
-                row[3 + n_turbines + t] = round_to_resolution(row[3 + n_turbines + t], 100.0);
-                row[3 + 2 * n_turbines + t] = round_to_resolution(row[3 + 2 * n_turbines + t], 0.1);
+                row[3 + t] = round_to_resolution(row[3 + t], self.resolutions.yaw);
+                row[3 + n_turbines + t] =
+                    round_to_resolution(row[3 + n_turbines + t], self.resolutions.power_setpoint);
+                row[3 + 2 * n_turbines + t] = round_to_resolution(
+                    row[3 + 2 * n_turbines + t],
+                    self.resolutions.awc_amplitude,
+                );
             }
         }
 
@@ -488,5 +548,74 @@ impl UncertainFlorisModel {
             }
         }
         Ok(values)
+    }
+}
+
+/// The approximate FLORIS model (Python `ApproxFlorisModel`).
+///
+/// A special case of the `UncertainFlorisModel` with a single wind
+/// direction sample point: no uncertainty is added, but the resolution of
+/// the wind speeds (and of the other inputs) is reduced, so that the
+/// conditions can be reused and a faster approximate result is computed.
+#[derive(Debug, Clone)]
+pub struct ApproxFlorisModel {
+    /// The underlying model (an uncertain model with a single sample point)
+    pub model: UncertainFlorisModel,
+}
+
+impl ApproxFlorisModel {
+    /// Create an approximate model.
+    ///
+    /// * `model` - the model with the original conditions
+    /// * `ws_resolution` - the wind speed resolution of the expanded
+    ///   conditions [m/s]; a coarser resolution reduces the number of
+    ///   conditions that have to be solved
+    pub fn new(model: FlorisModel, ws_resolution: Float) -> Result<Self> {
+        let mut uncertain = UncertainFlorisModel::new(model, 1.0, Some(vec![0.0]))?;
+        uncertain.resolutions.ws = ws_resolution;
+        uncertain.expand_public()?;
+        Ok(Self { model: uncertain })
+    }
+
+    /// Set the layout of the model and expand the conditions again.
+    pub fn set_layout(&mut self, layout_x: &Array1, layout_y: &Array1) -> Result<()> {
+        self.model.set_layout(layout_x, layout_y)
+    }
+
+    /// Set the wind data of the model and expand the conditions again.
+    pub fn set_wind_data(&mut self, wind_data: &dyn WindData) -> Result<()> {
+        self.model.set_wind_data(wind_data)
+    }
+
+    /// Set the wind conditions of the model and expand them.
+    pub fn set_wind_conditions(
+        &mut self,
+        wind_speeds: Array1,
+        wind_directions: Array1,
+        turbulence_intensities: Array1,
+    ) -> Result<()> {
+        self.model
+            .set_wind_conditions(wind_speeds, wind_directions, turbulence_intensities)
+    }
+
+    /// Run the model with the expanded conditions.
+    pub fn run(&mut self) -> Result<()> {
+        self.model.run()
+    }
+
+    /// The turbine powers of the conditions.
+    pub fn get_turbine_powers(&self) -> Result<Array2> {
+        self.model.get_turbine_powers()
+    }
+
+    /// The farm power of every condition.
+    pub fn get_farm_power(&self) -> Result<Array1> {
+        self.model.get_farm_power()
+    }
+
+    /// The expected farm power (the conditions are weighted with the
+    /// frequencies of the wind data).
+    pub fn get_expected_farm_power(&self, freq: Option<Array1>) -> Result<Float> {
+        self.model.get_expected_farm_power(freq)
     }
 }

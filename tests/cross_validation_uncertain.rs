@@ -226,3 +226,63 @@ fn test_uncertain_model_matches_python() {
         }
     }
 }
+
+/// The approximate model (Python's `ApproxFlorisModel`) is an uncertain
+/// model with a single wind direction sample point and a reduced wind speed
+/// resolution: it has to reproduce the expected power of the full model
+/// closely, while solving far fewer conditions.
+#[test]
+fn test_approx_floris_model_reproduces_the_expected_power() {
+    use florus::uncertain::ApproxFlorisModel;
+
+    let d = 126.0;
+    let layout_x = Array1::from_vec(vec![0.0, 5.0 * d, 10.0 * d]);
+    let layout_y = Array1::from_vec(vec![0.0, 0.0, 0.0]);
+
+    // A set of wind speeds spread over the operating range; the speeds are
+    // 0.375 m/s apart, so that they are merged in pairs by the 0.5 m/s
+    // resolution of the approximate model
+    let wind_speeds = Array1::from_iter((0..40).map(|k| 5.0 + 0.375 * k as f64));
+    let n = wind_speeds.len();
+    let time_series = TimeSeries::new(
+        Array1::from_elem(n, 270.0),
+        wind_speeds,
+        Array1::from_elem(n, 0.06),
+    )
+    .expect("time series");
+
+    let mut model = FlorisModel::from_file("examples/inputs/gch.yaml").expect("model");
+    model.set_layout(&layout_x, &layout_y).expect("layout");
+    model.set_wind_data(&time_series).expect("wind data");
+    model.run().expect("run");
+
+    let mut approx = ApproxFlorisModel::new(
+        FlorisModel::from_file("examples/inputs/gch.yaml").expect("model"),
+        0.5,
+    )
+    .expect("approx model");
+    approx.set_layout(&layout_x, &layout_y).expect("layout");
+    approx.set_wind_data(&time_series).expect("wind data");
+    approx.run().expect("run");
+
+    // The approximate model solves far fewer conditions
+    assert!(
+        approx.model.n_unique() < n,
+        "the approximate model solves {} conditions (expected fewer than {n})",
+        approx.model.n_unique()
+    );
+
+    // The expected power is close to the power of the full model
+    let exact = model
+        .get_expected_farm_power(None, None)
+        .expect("expected power");
+    let approximate = approx
+        .get_expected_farm_power(None)
+        .expect("expected power");
+    let difference = (approximate - exact).abs() / exact;
+    assert!(
+        difference < 0.01,
+        "the expected power differs by {:.3} %: {approximate} W vs {exact} W",
+        100.0 * difference
+    );
+}

@@ -5494,14 +5494,22 @@ UNCERTAIN 35 285 ['3.125000', '0.000000', '0.000000'] 5177676.308966 5185583.628
       even value, exactly as numpy.round does.
 
  Still unaligned (and why):
+   * uncertain_002
+       - The ApproxFlorisModel surrogate is ported (florus::uncertain::ApproxFlorisModel: an
+         uncertain model with a single wind direction sample point and a configurable resolution
+         of the expanded inputs) and the example is a 1:1 port, but the random walk on the wind
+         speed is drawn with numpy's default_rng(0) (PCG64 with the ziggurat normal
+         distribution), which cannot be reproduced in Rust: the realization of the walk, and
+         therefore the expected power, differs from Python's. The run times are not comparable
+         either.
    * layout_optimization_001 / 002 / 003 / 005 and wind_resource_grid_003
-       - Python uses SLSQP (001, 002) and a genetic algorithm (003); FLORIS uses coordinate descent
-         and a heuristic spread. Only the deterministic gridded optimizer (004) was ported exactly.
-         The optimum of the SLSQP problems is not unique (the objective is flat over a plateau), so
-         a bit-for-bit match is not attainable without the same optimizer.
+       - Python uses SLSQP (001, 002) and a genetic algorithm (003, 005, wind_resource_grid_003);
+         FLORIS uses coordinate descent and a heuristic spread. Only the deterministic gridded
+         optimizer (004) was ported exactly. The optimum of the SLSQP problems is not unique (the
+         objective is flat over a plateau), so a bit-for-bit match is not attainable without the
+         same optimizer. The random search is time-based (it runs until a wall-clock deadline), so
+         its result is not reproducible either, and the wind resources of all the examples are
+         drawn with numpy's random number generator.
        - layout_optimization_002 and wind_resource_grid_003 additionally need the heterogeneous
          inflow, which now works.
-   * uncertain_002
-       - Needs Python's ApproxFlorisModel surrogate (floris/simulation/approx.py); no Rust
-         equivalent exists.
 
