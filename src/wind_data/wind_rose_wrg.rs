@@ -349,11 +349,21 @@ impl WindRoseWRG {
             .map(|i| i as Float * (360.0 / n_sectors as Float))
             .collect();
 
+        // The turbulence intensity of the base wind rose, which is defined
+        // for the wind sectors of the WRG file. The table of the wind rose
+        // may be given for the wind directions of the wind rose (Python's
+        // `ti_table` is a scalar, so a constant table is used).
+        let base_ti = if ti.shape()[0] == n_sectors {
+            ti.clone()
+        } else {
+            Array2::from_elem((n_sectors, n_ws), ti.mean().unwrap_or(0.06))
+        };
+
         // Create base wind rose
         let mut wind_rose = WindRose::new(
             wrg_wind_directions,
             ws.clone(),
-            ti.clone(),
+            base_ti,
             Some(freq_table),
             None,
             false,
@@ -379,6 +389,161 @@ impl WindRoseWRG {
             // Need to downsample
             wind_rose.downsample(Some(wd_step), Some(ws[1] - ws[0]), None)
         }
+    }
+
+    /// Get a wind rose with a heterogeneous map that describes the speed ups
+    /// of the wind resource grid (Python's `get_heterogeneous_wind_rose`).
+    ///
+    /// The speed multipliers of the map are the ratios of the expected power
+    /// of the turbine at every grid point and every wind direction sector to
+    /// the expected power at the reference location. They are turned into
+    /// wind speed multipliers by taking the cube root.
+    ///
+    /// * `wind_speeds` - the wind speeds of the power curve (default: the
+    ///   wind speeds of the wind rose).
+    /// * `x_loc`, `y_loc` - the reference location (default: the first grid
+    ///   point of the grid).
+    /// * `representative_wind_speed` - the wind speed of the returned wind
+    ///   rose (it has to be one of the wind speeds of the wind rose).
+    pub fn get_heterogeneous_wind_rose(
+        &self,
+        fmodel: &crate::floris_model::FlorisModel,
+        wind_speeds: Option<Array1>,
+        x_loc: Option<Float>,
+        y_loc: Option<Float>,
+        representative_wind_speed: Float,
+    ) -> Result<WindRose> {
+        use crate::heterogeneous_map::HeterogeneousMap;
+        use crate::wind_data::timeseries::TimeSeries;
+
+        let wind_speeds = wind_speeds.unwrap_or_else(|| self.wind_speeds.clone());
+        let n_ws = wind_speeds.len();
+
+        // The power curve of the turbine (Python: a model with a single
+        // turbine and a time series of the wind speeds at 270 degrees)
+        let mut fm = fmodel.clone();
+        fm.set_layout(&Array1::from_vec(vec![0.0]), &Array1::from_vec(vec![0.0]))?;
+        fm.set_wind_data(&TimeSeries::new(
+            Array1::from_elem(n_ws, 270.0),
+            wind_speeds.clone(),
+            Array1::from_elem(n_ws, 0.06),
+        )?)?;
+        fm.run()?;
+        let turbine_power = fm.get_turbine_powers()?;
+
+        let nx = self.wrg_data.nx;
+        let ny = self.wrg_data.ny;
+        let n_sectors = self.wrg_data.n_sectors;
+        let n_gid = nx * ny;
+
+        // The grid point that is the closest to the reference location
+        let mut gid_reference = 0usize;
+        if let (Some(x), Some(y)) = (x_loc, y_loc) {
+            let mut best = Float::INFINITY;
+            for j in 0..ny {
+                for i in 0..nx {
+                    let dx = self.wrg_data.x_array[i] - x;
+                    let dy = self.wrg_data.y_array[j] - y;
+                    let distance = dx * dx + dy * dy;
+                    if distance < best {
+                        best = distance;
+                        gid_reference = j * nx + i;
+                    }
+                }
+            }
+        }
+        let x_ref = self.wrg_data.x_array[gid_reference % nx];
+        let y_ref = self.wrg_data.y_array[gid_reference / nx];
+
+        // The wind rose at the reference location
+        let wind_rose = self.get_wind_rose_at_point(x_ref, y_ref, None, None, None);
+
+        // The wind speed of the returned wind rose
+        let ws_index = wind_rose
+            .wind_speeds
+            .iter()
+            .position(|&ws| (ws - representative_wind_speed).abs() < 1e-6)
+            .ok_or_else(|| anyhow::anyhow!("representative_wind_speed must be in original set"))?;
+
+        // The speed multipliers of every wind direction sector and every grid
+        // point: the ratio of the expected power of the turbine at the grid
+        // point to the expected power at the reference location
+        let mut speed_multipliers = Array2::zeros((n_sectors, n_gid));
+        for sector in 0..n_sectors {
+            for gid in 0..n_gid {
+                let i = gid % nx;
+                let j = gid / nx;
+                let (_, freq) = Self::_generate_wind_speed_frequencies_from_weibull_internal(
+                    &wind_speeds,
+                    self.wrg_data.weibull_a[[i, j, sector]],
+                    self.wrg_data.weibull_k[[i, j, sector]],
+                );
+                let mut expected_power = 0.0;
+                for ws in 0..n_ws {
+                    expected_power += turbine_power[[ws, 0]] * freq[ws];
+                }
+                speed_multipliers[[sector, gid]] = expected_power;
+            }
+
+            // Normalize the speed ups with the reference location
+            let reference = speed_multipliers[[sector, gid_reference]];
+            if reference > 0.0 {
+                for gid in 0..n_gid {
+                    speed_multipliers[[sector, gid]] /= reference;
+                }
+            }
+        }
+
+        // Take the cube root of the speed ups to place them in the frame of
+        // wind speed ups
+        for value in speed_multipliers.iter_mut() {
+            *value = value.cbrt();
+        }
+
+        // The heterogeneous map of the grid
+        let mut x_gid = Vec::with_capacity(n_gid);
+        let mut y_gid = Vec::with_capacity(n_gid);
+        for j in 0..ny {
+            for i in 0..nx {
+                x_gid.push(self.wrg_data.x_array[i]);
+                y_gid.push(self.wrg_data.y_array[j]);
+            }
+        }
+        let x_gid = Array1::from_vec(x_gid);
+        let y_gid = Array1::from_vec(y_gid);
+        let wind_directions: Array1 = (0..n_sectors)
+            .map(|i| i as Float * (360.0 / n_sectors as Float))
+            .collect();
+        let heterogeneous_map = HeterogeneousMap::new(
+            x_gid,
+            y_gid,
+            speed_multipliers,
+            None,
+            Some(wind_directions),
+            None,
+            InterpMethod::Linear,
+        )?;
+
+        // The wind rose with the heterogeneous map: the wind rose of the
+        // reference location, restricted to the representative wind speed
+        let n_dir = wind_rose.wind_directions.len();
+        let ti_table =
+            Array2::from_shape_fn((n_dir, 1), |(i, _)| wind_rose.ti_table[[i, ws_index]]);
+        let freq_table =
+            Array2::from_shape_fn((n_dir, 1), |(i, _)| wind_rose.freq_table[[i, ws_index]]);
+        let mut wind_rose = WindRose::new(
+            wind_rose.wind_directions.clone(),
+            Array1::from_vec(vec![wind_rose.wind_speeds[ws_index]]),
+            ti_table,
+            Some(freq_table),
+            None,
+            wind_rose.compute_zero_freq_occurrence,
+            Some(heterogeneous_map),
+            None,
+        )?;
+        wind_rose.compute_zero_freq_occurrence = true;
+
+        Ok(wind_rose)
     }
 
     /// Internal helper for generating wind speed frequencies from Weibull
@@ -553,6 +718,10 @@ impl WindRoseWRG {
 }
 
 impl WindData for WindRoseWRG {
+    fn clone_box(&self) -> Box<dyn WindData> {
+        Box::new(self.clone())
+    }
+
     fn wind_speeds(&self) -> Array1 {
         self.wind_speeds.clone()
     }
@@ -565,7 +734,21 @@ impl WindData for WindRoseWRG {
         // Return representative TI values (first speed bin for each direction)
         let n_dir = self.wind_directions.len();
         if n_dir > 0 && self.ti_table.shape().len() >= 2 {
-            Array1::from_iter((0..n_dir).map(|i| self.ti_table[[i, 0]]))
+            let n_rows = self.ti_table.shape()[0];
+            let n_sectors = self.wrg_data.n_sectors;
+            if n_rows >= n_dir {
+                Array1::from_iter((0..n_dir).map(|i| self.ti_table[[i, 0]]))
+            } else if n_sectors > 0 && n_rows == n_sectors {
+                // The table is given per wind sector of the WRG file
+                let sector_width = 360.0 / n_sectors as Float;
+                Array1::from_iter((0..n_dir).map(|i| {
+                    let sector = ((self.wind_directions[i] / sector_width).floor() as usize)
+                        .min(n_sectors - 1);
+                    self.ti_table[[sector, 0]]
+                }))
+            } else {
+                Array1::from_elem(n_dir, self.ti_table.mean().unwrap_or(0.06))
+            }
         } else {
             Array1::from_vec(vec![])
         }
@@ -985,6 +1168,10 @@ impl WindRoseByTurbine {
 }
 
 impl WindData for WindRoseByTurbine {
+    fn clone_box(&self) -> Box<dyn WindData> {
+        Box::new(self.clone())
+    }
+
     fn wind_speeds(&self) -> Array1 {
         self.wind_speeds.clone()
     }

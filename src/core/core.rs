@@ -13,6 +13,7 @@ use crate::core::wake::WakeModelManager;
 use crate::floris_config::{FlorisConfig, LoggingConfig, SolverConfig, SolverType};
 use crate::types::{Array1, Array2, Float};
 use crate::utilities::load_yaml;
+use crate::wind_data::traits::WindData;
 use std::fmt;
 use std::path::Path;
 
@@ -58,6 +59,13 @@ pub struct Core {
     /// The values (e.g. the electricity price) of the wind data
     /// (Python wind_data.unpack_value()).
     pub wind_data_values: Option<Array2>,
+
+    /// The wind data of the model (Python `FlorisModel._wind_data`).
+    ///
+    /// It is kept so that it can be updated when the layout of the farm
+    /// changes: the wind resource grid generates the wind roses of the
+    /// turbines from their positions (Python `floris_model.py:204-207`).
+    pub wind_data: Option<Box<dyn WindData>>,
 }
 
 /// Information about wind data structure for reshaping results
@@ -100,8 +108,9 @@ impl Clone for Core {
             state: self.state.clone(),
             wind_data_info: self.wind_data_info.clone(),
             multidim_conditions: self.multidim_conditions.clone(),
-            wind_data_frequencies: None,
-            wind_data_values: None,
+            wind_data_frequencies: self.wind_data_frequencies.clone(),
+            wind_data_values: self.wind_data_values.clone(),
+            wind_data: self.wind_data.as_ref().map(|wd| wd.clone_box()),
             wake_config: self.wake_config.clone(),
         }
     }
@@ -210,6 +219,7 @@ impl Core {
             multidim_conditions: config.flow_field.multidim_conditions.clone(),
             wind_data_frequencies: None,
             wind_data_values: None,
+            wind_data: None,
             wake_config: config.wake.clone(),
         };
 

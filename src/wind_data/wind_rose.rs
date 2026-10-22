@@ -449,7 +449,6 @@ impl WindRose {
             return self.clone();
         }
 
-        let n_dir = self.wind_directions.len();
         let n_ws = self.wind_speeds.len();
 
         let ws_step_current = if n_ws >= 2 {
@@ -458,7 +457,7 @@ impl WindRose {
             1.0
         };
 
-        let wd_step_current = if n_dir >= 2 {
+        let wd_step_current = if self.wind_directions.len() >= 2 {
             self.wind_directions[1] - self.wind_directions[0]
         } else {
             360.0
@@ -478,12 +477,30 @@ impl WindRose {
             );
         }
 
-        let wd_min = self
-            .wind_directions
+        // The wind directions are made adjacent (Python's
+        // `make_wind_directions_adjacent`): the directions after the largest
+        // step are shifted by -360 degrees and moved to the front, so that
+        // they cover a contiguous range. The tables are reordered as well.
+        let (adjacent_directions, sort_indices) =
+            make_wind_directions_adjacent(&self.wind_directions);
+        let reorder = |table: &Array2| -> Array2 {
+            let mut out = Array2::zeros((table.shape()[0], table.shape()[1]));
+            for (new_i, &old_i) in sort_indices.iter().enumerate() {
+                for j in 0..table.shape()[1] {
+                    out[[new_i, j]] = table[[old_i, j]];
+                }
+            }
+            out
+        };
+        let freq_table = reorder(&self.freq_table);
+        let ti_table = reorder(&self.ti_table);
+        let value_table = self.value_table.as_ref().map(reorder);
+
+        // The range of the wind directions
+        let wd_min = adjacent_directions
             .iter()
             .fold(Float::INFINITY, |acc, &v| acc.min(v));
-        let wd_max = self
-            .wind_directions
+        let wd_max = adjacent_directions
             .iter()
             .fold(Float::NEG_INFINITY, |acc, &v| acc.max(v));
         let ws_min = self
@@ -500,30 +517,27 @@ impl WindRose {
         let ws_range_min = ws_min - ws_step_current / 2.0;
         let ws_range_max = ws_max + ws_step_current / 2.0;
 
-        let mut new_wind_directions = Vec::new();
-        let mut wd_cursor = wd_range_min + wd_step / 2.0;
-        while wd_cursor <= wd_range_max + 1e-9 {
-            let wrapped = ((wd_cursor % 360.0) + 360.0) % 360.0;
-            new_wind_directions.push(wrapped);
-            wd_cursor += wd_step;
-        }
+        // The new wind directions and wind speeds (Python's `np.arange`)
+        let wd_min_new = wd_range_min + wd_step / 2.0;
+        let wd_max_new = wd_range_max - wd_step / 2.0;
+        let new_wind_directions = arange(wd_min_new, wd_max_new + wd_step / 2.0, wd_step);
 
-        let mut new_wind_speeds = Vec::new();
-        let mut ws_cursor = (ws_range_min + ws_step / 2.0).max(0.0);
-        while ws_cursor <= ws_range_max + 1e-9 {
-            new_wind_speeds.push(ws_cursor);
-            ws_cursor += ws_step;
+        let mut ws_min_new = ws_range_min + ws_step / 2.0;
+        let ws_max_new = ws_range_max - ws_step / 2.0;
+        if ws_min_new < 0.0 {
+            ws_min_new = 0.0;
         }
+        let new_wind_speeds = arange(ws_min_new, ws_max_new + ws_step / 2.0, ws_step);
 
         let interp = |table: &Array2, wd: Float, ws: Float| -> Float {
             match method {
                 InterpMethod::Nearest => {
-                    let wd_idx = Self::nearest_index(&self.wind_directions, wd);
+                    let wd_idx = Self::nearest_index(&adjacent_directions, wd);
                     let ws_idx = Self::nearest_index(&self.wind_speeds, ws);
                     table[[wd_idx, ws_idx]]
                 }
                 _ => {
-                    let (wd0, wd1, wt) = Self::linear_bounds(&self.wind_directions, wd);
+                    let (wd0, wd1, wt) = Self::linear_bounds(&adjacent_directions, wd);
                     let (ws0, ws1, wt_ws) = Self::linear_bounds(&self.wind_speeds, ws);
 
                     let v00 = table[[wd0, ws0]];
@@ -538,30 +552,41 @@ impl WindRose {
             }
         };
 
-        let new_shape = (new_wind_directions.len(), new_wind_speeds.len());
+        // The wind directions are wrapped into 0-360 degrees and sorted
+        // (Python's `np.argsort` of the wrapped directions), and the tables
+        // are reordered accordingly.
+        let mut wrapped: Vec<(Float, usize)> = new_wind_directions
+            .iter()
+            .enumerate()
+            .map(|(i, &wd)| (((wd % 360.0) + 360.0) % 360.0, i))
+            .collect();
+        wrapped.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let sorted_directions: Array1 = Array1::from_iter(wrapped.iter().map(|&(wd, _)| wd));
 
-        let freq_table = Array2::from_shape_fn(new_shape, |(i, j)| {
-            let wd = new_wind_directions[i];
+        let new_shape = (sorted_directions.len(), new_wind_speeds.len());
+
+        let freq_table_new = Array2::from_shape_fn(new_shape, |(i, j)| {
+            let wd = sorted_directions[i];
             let ws = new_wind_speeds[j];
-            interp(&self.freq_table, wd, ws)
+            interp(&freq_table, wd, ws)
         });
 
-        let ti_table = Array2::from_shape_fn(new_shape, |(i, j)| {
-            let wd = new_wind_directions[i];
+        let ti_table_new = Array2::from_shape_fn(new_shape, |(i, j)| {
+            let wd = sorted_directions[i];
             let ws = new_wind_speeds[j];
-            interp(&self.ti_table, wd, ws)
+            interp(&ti_table, wd, ws)
         });
 
-        let value_table = self.value_table.as_ref().map(|values| {
+        let value_table_new = value_table.as_ref().map(|values| {
             Array2::from_shape_fn(new_shape, |(i, j)| {
-                let wd = new_wind_directions[i];
+                let wd = sorted_directions[i];
                 let ws = new_wind_speeds[j];
                 interp(values, wd, ws)
             })
         });
 
-        let freq_total: Float = freq_table.iter().sum();
-        let mut freq_table_norm = freq_table.clone();
+        let freq_total: Float = freq_table_new.iter().sum();
+        let mut freq_table_norm = freq_table_new.clone();
         if freq_total > 0.0 {
             for f in freq_table_norm.iter_mut() {
                 *f /= freq_total;
@@ -569,11 +594,11 @@ impl WindRose {
         }
 
         WindRose::new(
-            Array1::from_vec(new_wind_directions),
+            sorted_directions,
             Array1::from_vec(new_wind_speeds),
-            ti_table,
+            ti_table_new,
             Some(freq_table_norm),
-            value_table,
+            value_table_new,
             self.compute_zero_freq_occurrence,
             self.heterogeneous_map.clone(),
             self.multidim_conditions.clone(),
@@ -775,7 +800,65 @@ impl WindRose {
     }
 }
 
+/// The values of `np.arange(start, stop, step)`.
+fn arange(start: Float, stop: Float, step: Float) -> Vec<Float> {
+    if step <= 0.0 || stop <= start {
+        return Vec::new();
+    }
+    let n = ((stop - start) / step).ceil() as usize;
+    (0..n).map(|i| start + i as Float * step).collect()
+}
+
+/// Reorder the wind directions so that they are adjacent (Python's
+/// `make_wind_directions_adjacent`).
+///
+/// The directions after the largest step are shifted by -360 degrees and
+/// moved to the front, so that the wind directions cover a contiguous range.
+/// The indices to reorder the tables of the wind rose are returned as well.
+fn make_wind_directions_adjacent(wind_directions: &Array1) -> (Array1, Vec<usize>) {
+    let n = wind_directions.len();
+    if n < 2 {
+        return (wind_directions.clone(), (0..n).collect());
+    }
+
+    // The step size of the wind directions
+    let step_size = wind_directions[1] - wind_directions[0];
+
+    // There is at most one step that is larger than the step size
+    let mut index = 0usize;
+    let mut largest = 0.0;
+    for i in 0..n - 1 {
+        let step = wind_directions[i + 1] - wind_directions[i];
+        if step > largest {
+            largest = step;
+            index = i;
+        }
+    }
+    if largest <= step_size {
+        return (wind_directions.clone(), (0..n).collect());
+    }
+
+    // The directions after the largest step are shifted by -360 degrees and
+    // moved to the front
+    let mut adjacent: Vec<Float> = Vec::with_capacity(n);
+    let mut sort_indices: Vec<usize> = Vec::with_capacity(n);
+    for i in index + 1..n {
+        adjacent.push(wind_directions[i] - 360.0);
+        sort_indices.push(i);
+    }
+    for i in 0..=index {
+        adjacent.push(wind_directions[i]);
+        sort_indices.push(i);
+    }
+
+    (Array1::from_vec(adjacent), sort_indices)
+}
+
 impl WindData for WindRose {
+    fn clone_box(&self) -> Box<dyn WindData> {
+        Box::new(self.clone())
+    }
+
     fn wind_speeds(&self) -> Array1 {
         self.wind_speeds.clone()
     }
@@ -800,7 +883,27 @@ impl WindData for WindRose {
     }
 
     fn heterogeneous_inflow_config(&self) -> HeterogeneousInflowConfig {
-        let n_conditions = self.n_conditions();
+        // The heterogeneous inflow config is built for the unpacked (flat and
+        // masked) wind conditions, so that its rows line up with the wind
+        // conditions of the flow field (Python `WindRose.unpack`,
+        // wind_data.py:403-407).
+        let freq_flat = self.get_freq_flat();
+        let keep: Vec<bool> = if self.compute_zero_freq_occurrence {
+            vec![true; freq_flat.len()]
+        } else {
+            freq_flat.iter().map(|&f| f > 0.0).collect()
+        };
+        let filter = |values: &Array1| -> Array1 {
+            values
+                .iter()
+                .zip(keep.iter())
+                .filter_map(|(&v, &k)| if k { Some(v) } else { None })
+                .collect()
+        };
+        let wind_directions = filter(&self.get_wd_flat());
+        let wind_speeds = filter(&self.get_ws_flat());
+
+        let n_conditions = wind_directions.len();
         let n_points = if let Some(ref het_map) = self.heterogeneous_map {
             het_map.x.len()
         } else {
@@ -810,25 +913,24 @@ impl WindData for WindRose {
         if n_points > 0 {
             let het_map = self.heterogeneous_map.as_ref().unwrap();
             het_map
-                .get_heterogeneous_inflow_config(
-                    self.wind_directions.clone(),
-                    self.wind_speeds.clone(),
-                )
+                .get_heterogeneous_inflow_config(wind_directions.clone(), wind_speeds.clone())
                 .unwrap_or_else(|_| HeterogeneousInflowConfig {
                     x: het_map.x.clone(),
                     y: het_map.y.clone(),
                     z: het_map.z.clone(),
-                    wind_speeds: Some(self.wind_speeds.clone()),
-                    wind_directions: Some(self.wind_directions.clone()),
-                    speed_multipliers: Array2::zeros((n_conditions, n_points)),
+                    wind_speeds: Some(wind_speeds.clone()),
+                    wind_directions: Some(wind_directions.clone()),
+                    // The freestream value: the heterogeneous inflow is not
+                    // applied when the config cannot be built
+                    speed_multipliers: Array2::from_elem((n_conditions, n_points), 1.0),
                 })
         } else {
             HeterogeneousInflowConfig {
                 x: Array1::from_vec(vec![]),
                 y: Array1::from_vec(vec![]),
                 z: None,
-                wind_speeds: Some(self.wind_speeds.clone()),
-                wind_directions: Some(self.wind_directions.clone()),
+                wind_speeds: Some(wind_speeds.clone()),
+                wind_directions: Some(wind_directions.clone()),
                 speed_multipliers: Array2::from_shape_vec((n_conditions, 0), vec![]).unwrap(),
             }
         }

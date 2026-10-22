@@ -253,6 +253,108 @@ fn test_layout_optimization_with_heterogeneity_matches_python() {
         "the AEP of the optimized layout: {aep} MWh (expected 13930.0 MWh)"
     );
 }
+/// The layout optimization with separated boundaries
+/// (`examples_layout_optimization/005_layout_optimization_complex_boundary.py`):
+/// the gridded layout has to place the turbines inside the two regions and
+/// the random search has to improve it while respecting the constraints.
+#[test]
+fn test_layout_optimization_with_separated_boundaries() {
+    use florus::optimization::layout_optimization::LayoutOptimizationGridded;
+    use florus::optimization::layout_optimization::LayoutOptimizationRandomSearch;
+
+    let (wind_rose, _) = wind_rose();
+
+    let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml").expect("model");
+    fmodel.set_wind_data(&wind_rose).expect("wind data");
+
+    // The two separated regions of the example
+    let boundaries = Boundary::MultiPolygon(vec![
+        vec![
+            (0.0, 0.0),
+            (0.0, 1000.0),
+            (1000.0, 1000.0),
+            (1000.0, 0.0),
+            (0.0, 0.0),
+        ],
+        vec![
+            (1500.0, 0.0),
+            (1500.0, 1000.0),
+            (2500.0, 0.0),
+            (1500.0, 0.0),
+        ],
+    ]);
+
+    // The gridded layout at 6D spacing
+    let mut gridded = LayoutOptimizationGridded::new(&fmodel, boundaries.clone(), Some(6.0), None)
+        .expect("gridded");
+    gridded.optimize();
+    assert_eq!(
+        gridded.n_turbines_max, 6,
+        "the number of turbines of the gridded layout"
+    );
+    assert_eq!(
+        gridded.x_opt.len(),
+        6,
+        "the number of turbines of the gridded layout"
+    );
+
+    // Every turbine has to lie inside one of the regions
+    for (x, y) in gridded.x_opt.iter().zip(gridded.y_opt.iter()) {
+        assert!(
+            boundaries.contains(*x, *y),
+            "the turbine at ({x}, {y}) is not inside the boundary"
+        );
+    }
+
+    // The random search starts from the gridded layout and improves it
+    fmodel
+        .set_layout(&gridded.x_opt, &gridded.y_opt)
+        .expect("layout");
+    fmodel.run().expect("run");
+    let base_aep = fmodel.get_expected_farm_power(None, None).expect("aep") * 8760.0 / 1e9;
+
+    let config = LayoutOptimizationConfig {
+        boundaries: boundaries.clone(),
+        min_dist: Some(5.0 * D),
+        max_iterations: 300,
+        n_generations: 2,
+        use_dist_based_init: false,
+        ..Default::default()
+    };
+    let mut optimizer = LayoutOptimizationRandomSearch::new(&fmodel, boundaries.clone(), 4)
+        .expect("optimizer")
+        .with_config(config)
+        .with_random_seed(1);
+    let solution = optimizer.optimize().expect("optimize");
+
+    // The turbines stay inside the boundary and keep their distance
+    for (x, y) in solution.x.iter().zip(solution.y.iter()) {
+        assert!(
+            boundaries.contains(*x, *y),
+            "the turbine at ({x}, {y}) is not inside the boundary"
+        );
+    }
+    let distances = florus::optimization::layout_optimization::calculate_pairwise_distances(
+        &solution.x,
+        &solution.y,
+    );
+    for i in 0..distances.shape()[0] {
+        for j in (i + 1)..distances.shape()[0] {
+            assert!(
+                distances[[i, j]] >= 5.0 * D - 1e-6,
+                "the distance between the turbines {i} and {j} is {}",
+                distances[[i, j]]
+            );
+        }
+    }
+
+    // The AEP is improved
+    assert!(
+        solution.value / 1e9 > base_aep,
+        "the AEP of the optimized layout is not higher than the initial one"
+    );
+}
+
 /// Python example improves it by 4.5 % with scipy's SLSQP; the Rust
 /// optimizer is a pattern search, which converges to a nearby optimum).
 #[test]

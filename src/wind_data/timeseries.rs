@@ -310,6 +310,10 @@ impl TimeSeries {
 }
 
 impl WindData for TimeSeries {
+    fn clone_box(&self) -> Box<dyn WindData> {
+        Box::new(self.clone())
+    }
+
     fn wind_speeds(&self) -> Array1 {
         self.wind_speeds.clone()
     }

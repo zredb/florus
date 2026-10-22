@@ -1,4 +1,4 @@
-﻿use crate::core::turbines::cp_ct_table::TableConditions;
+use crate::core::turbines::cp_ct_table::TableConditions;
 use crate::core::turbines::operation_models::{POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED};
 use crate::core::{Core, Farm, FlowField, State, TurbineGrid};
 use crate::floris_config::{FlorisConfig, SolverConfig};
@@ -1618,6 +1618,19 @@ impl FlorisModel {
         self.core.wind_data_frequencies = Some(wind_data.unpack_freq());
         self.core.wind_data_values = Some(wind_data.unpack_value());
 
+        // Keep the wind data: it is updated when the layout of the farm
+        // changes (Python `floris_model.py:204-207`). The wind resource grid
+        // generates the wind roses of the turbines from their positions.
+        self.core.wind_data = Some(wind_data.clone_box());
+
+        // The heterogeneous inflow config of the wind data (a wind rose with
+        // a heterogeneous map) is applied to the flow field (Python
+        // `floris_model.py:236`).
+        let het_config = wind_data.heterogeneous_inflow_config();
+        if !het_config.x.is_empty() {
+            self.core.flow_field.heterogeneous_inflow_config = Some(het_config);
+        }
+
         self.core.grid = None;
         Ok(())
     }
@@ -1842,6 +1855,75 @@ impl FlorisModel {
     pub fn set_layout(&mut self, layout_x: &Array1, layout_y: &Array1) -> crate::Result<()> {
         self.core.farm.set_layout(layout_x, layout_y)?;
         self.core.grid = None; // Reset grid when layout changes
+
+        // The wind data is updated with the new layout (Python
+        // `floris_model.py:204-207`): the wind resource grid generates the
+        // wind roses of the turbines from their positions.
+        if self.core.wind_data.is_some() {
+            if let Some(wind_data) = self.core.wind_data.as_mut() {
+                wind_data.set_layout(&Some(layout_x.clone()), &Some(layout_y.clone()));
+            }
+            self.refresh_wind_data()?;
+        }
+        Ok(())
+    }
+
+    /// Refresh the wind conditions, the frequencies and the values of the
+    /// model from its wind data.
+    ///
+    /// The wind conditions are only rebuilt when they changed (the wind
+    /// resource grid keeps the same wind directions and wind speeds when the
+    /// turbines are moved); the frequencies of the wind data are always
+    /// refreshed.
+    fn refresh_wind_data(&mut self) -> crate::Result<()> {
+        let Some(wind_data) = self.core.wind_data.as_ref() else {
+            return Ok(());
+        };
+        let (wind_directions, wind_speeds, turbulence_intensities, freq, value, het_config) =
+            wind_data.unpack();
+
+        // The heterogeneous inflow config of the wind data (a wind rose with
+        // a heterogeneous map) is applied to the flow field
+        let het_config = if !het_config.x.is_empty() {
+            Some(het_config)
+        } else {
+            self.core.flow_field.heterogeneous_inflow_config.clone()
+        };
+
+        // Rebuild the flow field when the wind conditions changed
+        let conditions_changed = wind_directions.len()
+            != self.core.flow_field.wind_directions.len()
+            || wind_speeds.len() != self.core.flow_field.wind_speeds.len()
+            || !same_values(&wind_directions, &self.core.flow_field.wind_directions)
+            || !same_values(&wind_speeds, &self.core.flow_field.wind_speeds)
+            || !same_values(
+                &turbulence_intensities,
+                &self.core.flow_field.turbulence_intensities,
+            );
+        if conditions_changed && !wind_directions.is_empty() {
+            self.core.flow_field = FlowField::new(
+                wind_speeds,
+                wind_directions,
+                self.core.flow_field.wind_veer,
+                self.core.flow_field.wind_shear,
+                self.core.flow_field.air_density,
+                turbulence_intensities,
+                self.core.flow_field.reference_wind_height,
+            )?;
+            self.core
+                .farm
+                .initialize_control_arrays(self.core.flow_field.n_findex);
+            self.core
+                .farm
+                .set_tilt_to_ref_tilt(self.core.flow_field.n_findex);
+        }
+        self.core.flow_field.heterogeneous_inflow_config = het_config;
+
+        // The frequencies and the values of the wind data
+        self.core.wind_data_frequencies = Some(freq);
+        self.core.wind_data_values = Some(value);
+
+        self.core.grid = None;
         Ok(())
     }
 
@@ -2669,6 +2751,11 @@ fn reshape_saved_string_array(
     } else {
         None
     }
+}
+
+/// Whether two arrays hold the same values.
+fn same_values(a: &Array1, b: &Array1) -> bool {
+    a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| (x - y).abs() < 1e-12)
 }
 
 #[cfg(test)]

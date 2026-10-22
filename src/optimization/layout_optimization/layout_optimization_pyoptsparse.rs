@@ -205,9 +205,16 @@ impl LayoutOptimizer for LayoutOptimizationPyOptSparse {
         }
 
         if self.config.use_value {
-            fmodel.get_farm_avp().unwrap_or(0.0)
+            // The AVP of the wind data (Python's `get_farm_AVP`, which
+            // weights the conditions with the values of the wind data)
+            fmodel
+                .get_expected_farm_value(None, None, None)
+                .unwrap_or(0.0)
+                * 8760.0
         } else {
-            fmodel.get_farm_aep_uniform(8760.0).unwrap_or(0.0)
+            // The AEP of the wind data (Python's `get_farm_AEP`, which
+            // weights the conditions with the frequencies of the wind data)
+            fmodel.get_expected_farm_power(None, None).unwrap_or(0.0) * 8760.0
         }
     }
 
@@ -356,9 +363,16 @@ impl LayoutOptimizer for LayoutOptimizationGoldenSection {
         }
 
         if self.config.use_value {
-            fmodel.get_farm_avp().unwrap_or(0.0)
+            // The AVP of the wind data (Python's `get_farm_AVP`, which
+            // weights the conditions with the values of the wind data)
+            fmodel
+                .get_expected_farm_value(None, None, None)
+                .unwrap_or(0.0)
+                * 8760.0
         } else {
-            fmodel.get_farm_aep_uniform(8760.0).unwrap_or(0.0)
+            // The AEP of the wind data (Python's `get_farm_AEP`, which
+            // weights the conditions with the frequencies of the wind data)
+            fmodel.get_expected_farm_power(None, None).unwrap_or(0.0) * 8760.0
         }
     }
 

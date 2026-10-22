@@ -157,6 +157,10 @@ impl WindTIRose {
 }
 
 impl WindData for WindTIRose {
+    fn clone_box(&self) -> Box<dyn WindData> {
+        Box::new(self.clone())
+    }
+
     fn wind_speeds(&self) -> Array1 {
         self.wind_speeds.clone()
     }

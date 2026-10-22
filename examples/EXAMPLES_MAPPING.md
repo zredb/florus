@@ -161,11 +161,8 @@
 
 | Rust 文件 | Python 文件 | 状态 | 说明 |
 |-----------|-------------|------|------|
-| `wind_resource_grid_001_wind_resource_grid.rs` | `examples_wind_resource_grid/001_wind_resource_grid.py` | ⚠️ | 风资源网格（占位符） |
-| `wind_resource_grid_002_wrg_from_file.rs` | `examples_wind_resource_grid/002_wrg_from_file.py` | ⚠️ | 从文件加载 WRG（占位符） |
-| `wind_resource_grid_003_wrg_with_heterogeneous.rs` | `examples_wind_resource_grid/003_wrg_with_heterogeneous.py` | ⚠️ | 带异构的 WRG（占位符） |
-| `wind_resource_grid_004_wrg_visualization.rs` | `examples_wind_resource_grid/004_wrg_visualization.py` | ⚠️ | WRG 可视化（占位符） |
-| `wind_resource_grid_005_wrg_multi_site.rs` | `examples_wind_resource_grid/005_wrg_multi_site.py` | ⚠️ | 多站点 WRG（占位符） |
+| `wind_resource_grid_002_wrg_from_file.rs` | `examples_wind_resource_grid/002_set_floris_with_wrg.py` | ✅ | 从文件加载 WRG（与 Python 逐位一致） |
+| `wind_resource_grid_003_wrg_layout_optimization.rs` | `examples_wind_resource_grid/003_wrg_compar_layout_optimization.py` | ✅ | 用风资源网格做布局优化（WRG / 风玫瑰 / 风玫瑰+异构三种情况） |
 
 ---
 
@@ -210,13 +207,13 @@
 | control_types | 5 | 0 | 5 | 0% |
 | heterogeneous | 4 | 0 | 4 | 0% |
 | floating | 3 | 0 | 3 | 0% |
-| layout_optimization | 5 | 0 | 5 | 0% |
+| layout_optimization | 5 | 3 | 2 | 60% |
 | load_optimization | 2 | 0 | 2 | 0% |
 | multidim | 3 | 0 | 3 | 0% |
 | operation_models | 1 | 0 | 1 | 0% |
 | emgauss | 2 | 0 | 2 | 0% |
 | uncertain | 3 | 0 | 3 | 0% |
-| wind_resource_grid | 5 | 0 | 5 | 0% |
+| wind_resource_grid | 2 | 2 | 0 | 100% |
 | wind_data | 3 | 0 | 3 | 0% |
 | turbine | 3 | 0 | 3 | 0% |
 | turbopark | 1 | 0 | 1 | 0% |

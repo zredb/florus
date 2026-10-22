@@ -315,9 +315,16 @@ impl LayoutOptimizer for LayoutOptimizationRandomSearch {
         }
 
         if self.config.use_value {
-            fmodel.get_farm_avp().unwrap_or(0.0)
+            // The AVP of the wind data (Python's `get_farm_AVP`, which
+            // weights the conditions with the values of the wind data)
+            fmodel
+                .get_expected_farm_value(None, None, None)
+                .unwrap_or(0.0)
+                * 8760.0
         } else {
-            fmodel.get_farm_aep_uniform(8760.0).unwrap_or(0.0)
+            // The AEP of the wind data (Python's `get_farm_AEP`, which
+            // weights the conditions with the frequencies of the wind data)
+            fmodel.get_expected_farm_power(None, None).unwrap_or(0.0) * 8760.0
         }
     }
 
@@ -343,14 +350,25 @@ impl LayoutOptimizer for LayoutOptimizationRandomSearch {
         let mut candidates_x: Vec<Vec<Float>> = Vec::new();
         let mut candidates_y: Vec<Vec<Float>> = Vec::new();
         let mut candidate_values: Vec<Float> = Vec::new();
-        for i in 0..self.n_individuals {
-            let mut rng = NumpyRandomState::new(base_seed.wrapping_add(23 + i as u32));
-            let (x, y) = self.distance_based_init(&mut rng, grid_step);
-            let value = self
-                .calculate_objective(&Array1::from_vec(x.clone()), &Array1::from_vec(y.clone()));
-            candidates_x.push(x);
-            candidates_y.push(y);
-            candidate_values.push(value);
+        if self.config.use_dist_based_init {
+            for i in 0..self.n_individuals {
+                let mut rng = NumpyRandomState::new(base_seed.wrapping_add(23 + i as u32));
+                let (x, y) = self.distance_based_init(&mut rng, grid_step);
+                let value = self.calculate_objective(
+                    &Array1::from_vec(x.clone()),
+                    &Array1::from_vec(y.clone()),
+                );
+                candidates_x.push(x);
+                candidates_y.push(y);
+                candidate_values.push(value);
+            }
+        } else {
+            // All of the individuals start from the layout of the model
+            for _ in 0..self.n_individuals {
+                candidates_x.push(initial_x.iter().copied().collect());
+                candidates_y.push(initial_y.iter().copied().collect());
+                candidate_values.push(self.initial_value);
+            }
         }
 
         // The initial evaluation step (Python's `_evaluate_opt_step` in the

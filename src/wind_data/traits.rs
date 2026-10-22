@@ -12,6 +12,14 @@ use crate::types::{Array1, Array2, Float};
 /// This trait defines the common interface that all wind data structures
 /// must implement to be used with FLORIS for wind farm simulations.
 pub trait WindData {
+    /// Clone the wind data into a boxed trait object.
+    ///
+    /// The model keeps the wind data so that it can be updated when the
+    /// layout of the farm changes (Python `fmodel.set(layout_x=...)` calls
+    /// `wind_data.set_layout(...)`, which regenerates the wind roses of the
+    /// wind resource grid).
+    fn clone_box(&self) -> Box<dyn WindData>;
+
     /// Get wind speeds
     fn wind_speeds(&self) -> Array1;
 

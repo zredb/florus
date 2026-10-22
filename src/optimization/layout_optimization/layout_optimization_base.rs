@@ -14,6 +14,11 @@ use serde::{Deserialize, Serialize};
 pub enum Boundary {
     /// Polygon boundary defined by x, y coordinates
     Polygon(Vec<(Float, Float)>),
+    /// Separated boundary regions, each defined by its x, y coordinates
+    /// (Python's list of lists of vertices, which is turned into a
+    /// `shapely.MultiPolygon`). A point lies inside the boundary when it is
+    /// inside one of the regions.
+    MultiPolygon(Vec<Vec<(Float, Float)>>),
     /// Rectangle boundary
     Rectangle {
         min_x: Float,
@@ -57,12 +62,40 @@ impl Boundary {
                     .fold(Float::NEG_INFINITY, Float::max);
                 (min_x, max_x, min_y, max_y)
             }
+            Boundary::MultiPolygon(polygons) => {
+                // The bounds of the multipolygon span all of its regions
+                let mut min_x = Float::INFINITY;
+                let mut max_x = Float::NEG_INFINITY;
+                let mut min_y = Float::INFINITY;
+                let mut max_y = Float::NEG_INFINITY;
+                for points in polygons {
+                    for &(x, y) in points {
+                        min_x = min_x.min(x);
+                        max_x = max_x.max(x);
+                        min_y = min_y.min(y);
+                        max_y = max_y.max(y);
+                    }
+                }
+                (min_x, max_x, min_y, max_y)
+            }
             Boundary::Rectangle {
                 min_x,
                 max_x,
                 min_y,
                 max_y,
             } => (*min_x, *max_x, *min_y, *max_y),
+        }
+    }
+
+    /// The polygons of the boundary.
+    ///
+    /// A single polygon and a rectangle are returned as a list with one
+    /// element, the separated regions are returned as they are.
+    pub fn polygons(&self) -> Vec<Vec<(Float, Float)>> {
+        match self {
+            Boundary::Polygon(points) => vec![points.clone()],
+            Boundary::MultiPolygon(polygons) => polygons.clone(),
+            Boundary::Rectangle { .. } => vec![self.to_polygon()],
         }
     }
 
@@ -88,29 +121,11 @@ impl Boundary {
     /// The (unsigned) distance from a point to the boundary of the region.
     pub fn distance_to_boundary(&self, x: Float, y: Float) -> Float {
         match self {
-            Boundary::Polygon(points) => {
-                let n = points.len();
-                if n < 2 {
-                    return Float::INFINITY;
-                }
-                let mut minimum = Float::INFINITY;
-                for i in 0..n {
-                    let (x1, y1) = points[i];
-                    let (x2, y2) = points[(i + 1) % n];
-                    let dx = x2 - x1;
-                    let dy = y2 - y1;
-                    let length = (dx * dx + dy * dy).sqrt();
-                    if length == 0.0 {
-                        continue;
-                    }
-                    // The distance from the point to the line through the edge
-                    let distance = ((dy * (x - x1) - dx * (y - y1)).abs()) / length;
-                    if distance < minimum {
-                        minimum = distance;
-                    }
-                }
-                minimum
-            }
+            Boundary::Polygon(points) => polygon_distance(points, x, y),
+            Boundary::MultiPolygon(polygons) => polygons
+                .iter()
+                .map(|points| polygon_distance(points, x, y))
+                .fold(Float::INFINITY, Float::min),
             Boundary::Rectangle {
                 min_x,
                 max_x,
@@ -128,41 +143,13 @@ impl Boundary {
     /// For polygons this matches shapely's `Polygon.contains`, which is
     /// strict: a point exactly ON the boundary is NOT contained (the
     /// layout optimizers rely on this to count the turbines that fit
-    /// inside a boundary).
+    /// inside a boundary). For separated regions the point has to lie
+    /// inside one of the regions.
     pub fn contains(&self, x: Float, y: Float) -> bool {
         match self {
-            Boundary::Polygon(points) => {
-                let n = points.len();
-                if n < 3 {
-                    return false;
-                }
-
-                // Points on an edge (including vertices) are not "contained"
-                let eps = 1e-9;
-                for i in 0..n {
-                    let (x1, y1) = points[i];
-                    let (x2, y2) = points[(i + 1) % n];
-                    let cross = (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1);
-                    if cross.abs() <= eps {
-                        let within_x = x >= x1.min(x2) - eps && x <= x1.max(x2) + eps;
-                        let within_y = y >= y1.min(y2) - eps && y <= y1.max(y2) + eps;
-                        if within_x && within_y {
-                            return false;
-                        }
-                    }
-                }
-
-                // Ray casting algorithm
-                let mut inside = false;
-                let mut j = n - 1;
-                for (i, &(xi, yi)) in points.iter().enumerate() {
-                    let (xj, yj) = points[j];
-                    if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
-                        inside = !inside;
-                    }
-                    j = i;
-                }
-                inside
+            Boundary::Polygon(points) => polygon_contains(points, x, y),
+            Boundary::MultiPolygon(polygons) => {
+                polygons.iter().any(|points| polygon_contains(points, x, y))
             }
             Boundary::Rectangle {
                 min_x,
@@ -177,6 +164,7 @@ impl Boundary {
     pub fn to_polygon(&self) -> Vec<(Float, Float)> {
         match self {
             Boundary::Polygon(points) => points.clone(),
+            Boundary::MultiPolygon(polygons) => polygons.iter().flatten().copied().collect(),
             Boundary::Rectangle {
                 min_x,
                 max_x,
@@ -192,6 +180,69 @@ impl Boundary {
             }
         }
     }
+}
+
+/// Whether a point lies strictly inside a polygon.
+///
+/// This matches shapely's `Polygon.contains`: a point that lies exactly on
+/// an edge (or on a vertex) of the polygon is *not* contained.
+fn polygon_contains(points: &[(Float, Float)], x: Float, y: Float) -> bool {
+    let n = points.len();
+    if n < 3 {
+        return false;
+    }
+
+    // Points on an edge (including vertices) are not "contained"
+    let eps = 1e-9;
+    for i in 0..n {
+        let (x1, y1) = points[i];
+        let (x2, y2) = points[(i + 1) % n];
+        let cross = (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1);
+        if cross.abs() <= eps {
+            let within_x = x >= x1.min(x2) - eps && x <= x1.max(x2) + eps;
+            let within_y = y >= y1.min(y2) - eps && y <= y1.max(y2) + eps;
+            if within_x && within_y {
+                return false;
+            }
+        }
+    }
+
+    // Ray casting algorithm
+    let mut inside = false;
+    let mut j = n - 1;
+    for (i, &(xi, yi)) in points.iter().enumerate() {
+        let (xj, yj) = points[j];
+        if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+
+/// The distance from a point to the boundary line of a polygon.
+fn polygon_distance(points: &[(Float, Float)], x: Float, y: Float) -> Float {
+    let n = points.len();
+    if n < 2 {
+        return Float::INFINITY;
+    }
+    let mut minimum = Float::INFINITY;
+    for i in 0..n {
+        let (x1, y1) = points[i];
+        let (x2, y2) = points[(i + 1) % n];
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+        let length = (dx * dx + dy * dy).sqrt();
+        if length == 0.0 {
+            continue;
+        }
+        // The distance from the point to the line through the edge
+        let distance = ((dy * (x - x1) - dx * (y - y1)).abs()) / length;
+        if distance < minimum {
+            minimum = distance;
+        }
+    }
+    minimum
 }
 
 /// Configuration for layout optimization
@@ -216,6 +267,10 @@ pub struct LayoutOptimizationConfig {
     /// The number of the lowest performing individuals that are replaced with
     /// copies of the best performing ones (the genetic random search)
     pub relegation_number: usize,
+    /// Generate the initial layouts of the individuals by placing the turbines
+    /// as far apart as possible (the genetic random search). When it is
+    /// disabled, all of the individuals start from the layout of the model.
+    pub use_dist_based_init: bool,
     /// Optimization tolerance
     pub tolerance: Float,
 }
@@ -232,6 +287,7 @@ impl Default for LayoutOptimizationConfig {
             n_generations: 3,
             grid_step_size: 100.0,
             relegation_number: 1,
+            use_dist_based_init: true,
             tolerance: 1e-9,
         }
     }
