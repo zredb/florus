@@ -415,67 +415,127 @@ fn interpolate_colormap(samples: &[ColormapSample], t: f64) -> RGBAColor {
 fn coolwarm_colormap(t: f64) -> RGBAColor {
     static SAMPLES: &[ColormapSample] = &[
         ColormapSample {
-            t: 0.00,
+            t: 0.0,
             r: 59,
             g: 76,
             b: 192,
         },
         ColormapSample {
-            t: 0.10,
-            r: 87,
-            g: 117,
-            b: 209,
+            t: 0.05,
+            r: 73,
+            g: 97,
+            b: 210,
         },
         ColormapSample {
-            t: 0.20,
-            r: 115,
-            g: 153,
-            b: 222,
+            t: 0.1,
+            r: 89,
+            g: 119,
+            b: 227,
         },
         ColormapSample {
-            t: 0.30,
-            r: 150,
+            t: 0.15,
+            r: 106,
+            g: 139,
+            b: 239,
+        },
+        ColormapSample {
+            t: 0.2,
+            r: 123,
+            g: 159,
+            b: 249,
+        },
+        ColormapSample {
+            t: 0.25,
+            r: 141,
+            g: 176,
+            b: 254,
+        },
+        ColormapSample {
+            t: 0.3,
+            r: 158,
             g: 190,
+            b: 255,
+        },
+        ColormapSample {
+            t: 0.35,
+            r: 175,
+            g: 202,
+            b: 252,
+        },
+        ColormapSample {
+            t: 0.4,
+            r: 192,
+            g: 212,
+            b: 245,
+        },
+        ColormapSample {
+            t: 0.45,
+            r: 207,
+            g: 218,
             b: 234,
         },
         ColormapSample {
-            t: 0.40,
-            r: 190,
-            g: 218,
-            b: 238,
+            t: 0.5,
+            r: 221,
+            g: 220,
+            b: 220,
         },
         ColormapSample {
-            t: 0.50,
+            t: 0.55,
+            r: 233,
+            g: 213,
+            b: 203,
+        },
+        ColormapSample {
+            t: 0.6,
+            r: 242,
+            g: 203,
+            b: 183,
+        },
+        ColormapSample {
+            t: 0.65,
+            r: 246,
+            g: 189,
+            b: 162,
+        },
+        ColormapSample {
+            t: 0.7,
             r: 247,
-            g: 247,
-            b: 247,
+            g: 172,
+            b: 142,
         },
         ColormapSample {
-            t: 0.60,
+            t: 0.75,
+            r: 244,
+            g: 152,
+            b: 122,
+        },
+        ColormapSample {
+            t: 0.8,
             r: 238,
-            g: 204,
-            b: 189,
+            g: 132,
+            b: 104,
         },
         ColormapSample {
-            t: 0.70,
-            r: 228,
-            g: 165,
-            b: 139,
+            t: 0.85,
+            r: 227,
+            g: 108,
+            b: 85,
         },
         ColormapSample {
-            t: 0.80,
-            r: 213,
-            g: 122,
-            b: 98,
+            t: 0.9,
+            r: 214,
+            g: 82,
+            b: 68,
         },
         ColormapSample {
-            t: 0.90,
+            t: 0.95,
             r: 197,
-            g: 78,
-            b: 63,
+            g: 51,
+            b: 52,
         },
         ColormapSample {
-            t: 1.00,
+            t: 1.0,
             r: 180,
             g: 4,
             b: 38,
@@ -487,67 +547,127 @@ fn coolwarm_colormap(t: f64) -> RGBAColor {
 fn viridis_colormap(t: f64) -> RGBAColor {
     static SAMPLES: &[ColormapSample] = &[
         ColormapSample {
-            t: 0.00,
+            t: 0.0,
             r: 68,
             g: 1,
             b: 84,
         },
         ColormapSample {
-            t: 0.10,
+            t: 0.05,
+            r: 71,
+            g: 19,
+            b: 101,
+        },
+        ColormapSample {
+            t: 0.1,
             r: 72,
             g: 36,
             b: 117,
         },
         ColormapSample {
-            t: 0.20,
-            r: 64,
+            t: 0.15,
+            r: 70,
+            g: 52,
+            b: 128,
+        },
+        ColormapSample {
+            t: 0.2,
+            r: 65,
             g: 68,
             b: 135,
         },
         ColormapSample {
-            t: 0.30,
-            r: 52,
+            t: 0.25,
+            r: 59,
+            g: 82,
+            b: 139,
+        },
+        ColormapSample {
+            t: 0.3,
+            r: 53,
             g: 95,
             b: 141,
         },
         ColormapSample {
-            t: 0.40,
-            r: 38,
+            t: 0.35,
+            r: 47,
+            g: 108,
+            b: 142,
+        },
+        ColormapSample {
+            t: 0.4,
+            r: 42,
             g: 120,
             b: 142,
         },
         ColormapSample {
-            t: 0.50,
-            r: 31,
-            g: 148,
+            t: 0.45,
+            r: 37,
+            g: 132,
+            b: 142,
+        },
+        ColormapSample {
+            t: 0.5,
+            r: 33,
+            g: 145,
             b: 140,
         },
         ColormapSample {
-            t: 0.60,
-            r: 53,
-            g: 175,
-            b: 120,
+            t: 0.55,
+            r: 30,
+            g: 156,
+            b: 137,
         },
         ColormapSample {
-            t: 0.70,
-            r: 110,
-            g: 197,
-            b: 82,
+            t: 0.6,
+            r: 34,
+            g: 168,
+            b: 132,
         },
         ColormapSample {
-            t: 0.80,
-            r: 180,
-            g: 214,
-            b: 42,
+            t: 0.65,
+            r: 47,
+            g: 180,
+            b: 124,
         },
         ColormapSample {
-            t: 0.90,
-            r: 237,
-            g: 229,
-            b: 40,
+            t: 0.7,
+            r: 68,
+            g: 191,
+            b: 112,
         },
         ColormapSample {
-            t: 1.00,
+            t: 0.75,
+            r: 94,
+            g: 201,
+            b: 98,
+        },
+        ColormapSample {
+            t: 0.8,
+            r: 122,
+            g: 209,
+            b: 81,
+        },
+        ColormapSample {
+            t: 0.85,
+            r: 155,
+            g: 217,
+            b: 60,
+        },
+        ColormapSample {
+            t: 0.9,
+            r: 189,
+            g: 223,
+            b: 38,
+        },
+        ColormapSample {
+            t: 0.95,
+            r: 223,
+            g: 227,
+            b: 24,
+        },
+        ColormapSample {
+            t: 1.0,
             r: 253,
             g: 231,
             b: 37,
@@ -559,67 +679,127 @@ fn viridis_colormap(t: f64) -> RGBAColor {
 fn plasma_colormap(t: f64) -> RGBAColor {
     static SAMPLES: &[ColormapSample] = &[
         ColormapSample {
-            t: 0.00,
+            t: 0.0,
             r: 13,
             g: 8,
             b: 135,
         },
         ColormapSample {
-            t: 0.10,
-            r: 75,
-            g: 3,
-            b: 161,
+            t: 0.05,
+            r: 42,
+            g: 5,
+            b: 147,
         },
         ColormapSample {
-            t: 0.20,
-            r: 125,
+            t: 0.1,
+            r: 65,
+            g: 4,
+            b: 157,
+        },
+        ColormapSample {
+            t: 0.15,
+            r: 86,
+            g: 1,
+            b: 164,
+        },
+        ColormapSample {
+            t: 0.2,
+            r: 106,
+            g: 0,
+            b: 168,
+        },
+        ColormapSample {
+            t: 0.25,
+            r: 126,
             g: 3,
             b: 168,
         },
         ColormapSample {
-            t: 0.30,
-            r: 162,
-            g: 26,
+            t: 0.3,
+            r: 143,
+            g: 13,
+            b: 164,
+        },
+        ColormapSample {
+            t: 0.35,
+            r: 161,
+            g: 27,
             b: 155,
         },
         ColormapSample {
-            t: 0.40,
-            r: 192,
-            g: 53,
-            b: 140,
+            t: 0.4,
+            r: 177,
+            g: 42,
+            b: 144,
         },
         ColormapSample {
-            t: 0.50,
+            t: 0.45,
+            r: 191,
+            g: 57,
+            b: 132,
+        },
+        ColormapSample {
+            t: 0.5,
             r: 204,
             g: 71,
-            b: 121,
+            b: 120,
         },
         ColormapSample {
-            t: 0.60,
-            r: 221,
-            g: 102,
+            t: 0.55,
+            r: 214,
+            g: 85,
+            b: 109,
+        },
+        ColormapSample {
+            t: 0.6,
+            r: 225,
+            g: 100,
             b: 98,
         },
         ColormapSample {
-            t: 0.70,
-            r: 236,
-            g: 135,
-            b: 70,
+            t: 0.65,
+            r: 234,
+            g: 116,
+            b: 87,
         },
         ColormapSample {
-            t: 0.80,
+            t: 0.7,
+            r: 242,
+            g: 132,
+            b: 75,
+        },
+        ColormapSample {
+            t: 0.75,
             r: 248,
-            g: 170,
-            b: 45,
+            g: 149,
+            b: 64,
         },
         ColormapSample {
-            t: 0.90,
-            r: 250,
-            g: 210,
-            b: 36,
+            t: 0.8,
+            r: 252,
+            g: 166,
+            b: 54,
         },
         ColormapSample {
-            t: 1.00,
+            t: 0.85,
+            r: 254,
+            g: 186,
+            b: 44,
+        },
+        ColormapSample {
+            t: 0.9,
+            r: 252,
+            g: 206,
+            b: 37,
+        },
+        ColormapSample {
+            t: 0.95,
+            r: 247,
+            g: 228,
+            b: 37,
+        },
+        ColormapSample {
+            t: 1.0,
             r: 240,
             g: 249,
             b: 33,
@@ -631,67 +811,127 @@ fn plasma_colormap(t: f64) -> RGBAColor {
 fn inferno_colormap(t: f64) -> RGBAColor {
     static SAMPLES: &[ColormapSample] = &[
         ColormapSample {
-            t: 0.00,
+            t: 0.0,
             r: 0,
             g: 0,
             b: 4,
         },
         ColormapSample {
-            t: 0.10,
-            r: 24,
+            t: 0.05,
+            r: 7,
+            g: 5,
+            b: 27,
+        },
+        ColormapSample {
+            t: 0.1,
+            r: 22,
+            g: 11,
+            b: 57,
+        },
+        ColormapSample {
+            t: 0.15,
+            r: 43,
+            g: 11,
+            b: 87,
+        },
+        ColormapSample {
+            t: 0.2,
+            r: 66,
             g: 10,
-            b: 59,
+            b: 104,
         },
         ColormapSample {
-            t: 0.20,
-            r: 68,
-            g: 13,
-            b: 100,
+            t: 0.25,
+            r: 87,
+            g: 16,
+            b: 110,
         },
         ColormapSample {
-            t: 0.30,
-            r: 120,
+            t: 0.3,
+            r: 106,
             g: 23,
-            b: 117,
+            b: 110,
         },
         ColormapSample {
-            t: 0.40,
-            r: 165,
-            g: 42,
-            b: 106,
+            t: 0.35,
+            r: 127,
+            g: 30,
+            b: 108,
         },
         ColormapSample {
-            t: 0.50,
-            r: 200,
-            g: 65,
-            b: 89,
+            t: 0.4,
+            r: 147,
+            g: 38,
+            b: 103,
         },
         ColormapSample {
-            t: 0.60,
-            r: 227,
-            g: 100,
-            b: 62,
+            t: 0.45,
+            r: 168,
+            g: 46,
+            b: 95,
         },
         ColormapSample {
-            t: 0.70,
+            t: 0.5,
+            r: 188,
+            g: 55,
+            b: 84,
+        },
+        ColormapSample {
+            t: 0.55,
+            r: 204,
+            g: 66,
+            b: 72,
+        },
+        ColormapSample {
+            t: 0.6,
+            r: 221,
+            g: 81,
+            b: 58,
+        },
+        ColormapSample {
+            t: 0.65,
+            r: 234,
+            g: 99,
+            b: 42,
+        },
+        ColormapSample {
+            t: 0.7,
             r: 243,
-            g: 145,
+            g: 120,
+            b: 25,
+        },
+        ColormapSample {
+            t: 0.75,
+            r: 249,
+            g: 142,
+            b: 9,
+        },
+        ColormapSample {
+            t: 0.8,
+            r: 252,
+            g: 165,
+            b: 10,
+        },
+        ColormapSample {
+            t: 0.85,
+            r: 251,
+            g: 190,
             b: 35,
         },
         ColormapSample {
-            t: 0.80,
-            r: 250,
-            g: 191,
-            b: 17,
+            t: 0.9,
+            r: 246,
+            g: 215,
+            b: 70,
         },
         ColormapSample {
-            t: 0.90,
-            r: 252,
-            g: 234,
-            b: 60,
+            t: 0.95,
+            r: 241,
+            g: 239,
+            b: 117,
         },
         ColormapSample {
-            t: 1.00,
+            t: 1.0,
             r: 252,
             g: 255,
             b: 164,
@@ -703,67 +943,127 @@ fn inferno_colormap(t: f64) -> RGBAColor {
 fn magma_colormap(t: f64) -> RGBAColor {
     static SAMPLES: &[ColormapSample] = &[
         ColormapSample {
-            t: 0.00,
+            t: 0.0,
             r: 0,
             g: 0,
             b: 4,
         },
         ColormapSample {
-            t: 0.10,
-            r: 19,
-            g: 7,
-            b: 57,
+            t: 0.05,
+            r: 6,
+            g: 5,
+            b: 26,
         },
         ColormapSample {
-            t: 0.20,
-            r: 54,
-            g: 12,
-            b: 100,
+            t: 0.1,
+            r: 20,
+            g: 14,
+            b: 54,
         },
         ColormapSample {
-            t: 0.30,
-            r: 105,
-            g: 21,
-            b: 127,
+            t: 0.15,
+            r: 37,
+            g: 18,
+            b: 85,
         },
         ColormapSample {
-            t: 0.40,
-            r: 152,
-            g: 35,
-            b: 133,
+            t: 0.2,
+            r: 59,
+            g: 15,
+            b: 112,
         },
         ColormapSample {
-            t: 0.50,
-            r: 193,
-            g: 54,
+            t: 0.25,
+            r: 81,
+            g: 18,
+            b: 124,
+        },
+        ColormapSample {
+            t: 0.3,
+            r: 100,
+            g: 26,
             b: 128,
         },
         ColormapSample {
-            t: 0.60,
-            r: 224,
-            g: 83,
-            b: 113,
+            t: 0.35,
+            r: 120,
+            g: 34,
+            b: 129,
         },
         ColormapSample {
-            t: 0.70,
-            r: 244,
-            g: 121,
+            t: 0.4,
+            r: 140,
+            g: 41,
+            b: 129,
+        },
+        ColormapSample {
+            t: 0.45,
+            r: 161,
+            g: 48,
+            b: 126,
+        },
+        ColormapSample {
+            t: 0.5,
+            r: 183,
+            g: 55,
+            b: 121,
+        },
+        ColormapSample {
+            t: 0.55,
+            r: 202,
+            g: 62,
+            b: 114,
+        },
+        ColormapSample {
+            t: 0.6,
+            r: 222,
+            g: 73,
+            b: 104,
+        },
+        ColormapSample {
+            t: 0.65,
+            r: 237,
+            g: 90,
+            b: 95,
+        },
+        ColormapSample {
+            t: 0.7,
+            r: 247,
+            g: 112,
+            b: 92,
+        },
+        ColormapSample {
+            t: 0.75,
+            r: 252,
+            g: 137,
             b: 97,
         },
         ColormapSample {
-            t: 0.80,
-            r: 252,
-            g: 165,
-            b: 99,
+            t: 0.8,
+            r: 254,
+            g: 159,
+            b: 109,
         },
         ColormapSample {
-            t: 0.90,
+            t: 0.85,
+            r: 254,
+            g: 183,
+            b: 126,
+        },
+        ColormapSample {
+            t: 0.9,
+            r: 254,
+            g: 207,
+            b: 146,
+        },
+        ColormapSample {
+            t: 0.95,
             r: 253,
-            g: 213,
-            b: 147,
+            g: 231,
+            b: 169,
         },
         ColormapSample {
-            t: 1.00,
+            t: 1.0,
             r: 252,
             g: 253,
             b: 191,
@@ -908,6 +1208,16 @@ fn colormap_to_rgb(cmap_name: &str, t: f64) -> (u8, u8, u8) {
     (c.0, c.1, c.2)
 }
 
+/// The scale of the rendering of the cut planes.
+///
+/// The figure is rendered at a higher resolution and scaled down afterwards,
+/// which smooths the edges of the filled contours (matplotlib anti-aliases
+/// them).
+const RENDER_SCALE: u32 = 2;
+
+/// The size of the figures of the cut planes.
+const FIGURE_SIZE: (u32, u32) = (800, 600);
+
 /// The aspect ratio (width over height) of the plot area of the cut plane
 /// figures: the figure is 800 x 600 pixels, with the margins (10 pixels), the
 /// caption (about 35 pixels) and the axis labels (50 and 60 pixels).
@@ -947,6 +1257,72 @@ fn equal_aspect(
     }
 }
 
+/// The color of a band of the filled contour.
+///
+/// The color of a band is the color of the midpoint of the band, mapped
+/// through the normalization of the velocities (Python's `tricontourf`). The
+/// region below the first level and the region above the last level are the
+/// "under" and the "over" regions of the contour.
+fn color_of_band(levels: &[f64], vmin: f64, vmax: f64, band: usize, cmap_name: &str) -> RGBColor {
+    let t = if band == 0 {
+        0.0
+    } else if band >= levels.len() {
+        1.0
+    } else {
+        let midpoint = 0.5 * (levels[band - 1] + levels[band]);
+        if vmax > vmin {
+            ((midpoint - vmin) / (vmax - vmin)).clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
+    };
+    let (r, g, b) = colormap_to_rgb(cmap_name, t);
+    RGBColor(r, g, b)
+}
+
+/// Clip a polygon of the flow field against a level of the contour.
+///
+/// The vertices of the polygon are the positions and the values of the
+/// velocity; the value is interpolated linearly along the edges of the
+/// polygon, as Python's `tricontourf` interpolates the contours within the
+/// triangles of the points.
+fn clip_polygon(polygon: &[(f64, f64, f64)], level: f64, keep_above: bool) -> Vec<(f64, f64, f64)> {
+    let mut clipped = Vec::with_capacity(polygon.len() + 1);
+    let n = polygon.len();
+    for i in 0..n {
+        let current = polygon[i];
+        let next = polygon[(i + 1) % n];
+        let current_inside = if keep_above {
+            current.2 >= level
+        } else {
+            current.2 < level
+        };
+        let next_inside = if keep_above {
+            next.2 >= level
+        } else {
+            next.2 < level
+        };
+        if current_inside {
+            clipped.push(current);
+        }
+        if current_inside != next_inside {
+            // The intersection of the edge with the level
+            let denominator = next.2 - current.2;
+            let t = if denominator.abs() > f64::EPSILON {
+                (level - current.2) / denominator
+            } else {
+                0.0
+            };
+            clipped.push((
+                current.0 + t * (next.0 - current.0),
+                current.1 + t * (next.1 - current.1),
+                level,
+            ));
+        }
+    }
+    clipped
+}
+
 /// The contour levels of the flow field.
 ///
 /// Python's `tricontourf` uses matplotlib's `MaxNLocator` when no levels are
@@ -969,7 +1345,21 @@ fn contour_levels(vmin: f64, vmax: f64, n_levels: usize) -> Vec<f64> {
     let start = (vmin / step).floor() * step;
     let end = (vmax / step).ceil() * step;
     let n = ((end - start) / step).round().max(0.0) as usize;
-    (0..=n).map(|k| start + k as f64 * step).collect()
+    let ticks: Vec<f64> = (0..=n).map(|k| start + k as f64 * step).collect();
+
+    // Matplotlib only uses the levels that are inside the range of the
+    // values: the values below the first level and the values above the last
+    // level are the "under" and the "over" regions of the contour.
+    let interior: Vec<f64> = ticks
+        .iter()
+        .copied()
+        .filter(|&level| level > vmin && level < vmax)
+        .collect();
+    if interior.is_empty() {
+        vec![vmin, vmax]
+    } else {
+        interior
+    }
 }
 
 fn visualize_cut_plane_inner<P: AsRef<Path>>(
@@ -1021,14 +1411,19 @@ fn visualize_cut_plane_inner<P: AsRef<Path>>(
         title.to_string()
     };
 
-    let root = BitMapBackend::new(output_path.as_ref(), (800, 600)).into_drawing_area();
+    let scale = RENDER_SCALE;
+    let root = BitMapBackend::new(
+        output_path.as_ref(),
+        (FIGURE_SIZE.0 * scale, FIGURE_SIZE.1 * scale),
+    )
+    .into_drawing_area();
     root.fill(&WHITE)?;
 
     let mut chart = ChartBuilder::on(&root)
-        .caption(title_text, ("sans-serif", 25).into_font())
-        .margin(10)
-        .x_label_area_size(50)
-        .y_label_area_size(60)
+        .caption(title_text, ("sans-serif", 25 * scale).into_font())
+        .margin(10 * scale)
+        .x_label_area_size(50 * scale)
+        .y_label_area_size(60 * scale)
         .build_cartesian_2d(x_min..(x_max + color_bar_width), y_min..y_max)?;
 
     // The descriptions of the axes depend on the normal vector of the plane
@@ -1043,6 +1438,8 @@ fn visualize_cut_plane_inner<P: AsRef<Path>>(
         .configure_mesh()
         .x_desc(x1_desc)
         .y_desc(x2_desc)
+        .label_style(("sans-serif", 12 * scale).into_font())
+        .axis_desc_style(("sans-serif", 15 * scale).into_font())
         // Matplotlib does not draw a grid by default
         .disable_x_mesh()
         .disable_y_mesh()
@@ -1071,60 +1468,74 @@ fn visualize_cut_plane_inner<P: AsRef<Path>>(
     };
 
     if nx1 > 1 && nx2 > 1 && nx1 * nx2 == n_points {
-        // The cells of the (rotated) grid. The cells are subdivided so that
-        // the color of the field varies smoothly (Python's `tricontourf`
-        // interpolates the contours within the triangles of the points).
-        let factor = 8usize;
-        let fnx1 = (nx1 - 1) * factor + 1;
-        let fnx2 = (nx2 - 1) * factor + 1;
+        // The cells of the (rotated) grid. The cells are clipped against the
+        // levels of the contour, so that the boundaries of the bands are
+        // interpolated (Python's `tricontourf` interpolates the contours
+        // within the triangles of the points).
+        //
+        // The cells of a band are drawn together, so that the seams of the
+        // rasterization of the polygons (the pixels on the edges of the
+        // polygons are not filled) have the same color on both sides.
+        let under_color = color_of_band(&levels, vmin, vmax, 0, cmap_name);
+        let over_color = color_of_band(&levels, vmin, vmax, levels.len(), cmap_name);
+        let band_colors: Vec<RGBColor> = (1..levels.len())
+            .map(|band| color_of_band(&levels, vmin, vmax, band, cmap_name))
+            .collect();
 
-        // The affine mapping of the grid indices to the world coordinates
-        let origin_x = x1[0];
-        let origin_y = x2[0];
-        let step1_x = x1[1] - x1[0];
-        let step1_y = x2[1] - x2[0];
-        let step2_x = x1[nx1] - x1[0];
-        let step2_y = x2[nx1] - x2[0];
-        let point_at = |fi: usize, fj: usize| -> (f64, f64) {
-            let fi = fi as f64 / factor as f64;
-            let fj = fj as f64 / factor as f64;
-            (
-                origin_x + fi * step1_x + fj * step2_x,
-                origin_y + fi * step1_y + fj * step2_y,
-            )
-        };
+        // The cells of the grid
+        let cells: Vec<[(f64, f64, f64); 4]> = (0..(nx2 - 1))
+            .flat_map(|j| {
+                (0..(nx1 - 1)).map(move |i| {
+                    let p00 = j * nx1 + i;
+                    let p10 = p00 + 1;
+                    let p01 = p00 + nx1;
+                    let p11 = p01 + 1;
+                    [
+                        (x1[p00], x2[p00], vel[p00]),
+                        (x1[p10], x2[p10], vel[p10]),
+                        (x1[p11], x2[p11], vel[p11]),
+                        (x1[p01], x2[p01], vel[p01]),
+                    ]
+                })
+            })
+            .collect();
 
-        // The velocity at the (fractional) grid position, by bilinear
-        // interpolation of the values of the grid
-        let value_at = |fi: usize, fj: usize| -> f64 {
-            let fi = fi as f64 / factor as f64;
-            let fj = fj as f64 / factor as f64;
-            let i = (fi.floor() as usize).min(nx1 - 2);
-            let j = (fj.floor() as usize).min(nx2 - 2);
-            let fx = (fi - i as f64).clamp(0.0, 1.0);
-            let fy = (fj - j as f64).clamp(0.0, 1.0);
-            let v00 = vel[j * nx1 + i];
-            let v10 = vel[j * nx1 + i + 1];
-            let v01 = vel[(j + 1) * nx1 + i];
-            let v11 = vel[(j + 1) * nx1 + i + 1];
-            v00 * (1.0 - fx) * (1.0 - fy)
-                + v10 * fx * (1.0 - fy)
-                + v01 * (1.0 - fx) * fy
-                + v11 * fx * fy
-        };
-
-        for j in 0..(fnx2 - 1) {
-            for i in 0..(fnx1 - 1) {
-                let value = value_at(i, j);
+        // The region below the first level
+        for cell in &cells {
+            let under = clip_polygon(cell, levels[0], false);
+            if under.len() >= 3 {
                 chart.draw_series(std::iter::once(Polygon::new(
-                    vec![
-                        point_at(i, j),
-                        point_at(i + 1, j),
-                        point_at(i + 1, j + 1),
-                        point_at(i, j + 1),
-                    ],
-                    color(value).filled(),
+                    under.iter().map(|&(x, y, _)| (x, y)).collect::<Vec<_>>(),
+                    under_color.filled(),
                 )))?;
+            }
+        }
+
+        // The region above the last level
+        for cell in &cells {
+            let over = clip_polygon(cell, levels[levels.len() - 1], true);
+            if over.len() >= 3 {
+                chart.draw_series(std::iter::once(Polygon::new(
+                    over.iter().map(|&(x, y, _)| (x, y)).collect::<Vec<_>>(),
+                    over_color.filled(),
+                )))?;
+            }
+        }
+
+        // The bands between the levels
+        for (band, level) in levels.iter().enumerate().take(levels.len() - 1) {
+            for cell in &cells {
+                let above = clip_polygon(cell, *level, true);
+                let band_polygon = clip_polygon(&above, levels[band + 1], false);
+                if band_polygon.len() >= 3 {
+                    chart.draw_series(std::iter::once(Polygon::new(
+                        band_polygon
+                            .iter()
+                            .map(|&(x, y, _)| (x, y))
+                            .collect::<Vec<_>>(),
+                        band_colors[band].filled(),
+                    )))?;
+                }
             }
         }
     } else {
@@ -1183,13 +1594,25 @@ fn visualize_cut_plane_inner<P: AsRef<Path>>(
                 chart.draw_series(std::iter::once(Text::new(
                     label,
                     (turbines.x[i] + offset, turbines.y[i] + offset),
-                    ("sans-serif", 15).into_font().color(&BLACK),
+                    ("sans-serif", 15 * scale).into_font().color(&BLACK),
                 )))?;
             }
         }
     }
 
     root.present()?;
+
+    // The figure is scaled down to smooth the edges of the filled contours
+    if scale > 1 {
+        let image = image::open(output_path.as_ref())?.to_rgba8();
+        let resized = image::imageops::resize(
+            &image,
+            FIGURE_SIZE.0,
+            FIGURE_SIZE.1,
+            image::imageops::FilterType::Triangle,
+        );
+        resized.save(output_path.as_ref())?;
+    }
 
     println!(
         "  Saved cut plane visualization to: {}",
@@ -1389,9 +1812,9 @@ mod tests {
         assert_eq!(c1.2, 38);
 
         let c_mid = coolwarm_colormap(0.5);
-        assert_eq!(c_mid.0, 247);
-        assert_eq!(c_mid.1, 247);
-        assert_eq!(c_mid.2, 247);
+        assert_eq!(c_mid.0, 221);
+        assert_eq!(c_mid.1, 220);
+        assert_eq!(c_mid.2, 220);
     }
 
     #[test]
@@ -1712,14 +2135,50 @@ mod tests {
         //cleanup(path);
     }
 
+    /// The clipping of a cell of the flow field against the levels of the
+    /// contour.
+    #[test]
+    fn test_clip_polygon() {
+        // A cell of the grid of the horizontal plane of the FLORIS example
+        // 002 (the values are the velocities at its corners)
+        let cell = [
+            (2697.054789, 846.069230, 7.138),
+            (2704.979000, 867.840000, 6.8852),
+            (2733.074000, 857.614000, 6.9074),
+            (2725.150490, 835.843232, 7.1502),
+        ];
+
+        // The region above the level 6 is the whole cell
+        let above = clip_polygon(&cell, 6.0, true);
+        assert_eq!(above.len(), 4);
+
+        // The band between 6 and 7 is the region around the two low corners
+        let band = clip_polygon(&above, 7.0, false);
+        assert_eq!(band.len(), 4);
+        assert_relative_eq!(band[0].2, 7.0, epsilon = 1e-9);
+        assert_relative_eq!(band[1].2, 6.8852, epsilon = 1e-9);
+        assert_relative_eq!(band[2].2, 6.9074, epsilon = 1e-9);
+        assert_relative_eq!(band[3].2, 7.0, epsilon = 1e-9);
+
+        // The region below the level 6 is empty
+        let under = clip_polygon(&cell, 6.0, false);
+        assert!(under.is_empty());
+
+        // The region above the level 7 is the region around the two high
+        // corners
+        let over = clip_polygon(&cell, 7.0, true);
+        assert_eq!(over.len(), 4);
+    }
+
     /// The contour levels of the flow field follow matplotlib's
     /// `MaxNLocator`, which Python's `tricontourf` uses.
     #[test]
     fn test_contour_levels_match_matplotlib() {
         // The levels of the horizontal plane of the FLORIS example 002 (the
-        // velocities span 0.4418 .. 8.0 m/s)
+        // velocities span 0.4418 .. 8.0 m/s): matplotlib only uses the levels
+        // that are inside the range of the values
         let levels = contour_levels(0.44175156926122305, 8.0, 7);
-        let expected = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+        let expected = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
         assert_eq!(levels.len(), expected.len());
         for (level, expected) in levels.iter().zip(expected) {
             assert_relative_eq!(*level, expected, epsilon = 1e-9);
