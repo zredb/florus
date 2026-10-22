@@ -49,6 +49,9 @@ pub fn plot_turbine_points<P: AsRef<Path>>(
         .configure_mesh()
         .x_desc("X Position (m)")
         .y_desc("Y Position (m)")
+        // Matplotlib does not draw a grid by default
+        .disable_x_mesh()
+        .disable_y_mesh()
         .draw()?;
 
     // Parse color
@@ -128,6 +131,9 @@ pub fn plot_turbine_labels<P: AsRef<Path>>(
         .configure_mesh()
         .x_desc("X Position (m)")
         .y_desc("Y Position (m)")
+        // Matplotlib does not draw a grid by default
+        .disable_x_mesh()
+        .disable_y_mesh()
         .draw()?;
 
     // Plot turbine points and labels
@@ -214,6 +220,9 @@ pub fn plot_turbine_rotors<P: AsRef<Path>>(
         .configure_mesh()
         .x_desc("X Position (m)")
         .y_desc("Y Position (m)")
+        // Matplotlib does not draw a grid by default
+        .disable_x_mesh()
+        .disable_y_mesh()
         .draw()?;
 
     // Parse color
@@ -322,6 +331,9 @@ pub fn plot_waking_directions<P: AsRef<Path>>(
         .configure_mesh()
         .x_desc("X Position (m)")
         .y_desc("Y Position (m)")
+        // Matplotlib does not draw a grid by default
+        .disable_x_mesh()
+        .disable_y_mesh()
         .draw()?;
 
     // Draw waking direction lines
@@ -437,6 +449,9 @@ pub fn shade_region<P: AsRef<Path>>(
         .configure_mesh()
         .x_desc("X Position (m)")
         .y_desc("Y Position (m)")
+        // Matplotlib does not draw a grid by default
+        .disable_x_mesh()
+        .disable_y_mesh()
         .draw()?;
 
     // Parse colors
@@ -529,6 +544,9 @@ pub fn plot_farm_terrain<P: AsRef<Path>>(fmodel: &FlorisModel, output_path: P) -
         .configure_mesh()
         .x_desc("X Position (m)")
         .y_desc("Y Position (m)")
+        // Matplotlib does not draw a grid by default
+        .disable_x_mesh()
+        .disable_y_mesh()
         .draw()?;
 
     // Plot turbines with color-coded hub heights

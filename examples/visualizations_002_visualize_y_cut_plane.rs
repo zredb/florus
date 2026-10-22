@@ -35,8 +35,8 @@ fn main() -> anyhow::Result<()> {
         format!("{output_dir}/002_y_cut_plane.png"),
         Some(3.0),
         Some(9.0),
-        "viridis",
-        true,
+        "coolwarm",
+        false,
         "Y Cut Plane",
     )?;
 

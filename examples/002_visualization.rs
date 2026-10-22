@@ -66,8 +66,8 @@ fn main() -> anyhow::Result<()> {
         format!("{output_dir}/002_horizontal_plane.png"),
         None,
         None,
-        "viridis",
-        true,
+        "coolwarm",
+        false,
         "Horizontal flow at hub height",
     )?;
 
@@ -79,11 +79,11 @@ fn main() -> anyhow::Result<()> {
         format!("{output_dir}/002_horizontal_plane_with_rotors.png"),
         None,
         None,
-        "viridis",
+        "coolwarm",
         &turbine_names,
         true,
-        true,
-        "Horizontal flow with the turbine rotors and labels",
+        false,
+        "Horizontal Flow with Turbine Rotors and labels",
     )?;
 
     println!("The visualizations were written to {output_dir}:");

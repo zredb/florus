@@ -69,8 +69,8 @@ fn main() -> anyhow::Result<()> {
         format!("{output_dir}/001_horizontal_plane.png"),
         Some(1.0),
         Some(8.0),
-        "viridis",
-        true,
+        "coolwarm",
+        false,
         "Horizontal plane at hub height",
     )?;
 

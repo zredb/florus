@@ -796,6 +796,89 @@ fn select_velocity_component<'a>(
     }
 }
 
+/// The turbines that are drawn on top of a cut plane.
+///
+/// The rotors are drawn as in Python's `plot_turbine_rotors`: a line through
+/// the center of the turbine, perpendicular to the yaw direction in the
+/// inertial frame.
+#[derive(Debug, Clone)]
+pub struct CutPlaneTurbines {
+    /// The x coordinates of the turbines.
+    pub x: Vec<f64>,
+    /// The y coordinates of the turbines.
+    pub y: Vec<f64>,
+    /// The yaw angles of the turbines in degrees (the first condition).
+    pub yaw_angles: Vec<f64>,
+    /// The rotor diameters of the turbines.
+    pub rotor_diameters: Vec<f64>,
+    /// The labels of the turbines (the turbine indices are used if None).
+    pub labels: Option<Vec<String>>,
+    /// The wind direction in degrees (the first condition).
+    pub wind_direction: f64,
+}
+
+impl CutPlaneTurbines {
+    /// The turbines of the model (the first condition).
+    ///
+    /// `labels` are the labels of the turbines; the turbine indices are used if
+    /// they are not given.
+    pub fn from_model(fmodel: &FlorisModel, labels: Option<&[&str]>) -> Result<Self> {
+        let farm = &fmodel.core().farm;
+        let x = farm.layout_x.to_vec();
+        let y = farm.layout_y.to_vec();
+        let n_turbines = x.len();
+
+        let yaw_angles = (0..n_turbines)
+            .map(|i| {
+                if farm.yaw_angles.nrows() > 0 && farm.yaw_angles.ncols() > i {
+                    farm.yaw_angles[[0, i]]
+                } else {
+                    0.0
+                }
+            })
+            .collect::<Vec<f64>>();
+        let rotor_diameters = (0..n_turbines)
+            .map(|i| farm.rotor_diameters.get(i).copied().unwrap_or(0.0))
+            .collect::<Vec<f64>>();
+
+        let labels = match labels {
+            Some(names) => {
+                if names.len() != n_turbines {
+                    anyhow::bail!(
+                        "Number of turbine names ({}) does not match number of turbines ({})",
+                        names.len(),
+                        n_turbines
+                    );
+                }
+                Some(names.iter().map(|name| name.to_string()).collect())
+            }
+            None => None,
+        };
+
+        let wind_direction = fmodel
+            .flow_field()
+            .wind_directions
+            .first()
+            .copied()
+            .unwrap_or(270.0);
+
+        Ok(Self {
+            x,
+            y,
+            yaw_angles,
+            rotor_diameters,
+            labels,
+            wind_direction,
+        })
+    }
+}
+
+/// Visualize a cut plane.
+///
+/// The flow field is drawn as a filled contour: the cells of the grid are
+/// filled with the color of the mean velocity of the cell, as Python's
+/// `tricontourf` fills the triangles of the triangulation of the points.
+/// Corresponds to `visualize_cut_plane()` in Python FLORIS.
 pub fn visualize_cut_plane<P: AsRef<Path>>(
     cut_plane: &crate::core::cut_plane::CutPlane,
     output_path: P,
@@ -814,12 +897,79 @@ pub fn visualize_cut_plane<P: AsRef<Path>>(
         cmap_name,
         color_bar,
         title,
+        None,
+        false,
+        false,
     )
 }
 
 fn colormap_to_rgb(cmap_name: &str, t: f64) -> (u8, u8, u8) {
     let c = get_colormap(cmap_name)(t);
     (c.0, c.1, c.2)
+}
+
+/// The aspect ratio (width over height) of the plot area of the cut plane
+/// figures: the figure is 800 x 600 pixels, with the margins (10 pixels), the
+/// caption (about 35 pixels) and the axis labels (50 and 60 pixels).
+const PLOT_AREA_ASPECT: f64 = 720.0 / 495.0;
+
+/// Extend the ranges of the axes so that the scale is the same in both
+/// directions (Python's `axis("equal")`).
+fn equal_aspect(
+    x_min: f64,
+    x_max: f64,
+    y_min: f64,
+    y_max: f64,
+    aspect: f64,
+) -> (f64, f64, f64, f64) {
+    let x_span = (x_max - x_min).max(f64::EPSILON);
+    let y_span = (y_max - y_min).max(f64::EPSILON);
+    if x_span / y_span > aspect {
+        // The x direction is too wide: the y range is extended
+        let new_y_span = x_span / aspect;
+        let center = 0.5 * (y_min + y_max);
+        (
+            x_min,
+            x_max,
+            center - 0.5 * new_y_span,
+            center + 0.5 * new_y_span,
+        )
+    } else {
+        // The y direction is too wide: the x range is extended
+        let new_x_span = y_span * aspect;
+        let center = 0.5 * (x_min + x_max);
+        (
+            center - 0.5 * new_x_span,
+            center + 0.5 * new_x_span,
+            y_min,
+            y_max,
+        )
+    }
+}
+
+/// The contour levels of the flow field.
+///
+/// Python's `tricontourf` uses matplotlib's `MaxNLocator` when no levels are
+/// given: the step of the levels is the first of the "extended steps" (1, 1.5,
+/// 2, 2.5, 3, 4, 5, 6, 8, 10 times a power of ten) that is not smaller than
+/// the raw step (the span of the values divided by the number of the levels).
+fn contour_levels(vmin: f64, vmax: f64, n_levels: usize) -> Vec<f64> {
+    const EXTENDED_STEPS: [f64; 10] = [1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0];
+
+    let span = (vmax - vmin).abs().max(f64::EPSILON);
+    let raw_step = span / (n_levels + 1) as f64;
+    let magnitude = 10f64.powf(raw_step.log10().floor());
+    let step = EXTENDED_STEPS
+        .iter()
+        .map(|candidate| candidate * magnitude)
+        .find(|candidate| *candidate >= raw_step)
+        .unwrap_or(10.0 * magnitude);
+
+    // The levels are the multiples of the step that span the values
+    let start = (vmin / step).floor() * step;
+    let end = (vmax / step).ceil() * step;
+    let n = ((end - start) / step).round().max(0.0) as usize;
+    (0..=n).map(|k| start + k as f64 * step).collect()
 }
 
 fn visualize_cut_plane_inner<P: AsRef<Path>>(
@@ -831,9 +981,10 @@ fn visualize_cut_plane_inner<P: AsRef<Path>>(
     cmap_name: &str,
     color_bar: bool,
     title: &str,
+    turbines: Option<&CutPlaneTurbines>,
+    show_rotors: bool,
+    show_labels: bool,
 ) -> Result<()> {
-    use image::{ImageBuffer, Rgb};
-
     let x1 = &cut_plane.data.x1;
     let x2 = &cut_plane.data.x2;
     let vel = select_velocity_component(cut_plane, vel_component)?;
@@ -842,130 +993,203 @@ fn visualize_cut_plane_inner<P: AsRef<Path>>(
         anyhow::bail!("Cut plane data is empty");
     }
 
-    let vmin =
-        min_speed.unwrap_or_else(|| vel.iter().cloned().fold(f64::INFINITY, |a, b| a.min(b)));
-    let vmax =
-        max_speed.unwrap_or_else(|| vel.iter().cloned().fold(f64::NEG_INFINITY, |a, b| a.max(b)));
+    let vmin = min_speed.unwrap_or_else(|| vel.iter().copied().fold(f64::INFINITY, f64::min));
+    let vmax = max_speed.unwrap_or_else(|| vel.iter().copied().fold(f64::NEG_INFINITY, f64::max));
 
     let resolution = cut_plane.resolution;
     let nx1 = resolution.0;
     let nx2 = resolution.1;
     let n_points = x1.len();
 
-    let x_min = x1.iter().cloned().fold(f64::INFINITY, f64::min);
-    let x_max = x1.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let y_min = x2.iter().cloned().fold(f64::INFINITY, f64::min);
-    let y_max = x2.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let x_min = x1.iter().copied().fold(f64::INFINITY, f64::min);
+    let x_max = x1.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let y_min = x2.iter().copied().fold(f64::INFINITY, f64::min);
+    let y_max = x2.iter().copied().fold(f64::NEG_INFINITY, f64::max);
 
-    let img_w: u32 = 800;
-    let img_h: u32 = 600;
-    let margin_left: u32 = 80;
-    let margin_right: u32 = if color_bar { 100 } else { 20 };
-    let margin_top: u32 = 50;
-    let margin_bottom: u32 = 60;
-    let plot_w = img_w - margin_left - margin_right;
-    let plot_h = img_h - margin_top - margin_bottom;
+    // The color bar is drawn to the right of the flow field
+    let x_span = (x_max - x_min).max(1.0);
+    let color_bar_width = if color_bar { 0.14 * x_span } else { 0.0 };
 
-    let mut img = ImageBuffer::from_pixel(img_w, img_h, Rgb([255u8, 255, 255]));
+    // The axes have an equal aspect (Python's `axis("equal")`): the ranges are
+    // extended so that the scale is the same in both directions
+    let (x_min, x_max, y_min, y_max) = equal_aspect(x_min, x_max, y_min, y_max, PLOT_AREA_ASPECT);
+    let x_span = (x_max - x_min).max(1.0);
 
-    if nx1 * nx2 == n_points && n_points > 0 {
+    let title_text = if title.is_empty() {
+        "Flow Visualization".to_string()
+    } else {
+        title.to_string()
+    };
+
+    let root = BitMapBackend::new(output_path.as_ref(), (800, 600)).into_drawing_area();
+    root.fill(&WHITE)?;
+
+    let mut chart = ChartBuilder::on(&root)
+        .caption(title_text, ("sans-serif", 25).into_font())
+        .margin(10)
+        .x_label_area_size(50)
+        .y_label_area_size(60)
+        .build_cartesian_2d(x_min..(x_max + color_bar_width), y_min..y_max)?;
+
+    // The descriptions of the axes depend on the normal vector of the plane
+    // (Python's cut plane holds the coordinates of the plane in x1 and x2)
+    let (x1_desc, x2_desc) = match cut_plane.normal_vector.as_str() {
+        "y" => ("X Position (m)", "Z Position (m)"),
+        "x" => ("Y Position (m)", "Z Position (m)"),
+        _ => ("X Position (m)", "Y Position (m)"),
+    };
+
+    chart
+        .configure_mesh()
+        .x_desc(x1_desc)
+        .y_desc(x2_desc)
+        // Matplotlib does not draw a grid by default
+        .disable_x_mesh()
+        .disable_y_mesh()
+        .draw()?;
+
+    // The color of a velocity: the field is drawn as a filled contour, so the
+    // velocity is quantized to the contour levels and the color of the band is
+    // the color of the midpoint of the band (Python's `tricontourf`).
+    let levels = contour_levels(vmin, vmax, 7);
+    let color = |value: f64| -> RGBColor {
+        let band = levels.partition_point(|&level| level <= value);
+        let t = if band == 0 {
+            0.0
+        } else if band >= levels.len() {
+            1.0
+        } else {
+            let midpoint = 0.5 * (levels[band - 1] + levels[band]);
+            if vmax > vmin {
+                ((midpoint - vmin) / (vmax - vmin)).clamp(0.0, 1.0)
+            } else {
+                0.0
+            }
+        };
+        let (r, g, b) = colormap_to_rgb(cmap_name, t);
+        RGBColor(r, g, b)
+    };
+
+    if nx1 > 1 && nx2 > 1 && nx1 * nx2 == n_points {
+        // The cells of the (rotated) grid. The cells are subdivided so that
+        // the color of the field varies smoothly (Python's `tricontourf`
+        // interpolates the contours within the triangles of the points).
+        let factor = 8usize;
+        let fnx1 = (nx1 - 1) * factor + 1;
+        let fnx2 = (nx2 - 1) * factor + 1;
+
+        // The affine mapping of the grid indices to the world coordinates
         let origin_x = x1[0];
         let origin_y = x2[0];
-        let step1_x = if nx1 > 1 { x1[1] - x1[0] } else { 0.0 };
-        let step1_y = if nx1 > 1 { x2[1] - x2[0] } else { 0.0 };
-        let step2_x = if nx2 > 1 && nx1 < x1.len() {
-            x1[nx1] - x1[0]
-        } else {
-            0.0
+        let step1_x = x1[1] - x1[0];
+        let step1_y = x2[1] - x2[0];
+        let step2_x = x1[nx1] - x1[0];
+        let step2_y = x2[nx1] - x2[0];
+        let point_at = |fi: usize, fj: usize| -> (f64, f64) {
+            let fi = fi as f64 / factor as f64;
+            let fj = fj as f64 / factor as f64;
+            (
+                origin_x + fi * step1_x + fj * step2_x,
+                origin_y + fi * step1_y + fj * step2_y,
+            )
         };
-        let step2_y = if nx2 > 1 && nx1 < x2.len() {
-            x2[nx1] - x2[0]
-        } else {
-            0.0
+
+        // The velocity at the (fractional) grid position, by bilinear
+        // interpolation of the values of the grid
+        let value_at = |fi: usize, fj: usize| -> f64 {
+            let fi = fi as f64 / factor as f64;
+            let fj = fj as f64 / factor as f64;
+            let i = (fi.floor() as usize).min(nx1 - 2);
+            let j = (fj.floor() as usize).min(nx2 - 2);
+            let fx = (fi - i as f64).clamp(0.0, 1.0);
+            let fy = (fj - j as f64).clamp(0.0, 1.0);
+            let v00 = vel[j * nx1 + i];
+            let v10 = vel[j * nx1 + i + 1];
+            let v01 = vel[(j + 1) * nx1 + i];
+            let v11 = vel[(j + 1) * nx1 + i + 1];
+            v00 * (1.0 - fx) * (1.0 - fy)
+                + v10 * fx * (1.0 - fy)
+                + v01 * (1.0 - fx) * fy
+                + v11 * fx * fy
         };
 
-        let det = step1_x * step2_y - step1_y * step2_x;
-        let use_affine = det.abs() > 1e-12;
-
-        if use_affine {
-            let inv_det = 1.0 / det;
-            let inv_s1x = step2_y * inv_det;
-            let inv_s1y = -step1_y * inv_det;
-            let inv_s2x = -step1_x * inv_det;
-            let inv_s2y = step1_x * inv_det;
-
-            for py in 0..plot_h {
-                for px in 0..plot_w {
-                    let fx = px as f64 / (plot_w - 1) as f64;
-                    let fy = 1.0 - py as f64 / (plot_h - 1) as f64;
-                    let world_x = x_min + fx * (x_max - x_min);
-                    let world_y = y_min + fy * (y_max - y_min);
-
-                    let dx = world_x - origin_x;
-                    let dy = world_y - origin_y;
-                    let cj_f = dx * inv_s1x + dy * inv_s1y;
-                    let ci_f = dx * inv_s2x + dy * inv_s2y;
-
-                    let ci0 = (ci_f.floor() as isize).max(0).min(nx2 as isize - 2) as usize;
-                    let ci1 = (ci0 + 1).min(nx2 - 1);
-                    let cj0 = (cj_f.floor() as isize).max(0).min(nx1 as isize - 2) as usize;
-                    let cj1 = (cj0 + 1).min(nx1 - 1);
-
-                    let fx_frac = (cj_f - cj0 as f64).clamp(0.0, 1.0);
-                    let fy_frac = (ci_f - ci0 as f64).clamp(0.0, 1.0);
-
-                    let v00 = vel[ci0 * nx1 + cj0];
-                    let v01 = vel[ci0 * nx1 + cj1];
-                    let v10 = vel[ci1 * nx1 + cj0];
-                    let v11 = vel[ci1 * nx1 + cj1];
-
-                    let v = v00 * (1.0 - fx_frac) * (1.0 - fy_frac)
-                        + v01 * fx_frac * (1.0 - fy_frac)
-                        + v10 * (1.0 - fx_frac) * fy_frac
-                        + v11 * fx_frac * fy_frac;
-
-                    let normalized = ((v - vmin) / (vmax - vmin)).clamp(0.0, 1.0);
-                    let (r, g, b) = colormap_to_rgb(cmap_name, normalized);
-
-                    let pixel_x = margin_left + px;
-                    let pixel_y = margin_top + py;
-                    if pixel_x < img_w && pixel_y < img_h {
-                        img.put_pixel(pixel_x, pixel_y, Rgb([r, g, b]));
-                    }
-                }
+        for j in 0..(fnx2 - 1) {
+            for i in 0..(fnx1 - 1) {
+                let value = value_at(i, j);
+                chart.draw_series(std::iter::once(Polygon::new(
+                    vec![
+                        point_at(i, j),
+                        point_at(i + 1, j),
+                        point_at(i + 1, j + 1),
+                        point_at(i, j + 1),
+                    ],
+                    color(value).filled(),
+                )))?;
             }
-        } else {
-            for i in 0..n_points {
-                let normalized = ((vel[i] - vmin) / (vmax - vmin)).clamp(0.0, 1.0);
-                let (r, g, b) = colormap_to_rgb(cmap_name, normalized);
-                let px = ((x1[i] - x_min) / (x_max - x_min) * (plot_w - 1) as f64) as u32;
-                let py = ((1.0 - (x2[i] - y_min) / (y_max - y_min)) * (plot_h - 1) as f64) as u32;
-                let pixel_x = margin_left + px.min(plot_w - 1);
-                let pixel_y = margin_top + py.min(plot_h - 1);
-                if pixel_x < img_w && pixel_y < img_h {
-                    img.put_pixel(pixel_x, pixel_y, Rgb([r, g, b]));
-                }
-            }
+        }
+    } else {
+        // The points are not on a regular grid: they are drawn as markers
+        for k in 0..n_points {
+            chart.draw_series(std::iter::once(Circle::new(
+                (x1[k], x2[k]),
+                3,
+                color(vel[k]).filled(),
+            )))?;
         }
     }
 
+    // The color bar
     if color_bar {
-        let cb_x = img_w - margin_right + 10;
-        let cb_w = 20u32;
-        for py in 0..plot_h {
-            let t = py as f64 / (plot_h - 1) as f64;
-            let (r, g, b) = colormap_to_rgb(cmap_name, t);
-            for dx in 0..cb_w {
-                let px = cb_x + dx;
-                let pixel_y = margin_top + py;
-                if px < img_w && pixel_y < img_h {
-                    img.put_pixel(px, pixel_y, Rgb([r, g, b]));
-                }
+        let bar_x0 = x_max + 0.09 * x_span;
+        let bar_x1 = x_max + 0.12 * x_span;
+        let y_span = y_max - y_min;
+        for k in 0..100 {
+            let t = k as f64 / 100.0;
+            let y0 = y_min + t * y_span;
+            let y1 = y_min + (k + 1) as f64 / 100.0 * y_span;
+            chart.draw_series(std::iter::once(Rectangle::new(
+                [(bar_x0, y0), (bar_x1, y1)],
+                color(vmin + t * (vmax - vmin)).filled(),
+            )))?;
+        }
+    }
+
+    // The turbine rotors and their labels
+    if let Some(turbines) = turbines {
+        // The yaw angles are rotated to the inertial frame for the plotting
+        // (Python's `plot_turbine_rotors`)
+        let wind_delta = 270.0 - turbines.wind_direction;
+        for i in 0..turbines.x.len() {
+            let radius = turbines.rotor_diameters[i] / 2.0;
+            if show_rotors {
+                let yaw = (turbines.yaw_angles[i] - wind_delta).to_radians();
+                let x_0 = turbines.x[i] + yaw.sin() * radius;
+                let x_1 = turbines.x[i] - yaw.sin() * radius;
+                let y_0 = turbines.y[i] - yaw.cos() * radius;
+                let y_1 = turbines.y[i] + yaw.cos() * radius;
+                chart.draw_series(LineSeries::new(
+                    vec![(x_0, y_0), (x_1, y_1)],
+                    BLACK.stroke_width(2),
+                ))?;
+            }
+            if show_labels {
+                let label = match &turbines.labels {
+                    Some(labels) => labels[i].clone(),
+                    None => format!("{:03}", i),
+                };
+                // The labels are offset by a fraction of the rotor radius
+                // (Python's `plot_turbine_labels`)
+                let offset = radius / 8.0;
+                chart.draw_series(std::iter::once(Text::new(
+                    label,
+                    (turbines.x[i] + offset, turbines.y[i] + offset),
+                    ("sans-serif", 15).into_font().color(&BLACK),
+                )))?;
             }
         }
     }
 
-    img.save(output_path.as_ref())?;
+    root.present()?;
 
     println!(
         "  Saved cut plane visualization to: {}",
@@ -974,7 +1198,10 @@ fn visualize_cut_plane_inner<P: AsRef<Path>>(
     Ok(())
 }
 
-/// Visualize cut plane with turbine rotors
+/// Visualize a cut plane with the turbine rotors.
+///
+/// Corresponds to `visualize_cut_plane()` followed by `plot_turbine_rotors()`
+/// in Python FLORIS.
 pub fn visualize_cut_plane_with_rotors<P: AsRef<Path>>(
     cut_plane: &crate::core::cut_plane::CutPlane,
     fmodel: &crate::FlorisModel,
@@ -986,21 +1213,27 @@ pub fn visualize_cut_plane_with_rotors<P: AsRef<Path>>(
     color_bar: bool,
     title: &str,
 ) -> Result<()> {
-    // First visualize the cut plane
-    visualize_cut_plane(
+    let turbines = CutPlaneTurbines::from_model(fmodel, None)?;
+
+    visualize_cut_plane_inner(
         cut_plane,
-        &output_path,
+        output_path,
+        "u",
         min_speed,
         max_speed,
         cmap_name,
         color_bar,
         title,
-    )?;
-
-    Ok(())
+        Some(&turbines),
+        show_rotors,
+        false,
+    )
 }
 
-/// Visualize cut plane with turbine rotors and labels
+/// Visualize a cut plane with the turbine rotors and their labels.
+///
+/// Corresponds to `visualize_cut_plane()` followed by `plot_turbine_rotors()`
+/// and `plot_turbine_labels()` in Python FLORIS.
 pub fn visualize_cut_plane_with_rotors_and_labels<P: AsRef<Path>>(
     cut_plane: &crate::core::cut_plane::CutPlane,
     fmodel: &crate::FlorisModel,
@@ -1013,22 +1246,27 @@ pub fn visualize_cut_plane_with_rotors_and_labels<P: AsRef<Path>>(
     color_bar: bool,
     title: &str,
 ) -> Result<()> {
-    // First visualize the cut plane
-    visualize_cut_plane(
+    let turbines = CutPlaneTurbines::from_model(fmodel, Some(turbine_names))?;
+
+    visualize_cut_plane_inner(
         cut_plane,
-        &output_path,
+        output_path,
+        "u",
         min_speed,
         max_speed,
         cmap_name,
         color_bar,
         title,
-    )?;
-
-    Ok(())
+        Some(&turbines),
+        show_rotors,
+        true,
+    )
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::assert_relative_eq;
     use ndarray::{arr1, Array4};
 
     fn cleanup(_path: &str) {}
@@ -1462,12 +1700,46 @@ mod tests {
         );
 
         let fmodel = FlorisModel::from_default().unwrap();
-        let names = vec!["T1", "T2", "T3"];
+        let names: Vec<String> = (0..fmodel.layout_x().len())
+            .map(|i| format!("T{}", i + 1))
+            .collect();
+        let name_refs: Vec<&str> = names.iter().map(|name| name.as_str()).collect();
         let result = visualize_cut_plane_with_rotors_and_labels(
-            &cp, &fmodel, path, None, None, "coolwarm", &names, true, true, "Labels",
+            &cp, &fmodel, path, None, None, "coolwarm", &name_refs, true, true, "Labels",
         );
         assert!(result.is_ok());
         assert!(std::fs::metadata(path).is_ok());
         //cleanup(path);
+    }
+
+    /// The contour levels of the flow field follow matplotlib's
+    /// `MaxNLocator`, which Python's `tricontourf` uses.
+    #[test]
+    fn test_contour_levels_match_matplotlib() {
+        // The levels of the horizontal plane of the FLORIS example 002 (the
+        // velocities span 0.4418 .. 8.0 m/s)
+        let levels = contour_levels(0.44175156926122305, 8.0, 7);
+        let expected = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+        assert_eq!(levels.len(), expected.len());
+        for (level, expected) in levels.iter().zip(expected) {
+            assert_relative_eq!(*level, expected, epsilon = 1e-9);
+        }
+    }
+
+    /// The ranges of the axes are extended so that the scale is the same in
+    /// both directions (Python's `axis("equal")`).
+    #[test]
+    fn test_equal_aspect_extends_the_ranges() {
+        let (x_min, x_max, y_min, y_max) = equal_aspect(0.0, 100.0, 0.0, 100.0, 2.0);
+        assert_relative_eq!(x_min, -50.0, epsilon = 1e-9);
+        assert_relative_eq!(x_max, 150.0, epsilon = 1e-9);
+        assert_relative_eq!(y_min, 0.0, epsilon = 1e-9);
+        assert_relative_eq!(y_max, 100.0, epsilon = 1e-9);
+
+        let (x_min, x_max, y_min, y_max) = equal_aspect(0.0, 200.0, 0.0, 100.0, 2.0);
+        assert_relative_eq!(x_min, 0.0, epsilon = 1e-9);
+        assert_relative_eq!(x_max, 200.0, epsilon = 1e-9);
+        assert_relative_eq!(y_min, 0.0, epsilon = 1e-9);
+        assert_relative_eq!(y_max, 100.0, epsilon = 1e-9);
     }
 }
