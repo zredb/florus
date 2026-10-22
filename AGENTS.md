@@ -15,6 +15,15 @@ cargo fmt -- --check           # formatting check
 - `.cargo/config.toml` sets `rustflags = ["-A", "warnings"]` — **all warnings suppressed in `cargo build`**. Use `cargo clippy -- -D warnings` for actual lint results.
 - `build.rs` copies `default_inputs.yaml` to `OUT_DIR` and optionally runs Python+scipy to convert `src/core/wake/wake_velocity/turbopark_lookup_table.mat` to a Rust lookup table. Falls back gracefully if Python unavailable.
 
+### Comparing with the Python reference
+
+```bash
+pwsh -File tools/compare_examples.ps1                # all 65 example pairs
+pwsh -File tools/compare_examples.ps1 -Filter layout # a subset
+```
+
+The tool runs every Rust example (`cargo build --release --examples`) next to its Python counterpart and writes the two outputs to `output/examples_comparison.txt` (the curated summary of the file is at its end). The Python examples need the virtual environment of the repository (`floris/.venv`, which has numpy and scipy) and the `floris` package of the repository (`PYTHONPATH=<repo>/floris`).
+
 ## Architecture
 
 - **Crate type**: Library + binary. `lib.rs` exports the public API; `main.rs` is a thin CLI.
