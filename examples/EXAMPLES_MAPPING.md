@@ -59,7 +59,7 @@
 
 | Rust 文件 | Python 文件 | 状态 | 说明 |
 |-----------|-------------|------|------|
-| `control_types_001_control_types_overview.rs` | `examples_control_types/001_control_types_overview.py` | ⚠️ | 控制类型概览（占位符） |
+| `control_types_001_control_types_overview.rs` | - | ⚠️ | 占位符（Python 无对应示例） |
 | `control_types_002_yaw_addition.rs` | `examples_control_types/002_yaw_addition.py` | ⚠️ | 偏航附加（占位符） |
 | `control_types_003_tilt_addition.rs` | `examples_control_types/003_tilt_addition.py` | ⚠️ | 倾斜附加（占位符） |
 | `control_types_004_power_setpoints.rs` | `examples_control_types/004_power_setpoints.py` | ⚠️ | 功率设定点（占位符） |
@@ -84,7 +84,7 @@
 |-----------|-------------|------|------|
 | `heterogeneous_001_heterogeneous_inflow.rs` | `examples_heterogeneous/001_heterogeneous_inflow.py` | ⚠️ | 非均匀入流（占位符） |
 | `heterogeneous_002_het_map_from_file.rs` | `examples_heterogeneous/002_het_map_from_file.py` | ⚠️ | 从文件加载异构图（占位符） |
-| `heterogeneous_003_het_multi_turbine.rs` | `examples_heterogeneous/003_het_multi_turbine.py` | ⚠️ | 多涡轮机异构（占位符） |
+| `heterogeneous_003_het_multi_turbine.rs` | - | ⚠️ | 占位符（Python 无对应示例） |
 | `heterogeneous_004_het_with_wind_rose.rs` | `examples_heterogeneous/004_het_with_wind_rose.py` | ⚠️ | 带风玫瑰图的异构（占位符） |
 
 ---
@@ -161,8 +161,12 @@
 
 | Rust 文件 | Python 文件 | 状态 | 说明 |
 |-----------|-------------|------|------|
+| `wind_resource_grid_001_wind_resource_grid.rs` | `examples_wind_resource_grid/001_wind_rose_wrg.py` | ✅ | 读取 WRG 文件并查询网格点的风玫瑰 |
 | `wind_resource_grid_002_wrg_from_file.rs` | `examples_wind_resource_grid/002_set_floris_with_wrg.py` | ✅ | 从文件加载 WRG（与 Python 逐位一致） |
 | `wind_resource_grid_003_wrg_layout_optimization.rs` | `examples_wind_resource_grid/003_wrg_compar_layout_optimization.py` | ✅ | 用风资源网格做布局优化（WRG / 风玫瑰 / 风玫瑰+异构三种情况） |
+| `wind_resource_grid_003_wrg_with_heterogeneous.rs` | — | ⚠️ | 占位符（Python 无对应示例） |
+| `wind_resource_grid_004_wrg_visualization.rs` | — | ⚠️ | 占位符（Python 无对应示例） |
+| `wind_resource_grid_005_wrg_multi_site.rs` | — | ⚠️ | 占位符（Python 无对应示例） |
 
 ---
 
