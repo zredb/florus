@@ -1,6 +1,6 @@
 ====================================================================================================
  FLORIS (Rust) vs FLORIS (Python) example output comparison
- Generated: 2026-10-22 13:09:07
+ Generated: 2026-10-22 16:01:41
  Rust examples:    cargo build --release --examples, run from repo root
  Python examples:  floris\.venv\Scripts\python.exe (MPLBACKEND=Agg), run from their example folder
 
@@ -1218,7 +1218,7 @@ D:\code\florus\floris\examples\examples_control_optimization\003_opt_yaw_multipl
 [Serial Refine] Processing pass=1, turbine_depth=1 (62.5%)
 [Serial Refine] Processing pass=1, turbine_depth=2 (75.0%)
 [Serial Refine] Processing pass=1, turbine_depth=3 (87.5%)
-Optimization finished in 0.12 seconds.
+Optimization finished in 0.13 seconds.
 Baseline AEP: 75.48 GWh.
 Optimal AEP: 76.16 GWh.
 Relative AEP uplift by wake steering: 0.902 %.
@@ -1231,7 +1231,7 @@ Relative AEP uplift by wake steering: 0.902 %.
 [Serial Refine] Processing pass=1, turbine_depth=1 (62.5%)
 [Serial Refine] Processing pass=1, turbine_depth=2 (75.0%)
 [Serial Refine] Processing pass=1, turbine_depth=3 (87.5%)
-Optimization finished in 0.59 seconds.
+Optimization finished in 0.60 seconds.
 Baseline AEP: 75.48 GWh.
 Optimal AEP: 76.18 GWh.
 Relative AEP uplift by wake steering: 0.926 %.
@@ -1267,75 +1267,73 @@ Optimal AEP: 76.16 GWh.
 Relative AEP uplift by wake steering: 0.902 %.
 --- PYTHON STDOUT ---
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 2.036 s
+Total time spent for parallel calculation (16 workers): 2.243 s
   Time spent in parallel preprocessing: 0.005 s
-  Time spent in parallel loop execution: 2.031 s.
+  Time spent in parallel loop execution: 2.237 s.
   Time spent in parallel postprocessing: 0.001 s
 [Serial Refine] Processing pass=0, turbine_depth=0 (0.0%)
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.148 s
+Total time spent for parallel calculation (16 workers): 0.156 s
   Time spent in parallel preprocessing: 0.004 s
-  Time spent in parallel loop execution: 0.143 s.
+  Time spent in parallel loop execution: 0.152 s.
   Time spent in parallel postprocessing: 0.001 s
 [Serial Refine] Processing pass=0, turbine_depth=1 (12.5%)
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.149 s
+Total time spent for parallel calculation (16 workers): 0.158 s
   Time spent in parallel preprocessing: 0.004 s
-  Time spent in parallel loop execution: 0.145 s.
+  Time spent in parallel loop execution: 0.154 s.
   Time spent in parallel postprocessing: 0.001 s
 [Serial Refine] Processing pass=0, turbine_depth=2 (25.0%)
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.154 s
+Total time spent for parallel calculation (16 workers): 0.166 s
   Time spent in parallel preprocessing: 0.004 s
-  Time spent in parallel loop execution: 0.149 s.
+  Time spent in parallel loop execution: 0.161 s.
   Time spent in parallel postprocessing: 0.001 s
 [Serial Refine] Processing pass=0, turbine_depth=3 (37.5%)
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.167 s
+Total time spent for parallel calculation (16 workers): 0.182 s
   Time spent in parallel preprocessing: 0.004 s
-  Time spent in parallel loop execution: 0.162 s.
+  Time spent in parallel loop execution: 0.177 s.
   Time spent in parallel postprocessing: 0.001 s
 [Serial Refine] Processing pass=1, turbine_depth=0 (50.0%)
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.164 s
-  Time spent in parallel preprocessing: 0.003 s
-  Time spent in parallel loop execution: 0.160 s.
+Total time spent for parallel calculation (16 workers): 0.191 s
+  Time spent in parallel preprocessing: 0.004 s
+  Time spent in parallel loop execution: 0.186 s.
   Time spent in parallel postprocessing: 0.001 s
 [Serial Refine] Processing pass=1, turbine_depth=1 (62.5%)
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.162 s
+Total time spent for parallel calculation (16 workers): 0.189 s
   Time spent in parallel preprocessing: 0.003 s
-  Time spent in parallel loop execution: 0.157 s.
+  Time spent in parallel loop execution: 0.185 s.
   Time spent in parallel postprocessing: 0.001 s
 [Serial Refine] Processing pass=1, turbine_depth=2 (75.0%)
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.168 s
+Total time spent for parallel calculation (16 workers): 0.178 s
   Time spent in parallel preprocessing: 0.003 s
-  Time spent in parallel loop execution: 0.164 s.
+  Time spent in parallel loop execution: 0.174 s.
   Time spent in parallel postprocessing: 0.001 s
 [Serial Refine] Processing pass=1, turbine_depth=3 (87.5%)
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.171 s
+Total time spent for parallel calculation (16 workers): 0.177 s
   Time spent in parallel preprocessing: 0.003 s
-  Time spent in parallel loop execution: 0.166 s.
+  Time spent in parallel loop execution: 0.173 s.
   Time spent in parallel postprocessing: 0.001 s
-Optimization finished in 3.62 seconds.
+Optimization finished in 3.97 seconds.
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.338 s
-  Time spent in parallel preprocessing: 0.012 s
-  Time spent in parallel loop execution: 0.324 s.
+Total time spent for parallel calculation (16 workers): 0.335 s
+  Time spent in parallel preprocessing: 0.013 s
+  Time spent in parallel loop execution: 0.320 s.
   Time spent in parallel postprocessing: 0.002 s
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.317 s
-  Time spent in parallel preprocessing: 0.013 s
-  Time spent in parallel loop execution: 0.302 s.
+Total time spent for parallel calculation (16 workers): 0.321 s
+  Time spent in parallel preprocessing: 0.012 s
+  Time spent in parallel loop execution: 0.307 s.
   Time spent in parallel postprocessing: 0.002 s
 Baseline AEP: 75.48 GWh.
 Optimal AEP: 76.18 GWh.
 Relative AEP uplift by wake steering: 0.926 %.
 --- PYTHON STDERR (last 10 lines) ---
-D:\code\florus\floris\floris\core\wake_velocity\gauss.py:80: RuntimeWarning: invalid value encountered in divide
-  sigma_z0 = rotor_diameter_i * 0.5 * np.sqrt(uR / (u_initial + u0))
 D:\code\florus\floris\floris\core\wake_deflection\gauss.py:327: RuntimeWarning: invalid value encountered in divide
   val = 2 * (avg_v - v_core) / (v_top + v_bottom)
 D:\code\florus\floris\floris\core\wake_deflection\gauss.py:160: RuntimeWarning: invalid value encountered in divide
@@ -1344,6 +1342,8 @@ D:\code\florus\floris\floris\core\wake_velocity\gauss.py:80: RuntimeWarning: inv
   sigma_z0 = rotor_diameter_i * 0.5 * np.sqrt(uR / (u_initial + u0))
 D:\code\florus\floris\floris\core\flow_field.py:169: UserWarning: 'where' used without 'out', expect unitialized memory in output. If this is intentional, use out=None.
   * np.power(
+D:\code\florus\floris\floris\core\wake_deflection\gauss.py:505: RuntimeWarning: invalid value encountered in divide
+  I_total = np.sqrt((2 / 3) * k_total) / average_u_i
 
 ====================================================================================================
 [17/65] EXAMPLE: control_optimization_006_compare_yaw_optimizers  vs  006_compare_yaw_optimizers.py
@@ -1362,8 +1362,8 @@ Performing optimizations with Serial Refine...
 Performing optimizations with Geometric Yaw...
 
  Time spent, Geometric Yaw: 0.00 s.
- Time spent, Serial Refine: 0.09 s.
- Time spent, SciPy (SLSQP): 2.51 s.
+ Time spent, Serial Refine: 0.08 s.
+ Time spent, SciPy (SLSQP): 2.46 s.
 
 Total power uplift, Geometric Yaw: 3.776e6 W
 Total power uplift, Serial Refine: 4.268e6 W
@@ -1722,8 +1722,8 @@ Performing optimizations with Serial Refine...
 Performing optimizations with Geometric Yaw...
 
  Time spent, Geometric Yaw: 0.01 s.
- Time spent, Serial Refine: 0.45 s.
- Time spent, SciPy (SLSQP): 17.27 s.
+ Time spent, Serial Refine: 0.44 s.
+ Time spent, SciPy (SLSQP): 17.21 s.
 
 --- PYTHON STDERR (last 10 lines) ---
 D:\code\florus\floris\floris\core\flow_field.py:169: UserWarning: 'where' used without 'out', expect unitialized memory in output. If this is intentional, use out=None.
@@ -3534,14 +3534,14 @@ Placing turbine 1 of 4.
 Placing turbine 2 of 4.
 Placing turbine 3 of 4.
 Generating 4 initial layouts...
-  Time to generate initial layouts: 2.554 s
+  Time to generate initial layouts: 3.358 s
 =======================================
 Optimization step +0.0
-Optimization time = +2.6 [s]
-Mean AEP = 57.4 [GWh] (+1.95%)
-Median AEP = 57.3 [GWh] (+1.90%)
-Max AEP = 57.8 [GWh] (+2.64%)
-Min AEP = 57.0 [GWh] (+1.38%)
+Optimization time = +3.4 [s]
+Mean AEP = 57.6 [GWh] (+2.45%)
+Median AEP = 57.8 [GWh] (+2.67%)
+Max AEP = 57.9 [GWh] (+2.83%)
+Min AEP = 57.2 [GWh] (+1.62%)
 =======================================
 Random Layout Optimization
 Number of turbines to optimize = 4
@@ -3553,49 +3553,49 @@ Optimizing using 4 individuals.
 Optimization time: 0.0 s / 60.0 s
 =======================================
 Optimization step +1.0
-Optimization time = +14.9 [s]
-Mean AEP = 58.6 [GWh] (+4.21%)
-Median AEP = 58.6 [GWh] (+4.19%)
-Max AEP = 58.7 [GWh] (+4.36%)
-Min AEP = 58.6 [GWh] (+4.10%)
+Optimization time = +16.7 [s]
+Mean AEP = 58.7 [GWh] (+4.27%)
+Median AEP = 58.7 [GWh] (+4.27%)
+Max AEP = 58.7 [GWh] (+4.40%)
+Min AEP = 58.6 [GWh] (+4.16%)
 =======================================
-Optimization time: 12.4 s / 60.0 s
+Optimization time: 13.3 s / 60.0 s
 =======================================
 Optimization step +2.0
-Optimization time = +27.4 [s]
-Mean AEP = 58.7 [GWh] (+4.41%)
-Median AEP = 58.8 [GWh] (+4.43%)
-Max AEP = 58.8 [GWh] (+4.53%)
-Min AEP = 58.7 [GWh] (+4.25%)
+Optimization time = +29.9 [s]
+Mean AEP = 58.8 [GWh] (+4.49%)
+Median AEP = 58.8 [GWh] (+4.52%)
+Max AEP = 58.8 [GWh] (+4.55%)
+Min AEP = 58.7 [GWh] (+4.36%)
 =======================================
-Optimization time: 24.8 s / 60.0 s
+Optimization time: 26.6 s / 60.0 s
 =======================================
 Optimization step +3.0
-Optimization time = +39.9 [s]
-Mean AEP = 58.8 [GWh] (+4.52%)
-Median AEP = 58.8 [GWh] (+4.53%)
-Max AEP = 58.8 [GWh] (+4.55%)
+Optimization time = +43.2 [s]
+Mean AEP = 58.8 [GWh] (+4.54%)
+Median AEP = 58.8 [GWh] (+4.55%)
+Max AEP = 58.8 [GWh] (+4.56%)
 Min AEP = 58.8 [GWh] (+4.50%)
 =======================================
-Optimization time: 37.3 s / 60.0 s
+Optimization time: 39.9 s / 60.0 s
 =======================================
 Optimization step +4.0
-Optimization time = +52.2 [s]
+Optimization time = +56.5 [s]
 Mean AEP = 58.8 [GWh] (+4.56%)
 Median AEP = 58.8 [GWh] (+4.56%)
 Max AEP = 58.8 [GWh] (+4.57%)
-Min AEP = 58.8 [GWh] (+4.53%)
+Min AEP = 58.8 [GWh] (+4.55%)
 =======================================
-Optimization time: 49.6 s / 60.0 s
+Optimization time: 53.2 s / 60.0 s
 =======================================
 Optimization step +5.0
-Optimization time = +64.5 [s]
+Optimization time = +69.7 [s]
 Mean AEP = 58.8 [GWh] (+4.57%)
 Median AEP = 58.8 [GWh] (+4.57%)
-Max AEP = 58.8 [GWh] (+4.57%)
+Max AEP = 58.8 [GWh] (+4.58%)
 Min AEP = 58.8 [GWh] (+4.56%)
 =======================================
-Final AEP = 58.8 [GWh] (+4.57%)
+Final AEP = 58.8 [GWh] (+4.58%)
 --- PYTHON STDERR (last 10 lines) ---
 D:\code\florus\floris\floris\core\flow_field.py:169: UserWarning: 'where' used without 'out', expect unitialized memory in output. If this is intentional, use out=None.
   * np.power(
@@ -3658,49 +3658,49 @@ Optimizing using 4 individuals.
 Optimization time: 0.0 s / 60.0 s
 =======================================
 Optimization step +1.0
-Optimization time = +12.3 [s]
-Mean AEP = 86.7 [GWh] (+1.81%)
-Median AEP = 86.7 [GWh] (+1.80%)
-Max AEP = 87.0 [GWh] (+2.08%)
-Min AEP = 86.5 [GWh] (+1.58%)
+Optimization time = +13.0 [s]
+Mean AEP = 86.9 [GWh] (+2.01%)
+Median AEP = 86.9 [GWh] (+2.04%)
+Max AEP = 87.0 [GWh] (+2.10%)
+Min AEP = 86.8 [GWh] (+1.89%)
 =======================================
-Optimization time: 12.3 s / 60.0 s
+Optimization time: 13.0 s / 60.0 s
 =======================================
 Optimization step +2.0
-Optimization time = +24.5 [s]
-Mean AEP = 87.4 [GWh] (+2.58%)
-Median AEP = 87.4 [GWh] (+2.59%)
+Optimization time = +25.9 [s]
+Mean AEP = 87.4 [GWh] (+2.55%)
+Median AEP = 87.4 [GWh] (+2.56%)
 Max AEP = 87.5 [GWh] (+2.70%)
-Min AEP = 87.3 [GWh] (+2.43%)
+Min AEP = 87.2 [GWh] (+2.37%)
 =======================================
-Optimization time: 24.5 s / 60.0 s
+Optimization time: 25.9 s / 60.0 s
 =======================================
 Optimization step +3.0
-Optimization time = +36.5 [s]
-Mean AEP = 87.5 [GWh] (+2.76%)
-Median AEP = 87.5 [GWh] (+2.77%)
-Max AEP = 87.6 [GWh] (+2.80%)
-Min AEP = 87.5 [GWh] (+2.71%)
+Optimization time = +38.8 [s]
+Mean AEP = 87.5 [GWh] (+2.73%)
+Median AEP = 87.5 [GWh] (+2.75%)
+Max AEP = 87.6 [GWh] (+2.79%)
+Min AEP = 87.4 [GWh] (+2.64%)
 =======================================
-Optimization time: 36.5 s / 60.0 s
+Optimization time: 38.8 s / 60.0 s
 =======================================
 Optimization step +4.0
-Optimization time = +48.5 [s]
+Optimization time = +51.6 [s]
 Mean AEP = 87.6 [GWh] (+2.81%)
 Median AEP = 87.6 [GWh] (+2.81%)
-Max AEP = 87.6 [GWh] (+2.85%)
-Min AEP = 87.5 [GWh] (+2.77%)
+Max AEP = 87.6 [GWh] (+2.82%)
+Min AEP = 87.6 [GWh] (+2.79%)
 =======================================
-Optimization time: 48.5 s / 60.0 s
+Optimization time: 51.6 s / 60.0 s
 =======================================
 Optimization step +5.0
-Optimization time = +60.6 [s]
+Optimization time = +64.5 [s]
 Mean AEP = 87.6 [GWh] (+2.85%)
 Median AEP = 87.6 [GWh] (+2.85%)
-Max AEP = 87.6 [GWh] (+2.86%)
+Max AEP = 87.6 [GWh] (+2.85%)
 Min AEP = 87.6 [GWh] (+2.84%)
 =======================================
-Final AEP = 87.6 [GWh] (+2.86%)
+Final AEP = 87.6 [GWh] (+2.85%)
 --- PYTHON STDERR (last 10 lines) ---
 D:\code\florus\floris\floris\core\flow_field.py:169: UserWarning: 'where' used without 'out', expect unitialized memory in output. If this is intentional, use out=None.
   * np.power(
@@ -6926,14 +6926,14 @@ D:\code\florus\floris\examples\examples_uncertain\001_uncertain_model_params.py:
   Python exit=0  (002_approx_floris_model.py)
   STDOUT IDENTICAL: no
 --- RUST STDOUT ---
-FlorisModel run time: 18.868 s
-ApproxFlorisModel run time: 0.067 s
+FlorisModel run time: 18.792 s
+ApproxFlorisModel run time: 0.070 s
 FlorisModel conditions: 5000, ApproxFlorisModel conditions: 31
 Expected power from FlorisModel: 47.68 MW
 Expected power from ApproxFlorisModel: 47.72 MW
 --- PYTHON STDOUT ---
-FlorisModel run time: 11.249757800018415 s
-ApproxFlorisModel run time: 0.19269410008564591 s
+FlorisModel run time: 11.407494000042789 s
+ApproxFlorisModel run time: 0.1982085999334231 s
 Expected power from FlorisModel: 47.68 MW
 Expected power from ApproxFlorisModel: 47.72 MW
 --- PYTHON STDERR (last 10 lines) ---
@@ -7282,34 +7282,34 @@ Optimizing using 4 individuals.
 Optimization time: 0.0 s / 120.0 s
 =======================================
 Optimization step +1.0
-Optimization time = +32.1 [s]
-Mean AEP = 40.9 [GWh] (+0.56%)
-Median AEP = 40.9 [GWh] (+0.56%)
+Optimization time = +32.4 [s]
+Mean AEP = 40.9 [GWh] (+0.57%)
+Median AEP = 40.9 [GWh] (+0.57%)
 Max AEP = 40.9 [GWh] (+0.58%)
-Min AEP = 40.9 [GWh] (+0.55%)
+Min AEP = 40.9 [GWh] (+0.56%)
 =======================================
-Optimization time: 32.1 s / 120.0 s
+Optimization time: 32.4 s / 120.0 s
 =======================================
 Optimization step +2.0
-Optimization time = +64.3 [s]
-Mean AEP = 40.9 [GWh] (+0.58%)
-Median AEP = 40.9 [GWh] (+0.58%)
-Max AEP = 40.9 [GWh] (+0.58%)
-Min AEP = 40.9 [GWh] (+0.57%)
-=======================================
-Optimization time: 64.3 s / 120.0 s
-=======================================
-Optimization step +3.0
-Optimization time = +96.4 [s]
+Optimization time = +65.5 [s]
 Mean AEP = 40.9 [GWh] (+0.58%)
 Median AEP = 40.9 [GWh] (+0.58%)
 Max AEP = 40.9 [GWh] (+0.58%)
 Min AEP = 40.9 [GWh] (+0.58%)
 =======================================
-Optimization time: 96.4 s / 120.0 s
+Optimization time: 65.5 s / 120.0 s
+=======================================
+Optimization step +3.0
+Optimization time = +98.6 [s]
+Mean AEP = 40.9 [GWh] (+0.58%)
+Median AEP = 40.9 [GWh] (+0.58%)
+Max AEP = 40.9 [GWh] (+0.58%)
+Min AEP = 40.9 [GWh] (+0.58%)
+=======================================
+Optimization time: 98.6 s / 120.0 s
 =======================================
 Optimization step +4.0
-Optimization time = +128.4 [s]
+Optimization time = +131.8 [s]
 Mean AEP = 40.9 [GWh] (+0.58%)
 Median AEP = 40.9 [GWh] (+0.58%)
 Max AEP = 40.9 [GWh] (+0.58%)
@@ -7319,11 +7319,11 @@ Final AEP = 40.9 [GWh] (+0.58%)
 =====================================
 Objective log array (WRG):
 (5, 4)
-[[0.99420061 0.99420061 0.99420061 0.99420061]
- [0.9996455  0.99986333 0.99996003 0.9997386 ]
- [0.999987   0.99996836 0.99991651 0.99997118]
- [0.999987   0.99997939 1.         0.999987  ]
- [1.         0.999987   0.99998997 1.        ]]
+[[0.99420187 0.99420187 0.99420187 0.99420187]
+ [0.99996285 0.99977687 0.99994704 0.99974167]
+ [0.99998598 0.9999857  0.99994227 0.99996339]
+ [0.99998598 0.9999857  0.99998691 0.99998598]
+ [1.         0.99999049 0.99998598 0.99998841]]
 Using supplied initial layout for 4 individuals.
 =======================================
 Optimization step +0.0
@@ -7337,34 +7337,34 @@ Optimizing using 4 individuals.
 Optimization time: 0.0 s / 120.0 s
 =======================================
 Optimization step +1.0
-Optimization time = +32.0 [s]
+Optimization time = +36.7 [s]
+Mean AEP = 44.0 [GWh] (+0.74%)
+Median AEP = 44.0 [GWh] (+0.74%)
+Max AEP = 44.0 [GWh] (+0.76%)
+Min AEP = 44.0 [GWh] (+0.73%)
+=======================================
+Optimization time: 36.7 s / 120.0 s
+=======================================
+Optimization step +2.0
+Optimization time = +70.1 [s]
 Mean AEP = 44.0 [GWh] (+0.75%)
 Median AEP = 44.0 [GWh] (+0.75%)
 Max AEP = 44.0 [GWh] (+0.76%)
 Min AEP = 44.0 [GWh] (+0.74%)
 =======================================
-Optimization time: 32.0 s / 120.0 s
+Optimization time: 70.1 s / 120.0 s
 =======================================
-Optimization step +2.0
-Optimization time = +64.4 [s]
+Optimization step +3.0
+Optimization time = +103.4 [s]
 Mean AEP = 44.0 [GWh] (+0.76%)
 Median AEP = 44.0 [GWh] (+0.76%)
 Max AEP = 44.0 [GWh] (+0.76%)
 Min AEP = 44.0 [GWh] (+0.74%)
 =======================================
-Optimization time: 64.4 s / 120.0 s
-=======================================
-Optimization step +3.0
-Optimization time = +96.5 [s]
-Mean AEP = 44.0 [GWh] (+0.76%)
-Median AEP = 44.0 [GWh] (+0.76%)
-Max AEP = 44.0 [GWh] (+0.76%)
-Min AEP = 44.0 [GWh] (+0.76%)
-=======================================
-Optimization time: 96.5 s / 120.0 s
+Optimization time: 103.4 s / 120.0 s
 =======================================
 Optimization step +4.0
-Optimization time = +128.6 [s]
+Optimization time = +137.2 [s]
 Mean AEP = 44.0 [GWh] (+0.76%)
 Median AEP = 44.0 [GWh] (+0.76%)
 Max AEP = 44.0 [GWh] (+0.76%)
@@ -7384,34 +7384,34 @@ Optimizing using 4 individuals.
 Optimization time: 0.0 s / 120.0 s
 =======================================
 Optimization step +1.0
-Optimization time = +32.1 [s]
+Optimization time = +33.5 [s]
 Mean AEP = 40.3 [GWh] (+0.65%)
 Median AEP = 40.3 [GWh] (+0.65%)
 Max AEP = 40.3 [GWh] (+0.65%)
 Min AEP = 40.3 [GWh] (+0.64%)
 =======================================
-Optimization time: 32.1 s / 120.0 s
+Optimization time: 33.5 s / 120.0 s
 =======================================
 Optimization step +2.0
-Optimization time = +64.3 [s]
+Optimization time = +66.2 [s]
 Mean AEP = 40.3 [GWh] (+0.65%)
 Median AEP = 40.3 [GWh] (+0.65%)
 Max AEP = 40.3 [GWh] (+0.65%)
 Min AEP = 40.3 [GWh] (+0.65%)
 =======================================
-Optimization time: 64.3 s / 120.0 s
+Optimization time: 66.3 s / 120.0 s
 =======================================
 Optimization step +3.0
-Optimization time = +96.4 [s]
+Optimization time = +99.8 [s]
 Mean AEP = 40.3 [GWh] (+0.65%)
 Median AEP = 40.3 [GWh] (+0.65%)
 Max AEP = 40.3 [GWh] (+0.65%)
 Min AEP = 40.3 [GWh] (+0.65%)
 =======================================
-Optimization time: 96.4 s / 120.0 s
+Optimization time: 99.8 s / 120.0 s
 =======================================
 Optimization step +4.0
-Optimization time = +128.4 [s]
+Optimization time = +132.9 [s]
 Mean AEP = 40.3 [GWh] (+0.65%)
 Median AEP = 40.3 [GWh] (+0.65%)
 Max AEP = 40.3 [GWh] (+0.65%)
@@ -7421,22 +7421,23 @@ Final AEP = 40.3 [GWh] (+0.65%)
 =====================================
 Objective log array (HET):
 (5, 4)
-[[0.99244379 0.99244379 0.99244379 0.99244379]
- [0.99998566 0.99979006 0.99997432 0.99979976]
- [0.99999372 0.9999932  0.99981029 0.99999512]
- [0.99999512 0.99999372 0.9999932  0.99999512]
- [0.9999988  0.99999512 1.         0.99999512]]
+[[0.99244474 0.99244474 0.99244474 0.99244474]
+ [0.99998465 0.99977512 0.99980331 0.99966796]
+ [0.99999157 0.99980331 0.99979725 0.99998797]
+ [0.99999157 1.         0.99980331 0.99999913]
+ [1.         0.99999913 0.99999157 1.        ]]
 --- PYTHON STDERR (last 10 lines) ---
-D:\code\florus\floris\floris\core\wake_deflection\gauss.py:505: RuntimeWarning: invalid value encountered in divide
-  I_total = np.sqrt((2 / 3) * k_total) / average_u_i
+D:\code\florus\floris\floris\core\wake_velocity\gauss.py:80: RuntimeWarning: invalid value encountered in divide
+  sigma_z0 = rotor_diameter_i * 0.5 * np.sqrt(uR / (u_initial + u0))
 D:\code\florus\floris\floris\core\wake_deflection\gauss.py:505: RuntimeWarning: invalid value encountered in divide
   I_total = np.sqrt((2 / 3) * k_total) / average_u_i
 D:\code\florus\floris\floris\core\wake_velocity\gauss.py:80: RuntimeWarning: invalid value encountered in divide
   sigma_z0 = rotor_diameter_i * 0.5 * np.sqrt(uR / (u_initial + u0))
-D:\code\florus\floris\floris\core\wake_velocity\gauss.py:80: RuntimeWarning: invalid value encountered in divide
-  sigma_z0 = rotor_diameter_i * 0.5 * np.sqrt(uR / (u_initial + u0))
+D:\code\florus\floris\floris\core\wake_deflection\gauss.py:505: RuntimeWarning: invalid value encountered in divide
+  I_total = np.sqrt((2 / 3) * k_total) / average_u_i
 D:\code\florus\floris\examples\examples_wind_resource_grid\003_wrg_compar_layout_optimization.py:217: UserWarning: FigureCanvasAgg is non-interactive, and thus cannot be shown
   plt.show()
+
 
  SUMMARY OF THIS ROUND (2026-10-22)
 ====================================================================================================
