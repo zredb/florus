@@ -267,6 +267,9 @@ pub struct LayoutOptimizationConfig {
     /// The number of the lowest performing individuals that are replaced with
     /// copies of the best performing ones (the genetic random search)
     pub relegation_number: usize,
+    /// The step of the finite differences of the derivatives of the layout
+    /// optimization (Python's `eps` option of the SLSQP solver)
+    pub eps: Float,
     /// Generate the initial layouts of the individuals by placing the turbines
     /// as far apart as possible (the genetic random search). When it is
     /// disabled, all of the individuals start from the layout of the model.
@@ -287,6 +290,7 @@ impl Default for LayoutOptimizationConfig {
             n_generations: 3,
             grid_step_size: 100.0,
             relegation_number: 1,
+            eps: 0.01,
             use_dist_based_init: true,
             tolerance: 1e-9,
         }

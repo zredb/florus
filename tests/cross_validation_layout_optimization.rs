@@ -249,8 +249,51 @@ fn test_layout_optimization_with_heterogeneity_matches_python() {
 
     // Python: 13930.0 MWh (an improvement of 124.7 %)
     assert!(
-        (aep - 13930.0).abs() / 13930.0 < 0.05,
+        (aep - 13930.0).abs() / 13930.0 < 0.01,
         "the AEP of the optimized layout: {aep} MWh (expected 13930.0 MWh)"
+    );
+}
+
+/// The layout optimization of the example
+/// (`examples_layout_optimization/001_optimize_layout.py`): the SLSQP solver
+/// (the port of scipy's) has to reach the same optimum as Python.
+#[test]
+fn test_layout_optimization_scipy_matches_python() {
+    let (wind_rose, _) = wind_rose();
+
+    let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml").expect("model");
+    fmodel.set_wind_data(&wind_rose).expect("wind data");
+    fmodel
+        .set_layout(
+            &Array1::from_vec(vec![0.0, 0.0, 6.0 * D, 6.0 * D]),
+            &Array1::from_vec(vec![0.0, 4.0 * D, 0.0, 4.0 * D]),
+        )
+        .expect("layout");
+
+    let boundaries = Boundary::Polygon(vec![
+        (0.0, 0.0),
+        (0.0, 1000.0),
+        (1000.0, 1000.0),
+        (1000.0, 0.0),
+        (0.0, 0.0),
+    ]);
+    let config = LayoutOptimizationConfig {
+        boundaries: boundaries.clone(),
+        ..Default::default()
+    };
+    let mut optimizer = LayoutOptimizationScipy::new(&fmodel, boundaries)
+        .expect("optimizer")
+        .with_config(config);
+    let solution = optimizer.optimize().expect("optimize");
+
+    fmodel.set_layout(&solution.x, &solution.y).expect("layout");
+    fmodel.run().expect("run");
+    let aep = fmodel.get_expected_farm_power(None, None).expect("aep") * 8760.0 / 1e6;
+
+    // Python: 58824.3 MWh (an improvement of 4.5 %)
+    assert!(
+        (aep - 58824.3).abs() / 58824.3 < 0.005,
+        "the AEP of the optimized layout: {aep} MWh (expected 58824.3 MWh)"
     );
 }
 /// The layout optimization with separated boundaries

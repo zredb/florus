@@ -1,11 +1,13 @@
-﻿//! Layout Optimization Scipy Module
+//! Layout Optimization Scipy Module
 //!
-//! Provides scipy-style layout optimization using coordinate descent algorithm.
+//! Provides scipy-style layout optimization with the SLSQP solver, which is a
+//! port of scipy's solver (see [`super::slsqp`]).
 //! This module corresponds to layout_optimization_scipy.py in Python FLORIS v4.6.
 
 use super::layout_optimization_base::{
     Boundary, LayoutOptimizationConfig, LayoutOptimizationResult, LayoutOptimizer,
 };
+use super::slsqp::minimize_slsqp;
 use crate::floris_model::FlorisModel;
 use crate::types::{Array1, Array2, Float};
 use crate::Result;
@@ -20,7 +22,15 @@ pub fn geometric_yaw_angles(fmodel: &mut FlorisModel) -> Result<Array2> {
     Ok(result.yaw_angles)
 }
 
-/// LayoutOptimizationScipy - Layout optimization using scipy-style optimization
+/// LayoutOptimizationScipy - Layout optimization using scipy's SLSQP solver
+///
+/// The optimization variables are the normalized coordinates of the turbines
+/// (the x coordinates followed by the y coordinates), the objective is the
+/// negative annual energy (or value) production normalized with the value of
+/// the initial layout, and the constraints are the Kolmogorov-Smirnov
+/// constraint of the minimum distance between the turbines and the distance of
+/// every turbine to the boundary. The derivatives are the forward differences
+/// with a step of 0.01 in the normalized coordinates.
 ///
 /// Corresponds to floris.optimization.LayoutOptimizationScipy in Python FLORIS v4.6
 #[derive(Debug, Clone)]
@@ -106,6 +116,120 @@ impl LayoutOptimizationScipy {
 
         y
     }
+
+    /// The physical coordinates of the normalized optimization variables (the x
+    /// coordinates followed by the y coordinates).
+    fn denormalize_variables(&self, x: &[Float]) -> (Vec<Float>, Vec<Float>) {
+        let n = self.n_turbines;
+        let px = x[..n]
+            .iter()
+            .map(|&v| self.denormalize(v, self.xmin, self.xmax))
+            .collect();
+        let py = x[n..]
+            .iter()
+            .map(|&v| self.denormalize(v, self.ymin, self.ymax))
+            .collect();
+        (px, py)
+    }
+
+    /// The Kolmogorov-Smirnov constraint of the minimum distance between the
+    /// turbines (Python's `_space_constraint`).
+    ///
+    /// The constraint is satisfied when it is not positive.
+    fn space_constraint(&self, x: &[Float], y: &[Float], min_dist: Float) -> Float {
+        // The distance of every turbine to the closest other turbine
+        let mut g = vec![0.0; x.len()];
+        for i in 0..x.len() {
+            let mut closest = Float::INFINITY;
+            for j in 0..x.len() {
+                if i == j {
+                    continue;
+                }
+                let dx = x[i] - x[j];
+                let dy = y[i] - y[j];
+                let distance = (dx * dx + dy * dy).sqrt();
+                if distance < closest {
+                    closest = distance;
+                }
+            }
+            g[i] = 1.0 - closest / min_dist;
+        }
+
+        // The Kolmogorov-Smirnov aggregation (OpenMDAO's KSComp)
+        let rho = 500.0;
+        let g_max = g.iter().copied().fold(Float::NEG_INFINITY, Float::max);
+        let sum: Float = g.iter().map(|&value| (rho * (value - g_max)).exp()).sum();
+        let ks_constraint = g_max + (1.0 / rho) * sum.ln();
+
+        // The constraint is satisfied when it is not positive
+        -ks_constraint
+    }
+}
+
+/// The gradient of a function by forward differences (scipy's
+/// `approx_derivative` with the '2-point' method and an absolute step).
+///
+/// The step is reduced (flipped) when the perturbed point would leave the
+/// bounds of the variables, which are the unit interval.
+fn approx_gradient<F>(fun: &mut F, x: &[Float], step: Float) -> Vec<Float>
+where
+    F: FnMut(&[Float]) -> Float,
+{
+    let f0 = fun(x);
+    let n = x.len();
+    let mut gradient = vec![0.0; n];
+    let mut perturbed = x.to_vec();
+
+    for i in 0..n {
+        let h = adjusted_step(x[i], step);
+        let original = perturbed[i];
+        perturbed[i] = original + h;
+        let f1 = fun(&perturbed);
+        let dx = perturbed[i] - original;
+        perturbed[i] = original;
+        gradient[i] = (f1 - f0) / dx;
+    }
+
+    gradient
+}
+
+/// The Jacobian of a function by forward differences (scipy's
+/// `approx_derivative` with the '2-point' method and an absolute step).
+fn approx_jacobian<F>(fun: &mut F, x: &[Float], step: Float) -> Vec<Vec<Float>>
+where
+    F: FnMut(&[Float]) -> Vec<Float>,
+{
+    let f0 = fun(x);
+    let n = x.len();
+    let m = f0.len();
+    let mut jacobian = vec![vec![0.0; n]; m];
+    let mut perturbed = x.to_vec();
+
+    for i in 0..n {
+        let h = adjusted_step(x[i], step);
+        let original = perturbed[i];
+        perturbed[i] = original + h;
+        let f1 = fun(&perturbed);
+        let dx = perturbed[i] - original;
+        perturbed[i] = original;
+        for k in 0..m {
+            jacobian[k][i] = (f1[k] - f0[k]) / dx;
+        }
+    }
+
+    jacobian
+}
+
+/// The step of the finite differences of a variable of the unit interval.
+///
+/// The step is flipped when the perturbed point would leave the interval
+/// (scipy's `_adjust_scheme_to_bounds` with the '1-sided' scheme).
+fn adjusted_step(value: Float, step: Float) -> Float {
+    if value + step > 1.0 {
+        -step
+    } else {
+        step
+    }
 }
 
 impl LayoutOptimizer for LayoutOptimizationScipy {
@@ -188,164 +312,87 @@ impl LayoutOptimizer for LayoutOptimizationScipy {
         let initial_x = self.farm_layout_x();
         let initial_y = self.farm_layout_y();
 
-        // Create optimization variables in normalized space [0, 1]
+        // The value of the initial layout (Python's `initial_AEP_or_AVP`,
+        // which normalizes the objective of the optimization)
         let initial_value = self.calculate_objective(&initial_x, &initial_y);
-        let mut x_norm: Vec<Float> = (0..self.n_turbines)
-            .map(|i| self.normalize(initial_x[i], self.xmin, self.xmax))
-            .collect();
-        let mut y_norm: Vec<Float> = (0..self.n_turbines)
-            .map(|i| self.normalize(initial_y[i], self.ymin, self.ymax))
-            .collect();
-
-        // A Hooke-Jeeves pattern search: the turbines are moved one at a time
-        // along the eight compass directions (the first move that improves
-        // the objective is taken), and the whole layout is then moved along
-        // the direction of the last successful move (the "pattern move",
-        // which allows the search to leave a local optimum).
-        //
-        // Python optimizes the same problem with scipy's SLSQP, which uses
-        // finite-difference gradients and converges to the same optimum.
-        let max_iter = self.config.max_iterations;
-        let tolerance = self.config.tolerance;
-        // The search is run twice: once with the pattern move and once
-        // without it (the pattern move can leave a local optimum that the
-        // plain pattern search does not reach); the best layout of the two
-        // runs is kept.
-        let mut total_iterations = 0;
-        let mut best_x = x_norm.clone();
-        let mut best_y = y_norm.clone();
-        let mut best_value = Float::NEG_INFINITY;
-        for use_pattern_move in [false, true] {
-            let mut x_norm = x_norm.clone();
-            let mut y_norm = y_norm.clone();
-            let mut iteration = 0;
-            let mut step = 0.1;
-            let mut current_value = self.calculate_objective(
-                &Array1::from_vec(x_norm.clone()),
-                &Array1::from_vec(y_norm.clone()),
-            );
-            // The direction of the last successful move
-            let mut direction = (0.0, 0.0);
-
-            while iteration < max_iter && step > tolerance {
-                iteration += 1;
-
-                // The exploratory phase: the turbines are moved one at a time
-                // along the eight compass directions
-                let mut improved = false;
-                'turbine: for ti in 0..self.n_turbines {
-                    let original_x = x_norm[ti];
-                    let original_y = y_norm[ti];
-
-                    for k in 0..8 {
-                        let angle = k as Float * std::f64::consts::FRAC_PI_4;
-                        let (dx, dy) = (angle.cos() * step, angle.sin() * step);
-
-                        x_norm[ti] = (original_x + dx).clamp(0.0, 1.0);
-                        y_norm[ti] = (original_y + dy).clamp(0.0, 1.0);
-
-                        let new_x: Array1 = x_norm
-                            .iter()
-                            .map(|&v| self.denormalize(v, self.xmin, self.xmax))
-                            .collect();
-                        let new_y: Array1 = y_norm
-                            .iter()
-                            .map(|&v| self.denormalize(v, self.ymin, self.ymax))
-                            .collect();
-
-                        // The turbines have to stay inside the boundary (the
-                        // points on the boundary are allowed) and keep their
-                        // minimum distance from each other
-                        if self.check_boundary_distance(&new_x, &new_y)
-                            && self.calculate_min_distance(&new_x, &new_y) >= min_dist
-                        {
-                            let new_value = self.calculate_objective(&new_x, &new_y);
-
-                            if new_value > current_value {
-                                current_value = new_value;
-                                direction = (dx, dy);
-                                improved = true;
-                                break 'turbine;
-                            }
-                        }
-
-                        // Revert
-                        x_norm[ti] = original_x;
-                        y_norm[ti] = original_y;
-                    }
-                }
-
-                if improved {
-                    continue;
-                }
-
-                if !use_pattern_move {
-                    // No improvement: reduce the step size
-                    step *= 0.5;
-                    continue;
-                }
-
-                // The pattern move: the whole layout is moved along the
-                // direction of the last successful move
-                if direction.0 != 0.0 || direction.1 != 0.0 {
-                    let original_x = x_norm.clone();
-                    let original_y = y_norm.clone();
-                    for ti in 0..self.n_turbines {
-                        x_norm[ti] = (x_norm[ti] + direction.0 * step).clamp(0.0, 1.0);
-                        y_norm[ti] = (y_norm[ti] + direction.1 * step).clamp(0.0, 1.0);
-                    }
-
-                    let new_x: Array1 = x_norm
-                        .iter()
-                        .map(|&v| self.denormalize(v, self.xmin, self.xmax))
-                        .collect();
-                    let new_y: Array1 = y_norm
-                        .iter()
-                        .map(|&v| self.denormalize(v, self.ymin, self.ymax))
-                        .collect();
-
-                    if self.check_boundary_distance(&new_x, &new_y)
-                        && self.calculate_min_distance(&new_x, &new_y) >= min_dist
-                    {
-                        let new_value = self.calculate_objective(&new_x, &new_y);
-                        if new_value > current_value {
-                            current_value = new_value;
-                            continue;
-                        }
-                    }
-
-                    // Revert the pattern move
-                    x_norm = original_x;
-                    y_norm = original_y;
-                }
-
-                // No improvement: reduce the step size
-                step *= 0.5;
-                direction = (0.0, 0.0);
-            }
-            total_iterations += iteration;
-            // Keep the best layout of the two searches
-            if current_value > best_value {
-                best_value = current_value;
-                best_x = x_norm;
-                best_y = y_norm;
-            }
-        }
-
-        // The value of the initial layout (used for the improvement)
         self.initial_value = initial_value;
-        x_norm = best_x;
-        y_norm = best_y;
+
+        // The optimization variables are the normalized coordinates of the
+        // turbines: the x coordinates followed by the y coordinates (Python's
+        // `x0`).
+        let n = self.n_turbines;
+        let mut x0: Vec<Float> = Vec::with_capacity(2 * n);
+        x0.extend((0..n).map(|i| self.normalize(initial_x[i], self.xmin, self.xmax)));
+        x0.extend((0..n).map(|i| self.normalize(initial_y[i], self.ymin, self.ymax)));
+
+        // The bounds of the variables (Python's `_set_opt_bounds`)
+        let xl = vec![0.0; 2 * n];
+        let xu = vec![1.0; 2 * n];
+
+        // The step of the finite differences of the derivatives (Python's
+        // `eps` option)
+        let step = self.config.eps;
+
+        // The objective: the negative annual energy (or value) production,
+        // normalized with the value of the initial layout (Python's
+        // `_obj_func`).
+        let mut objective = |x: &[Float]| -> Float {
+            let (px, py) = self.denormalize_variables(x);
+            -self.calculate_objective(&Array1::from_vec(px), &Array1::from_vec(py)) / initial_value
+        };
+        let mut objective_gradient = |x: &[Float]| -> Vec<Float> {
+            approx_gradient(
+                &mut |point: &[Float]| {
+                    let (px, py) = self.denormalize_variables(point);
+                    -self.calculate_objective(&Array1::from_vec(px), &Array1::from_vec(py))
+                        / initial_value
+                },
+                x,
+                step,
+            )
+        };
+
+        // The constraints: the Kolmogorov-Smirnov constraint of the minimum
+        // distance between the turbines (Python's `_space_constraint`) and
+        // the distance of every turbine to the boundary (Python's
+        // `_distance_from_boundaries`).
+        let mut constraints = |x: &[Float]| -> Vec<Float> {
+            let (px, py) = self.denormalize_variables(x);
+            let mut values = vec![self.space_constraint(&px, &py, min_dist)];
+            values.extend((0..n).map(|i| self.boundaries().signed_distance(px[i], py[i])));
+            values
+        };
+        let mut constraints_jacobian = |x: &[Float]| -> Vec<Vec<Float>> {
+            approx_jacobian(
+                &mut |point: &[Float]| {
+                    let (px, py) = self.denormalize_variables(point);
+                    let mut values = vec![self.space_constraint(&px, &py, min_dist)];
+                    values.extend((0..n).map(|i| self.boundaries().signed_distance(px[i], py[i])));
+                    values
+                },
+                x,
+                step,
+            )
+        };
+
+        // The optimization (Python's `scipy.optimize.minimize` with the
+        // SLSQP method)
+        let result = minimize_slsqp(
+            &x0,
+            &mut objective,
+            &mut objective_gradient,
+            &mut constraints,
+            &mut constraints_jacobian,
+            &xl,
+            &xu,
+            self.config.max_iterations,
+            self.config.tolerance,
+        );
 
         // Convert back to physical coordinates
-        let opt_x: Array1 = x_norm
-            .iter()
-            .map(|&v| self.denormalize(v, self.xmin, self.xmax))
-            .collect();
-        let opt_y: Array1 = y_norm
-            .iter()
-            .map(|&v| self.denormalize(v, self.ymin, self.ymax))
-            .collect();
+        let (opt_x, opt_y) = self.denormalize_variables(&result.x);
+        let opt_x = Array1::from_vec(opt_x);
+        let opt_y = Array1::from_vec(opt_y);
 
         let final_value = self.calculate_objective(&opt_x, &opt_y);
         let improvement_pct = if self.initial_value > 0.0 {
@@ -357,7 +404,7 @@ impl LayoutOptimizer for LayoutOptimizationScipy {
             x: opt_x,
             y: opt_y,
             value: final_value,
-            iterations: total_iterations,
+            iterations: result.nit,
             improvement_pct,
         })
     }
