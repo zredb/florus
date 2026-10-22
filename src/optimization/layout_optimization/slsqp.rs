@@ -562,28 +562,39 @@ fn lsq(
     let mut wb = vec![0.0; ld];
 
     let mut cursor = 0usize;
-    for j in 0..n {
+    for j in 0..orign {
         let diag = lf[cursor].sqrt();
         cursor += 1;
         wa[j + j * ld] = diag;
-        for i in (j + 1)..n {
+        for i in (j + 1)..orign {
             wa[j + i * ld] = lf[cursor] * diag;
             cursor += 1;
         }
     }
 
     // b = -1/sqrt(d) * inv(Lf) * gradx
-    wb[..n].copy_from_slice(&gradx[..n]);
-    dtpsv_l_unit(lf, &mut wb[..n], n);
+    wb[..orign].copy_from_slice(&gradx[..orign]);
+    dtpsv_l_unit(lf, &mut wb[..orign], orign);
     cursor = 0;
-    for i in 0..n {
+    for i in 0..orign {
         wb[i] /= -lf[cursor].sqrt();
-        cursor += n - i;
+        cursor += orign - i;
     }
 
     if augment {
         wa[ld * ld - 1] = aug_weight;
+        // The dummy variable is added to the problem
+        x[orign] = 1.0;
     }
+
+    // The number of the variables of the least squares problem (the dummy
+    // variable is included when the problem is augmented)
+    let n = if augment { orign + 1 } else { orign };
+
+    // The bounds of the variables (the dummy variable is bounded by the
+    // unit interval)
+    let lower = |i: usize| if i < orign { xl[i] } else { 0.0 };
+    let upper = |i: usize| if i < orign { xu[i] } else { 1.0 };
 
     // The inequality constraints: the bounds of the step become the rows of
     // the G matrix
@@ -596,18 +607,18 @@ fn lsq(
         wh[i] = -d[meq + i];
     }
     for i in 0..n {
-        if xl[i].is_nan() {
+        if lower(i).is_nan() {
             nan_count += 1;
         } else {
-            wh[nrow] = xl[i];
+            wh[nrow] = lower(i);
             nrow += 1;
         }
     }
     for i in 0..n {
-        if xu[i].is_nan() {
+        if upper(i).is_nan() {
             nan_count += 1;
         } else {
-            wh[nrow] = -xu[i];
+            wh[nrow] = -upper(i);
             nrow += 1;
         }
     }
@@ -628,13 +639,13 @@ fn lsq(
     // The rows of the bounds
     let mut nrow = mineq;
     for i in 0..n {
-        if !xl[i].is_nan() {
+        if !lower(i).is_nan() {
             wg[nrow + i * n_wg_rows] = 1.0;
             nrow += 1;
         }
     }
     for i in 0..n {
-        if !xu[i].is_nan() {
+        if !upper(i).is_nan() {
             wg[nrow + i * n_wg_rows] = -1.0;
             nrow += 1;
         }
@@ -671,10 +682,10 @@ fn lsq(
 
     // The solution is clamped to the bounds
     for i in 0..n {
-        if !xl[i].is_nan() && x[i] < xl[i] {
-            x[i] = xl[i];
-        } else if !xu[i].is_nan() && x[i] > xu[i] {
-            x[i] = xu[i];
+        if !lower(i).is_nan() && x[i] < lower(i) {
+            x[i] = lower(i);
+        } else if !upper(i).is_nan() && x[i] > upper(i) {
+            x[i] = upper(i);
         }
     }
 
