@@ -286,3 +286,86 @@ fn test_approx_floris_model_reproduces_the_expected_power() {
         100.0 * difference
     );
 }
+
+/// The approximate model example (`examples_uncertain/002_approx_floris_model.py`):
+/// the random walk on the wind speed is drawn with numpy's `default_rng(0)`,
+/// so the wind speeds and the expected powers have to match Python's.
+#[test]
+fn test_approx_floris_model_example_matches_python() {
+    use florus::numpy_random::NumpyGenerator;
+    use florus::uncertain::ApproxFlorisModel;
+
+    let n = 5000;
+    let n_turbines = 25;
+
+    // The random walk on the wind speed (Python: np.random.default_rng(0))
+    let mut rng = NumpyGenerator::new(0);
+    let mut wind_speeds = vec![10.0; n];
+    for i in 1..n {
+        wind_speeds[i] = wind_speeds[i - 1] + 0.25 * rng.normal(0.0, 1.0);
+        if wind_speeds[i] < 5.0 {
+            wind_speeds[i] = 5.0;
+        }
+        if wind_speeds[i] > 20.0 {
+            wind_speeds[i] = 20.0;
+        }
+    }
+
+    // The first wind speeds of the walk (Python reference)
+    let expected_speeds = [
+        10.0,
+        10.031432555273348,
+        9.998406339450522,
+        10.158512002061343,
+        10.184737031349602,
+        10.050819688059324,
+    ];
+    for (value, expected) in wind_speeds.iter().zip(expected_speeds.iter()) {
+        assert!(
+            (value - expected).abs() < 1e-12,
+            "the wind speed {value} (expected {expected})"
+        );
+    }
+
+    let time_series = TimeSeries::new(
+        Array1::from_elem(n, 270.0),
+        Array1::from_vec(wind_speeds),
+        Array1::from_elem(n, 0.06),
+    )
+    .expect("time series");
+
+    let layout_x = Array1::from_iter((0..n_turbines).map(|i| i as f64 * 500.0));
+    let layout_y = Array1::from_elem(n_turbines, 0.0);
+
+    let mut model = FlorisModel::from_file("examples/inputs/gch.yaml").expect("model");
+    model.set_layout(&layout_x, &layout_y).expect("layout");
+    model.set_wind_data(&time_series).expect("wind data");
+    model.run().expect("run");
+
+    let mut approx = ApproxFlorisModel::new(
+        FlorisModel::from_file("examples/inputs/gch.yaml").expect("model"),
+        0.5,
+    )
+    .expect("approx model");
+    approx.set_layout(&layout_x, &layout_y).expect("layout");
+    approx.set_wind_data(&time_series).expect("wind data");
+    approx.run().expect("run");
+
+    // Python: 47.68 MW and 47.72 MW
+    let exact = model
+        .get_expected_farm_power(None, None)
+        .expect("expected power")
+        / 1e6;
+    let approximate = approx
+        .get_expected_farm_power(None)
+        .expect("expected power")
+        / 1e6;
+    assert!(
+        (exact - 47.68).abs() < 0.01,
+        "the expected power of the full model: {exact} MW (expected 47.68 MW)"
+    );
+    assert!(
+        (approximate - 47.72).abs() < 0.01,
+        "the expected power of the approximate model: {approximate} MW (expected 47.72 MW)"
+    );
+}

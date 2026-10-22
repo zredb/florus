@@ -5495,7 +5495,15 @@ UNCERTAIN 35 285 ['3.125000', '0.000000', '0.000000'] 5177676.308966 5185583.628
                                               near the northern boundary (the speed up of the
                                               northern winds), the optimization with the single
                                               wind rose places them in the southern corners
-                                              (as in Python)
+                                              (as in Python); the final AEPs are 40.7 GWh
+                                              (WRG), 44.0 GWh (het) and 40.4 GWh (single
+                                              wind rose) against Python's 40.9, 44.0 and 40.3
+                                              GWh
+   uncertain_002      identical powers        the random walk on the wind speed is drawn with
+                                              numpy's default_rng (the PCG64 bit generator with
+                                              the ziggurat normal distribution) and the expected
+                                              powers are 47.68 MW and 47.72 MW, exactly as in
+                                              Python
 
  Engine gaps that were fixed in this round:
    1. Heterogeneous inflow was never applied to the velocity field -> now interpolated onto the
@@ -5530,14 +5538,6 @@ UNCERTAIN 35 285 ['3.125000', '0.000000', '0.000000'] 5177676.308966 5185583.628
       search over the eight compass directions.
 
  Still unaligned (and why):
-   * uncertain_002
-       - The ApproxFlorisModel surrogate is ported (florus::uncertain::ApproxFlorisModel: an
-         uncertain model with a single wind direction sample point and a configurable resolution
-         of the expanded inputs) and the example is a 1:1 port, but the random walk on the wind
-         speed is drawn with numpy's default_rng(0) (PCG64 with the ziggurat normal
-         distribution), which cannot be reproduced in Rust: the realization of the walk, and
-         therefore the expected power, differs from Python's. The run times are not comparable
-         either.
    * layout_optimization_001 and 002
        - layout_optimization_001, 002, 003 and 005 are 1:1 ports (the random wind resource and the
          heterogeneous inflow are identical to Python's and the AEP of the initial layout matches

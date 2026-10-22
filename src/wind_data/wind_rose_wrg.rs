@@ -436,24 +436,26 @@ impl WindRoseWRG {
         let n_sectors = self.wrg_data.n_sectors;
         let n_gid = nx * ny;
 
-        // The grid point that is the closest to the reference location
+        // The grid point that is the closest to the reference location (the
+        // grid points are numbered as in the WRG file: the x coordinate
+        // changes the slowest)
         let mut gid_reference = 0usize;
         if let (Some(x), Some(y)) = (x_loc, y_loc) {
             let mut best = Float::INFINITY;
-            for j in 0..ny {
-                for i in 0..nx {
+            for i in 0..nx {
+                for j in 0..ny {
                     let dx = self.wrg_data.x_array[i] - x;
                     let dy = self.wrg_data.y_array[j] - y;
                     let distance = dx * dx + dy * dy;
                     if distance < best {
                         best = distance;
-                        gid_reference = j * nx + i;
+                        gid_reference = i * ny + j;
                     }
                 }
             }
         }
-        let x_ref = self.wrg_data.x_array[gid_reference % nx];
-        let y_ref = self.wrg_data.y_array[gid_reference / nx];
+        let x_ref = self.wrg_data.x_array[gid_reference / ny];
+        let y_ref = self.wrg_data.y_array[gid_reference % ny];
 
         // The wind rose at the reference location
         let wind_rose = self.get_wind_rose_at_point(x_ref, y_ref, None, None, None);
@@ -471,8 +473,10 @@ impl WindRoseWRG {
         let mut speed_multipliers = Array2::zeros((n_sectors, n_gid));
         for sector in 0..n_sectors {
             for gid in 0..n_gid {
-                let i = gid % nx;
-                let j = gid / nx;
+                // The grid points are numbered as in the WRG file: the x
+                // coordinate changes the slowest
+                let i = gid / ny;
+                let j = gid % ny;
                 let (_, freq) = Self::_generate_wind_speed_frequencies_from_weibull_internal(
                     &wind_speeds,
                     self.wrg_data.weibull_a[[i, j, sector]],
@@ -500,14 +504,15 @@ impl WindRoseWRG {
             *value = value.cbrt();
         }
 
-        // The heterogeneous map of the grid
+        // The heterogeneous map of the grid (the grid points are numbered as
+        // in the WRG file: the x coordinate changes the slowest)
         let mut x_gid = Vec::with_capacity(n_gid);
         let mut y_gid = Vec::with_capacity(n_gid);
-        for j in 0..ny {
-            for i in 0..nx {
-                x_gid.push(self.wrg_data.x_array[i]);
-                y_gid.push(self.wrg_data.y_array[j]);
-            }
+        for gid in 0..n_gid {
+            let i = gid / ny;
+            let j = gid % ny;
+            x_gid.push(self.wrg_data.x_array[i]);
+            y_gid.push(self.wrg_data.y_array[j]);
         }
         let x_gid = Array1::from_vec(x_gid);
         let y_gid = Array1::from_vec(y_gid);

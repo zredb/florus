@@ -3,6 +3,7 @@ pub mod floris_config;
 pub mod floris_model;
 pub mod heterogeneous_map;
 pub mod numpy_random;
+pub mod numpy_ziggurat;
 pub mod optimization;
 pub mod output_formatter;
 /// FLORUS: Rust implementation of FLORIS wind farm wake modeling software

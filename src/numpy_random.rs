@@ -10,9 +10,9 @@
 //! (`mt19937_seed`, `genrand_uint32`, `random_double`, `legacy_gauss`,
 //! `buffered_bounded_masked_uint32`).
 //!
-//! Note: numpy's newer `Generator` (`numpy.random.default_rng`) uses the
-//! PCG64 bit generator with the ziggurat normal distribution, which is a
-//! different stream; it is not reproduced here.
+//! The newer `Generator` (`numpy.random.default_rng`, the PCG64 bit
+//! generator with the ziggurat normal distribution) is implemented by
+//! [`NumpyGenerator`].
 
 use crate::types::Float;
 
@@ -223,11 +223,218 @@ impl NumpyRandomState {
     }
 }
 
+/// The multiplier of the PCG64 bit generator (numpy's
+/// `PCG_DEFAULT_MULTIPLIER_128`).
+const PCG64_MULTIPLIER: u128 = ((2549297995355413924u64 as u128) << 64) | 4865540595714422341u128;
+
+/// The constants of numpy's `SeedSequence` (numpy `random/bit_generator.pyx`).
+const INIT_A: u32 = 0x43b0_d7e5;
+const MULT_A: u32 = 0x931e_8875;
+const INIT_B: u32 = 0x8b51_f9dd;
+const MULT_B: u32 = 0x58f3_8ded;
+const MIX_MULT_L: u32 = 0xca01_f9dd;
+const MIX_MULT_R: u32 = 0x4973_f715;
+const XSHIFT: u32 = 16;
+
+/// The size of the entropy pool of numpy's `SeedSequence`.
+const POOL_SIZE: usize = 4;
+
+/// numpy's `hashmix`.
+fn hashmix(value: u32, hash_const: &mut u32) -> u32 {
+    let mut value = value ^ *hash_const;
+    *hash_const = hash_const.wrapping_mul(MULT_A);
+    value = value.wrapping_mul(*hash_const);
+    value ^ (value >> XSHIFT)
+}
+
+/// numpy's `mix`.
+fn mix(x: u32, y: u32) -> u32 {
+    let result = MIX_MULT_L
+        .wrapping_mul(x)
+        .wrapping_sub(MIX_MULT_R.wrapping_mul(y));
+    result ^ (result >> XSHIFT)
+}
+
+/// The entropy pool of numpy's `SeedSequence` (the seed is broken up into
+/// 32-bit words, the lowest bits first).
+fn seed_sequence_pool(seed: u64) -> [u32; POOL_SIZE] {
+    let mut entropy: Vec<u32> = Vec::new();
+    let mut value = seed;
+    while value > 0 {
+        entropy.push((value & 0xffff_ffff) as u32);
+        value >>= 32;
+    }
+    if entropy.is_empty() {
+        entropy.push(0);
+    }
+
+    // Mix the entropy into the pool (numpy's `mix_entropy`)
+    let mut mixer = [0u32; POOL_SIZE];
+    let mut hash_const = INIT_A;
+    for (i, value) in mixer.iter_mut().enumerate() {
+        let entropy_value = entropy.get(i).copied().unwrap_or(0);
+        *value = hashmix(entropy_value, &mut hash_const);
+    }
+    for i_src in 0..POOL_SIZE {
+        let source = mixer[i_src];
+        for (i_dst, value) in mixer.iter_mut().enumerate() {
+            if i_src != i_dst {
+                let hashed = hashmix(source, &mut hash_const);
+                *value = mix(*value, hashed);
+            }
+        }
+    }
+    for &entropy_value in entropy.iter().skip(POOL_SIZE) {
+        for value in mixer.iter_mut() {
+            let hashed = hashmix(entropy_value, &mut hash_const);
+            *value = mix(*value, hashed);
+        }
+    }
+
+    mixer
+}
+
+/// The state of numpy's `SeedSequence.generate_state(n_words, uint64)`.
+fn seed_sequence_state(seed: u64, n_words: usize) -> Vec<u64> {
+    let pool = seed_sequence_pool(seed);
+    let mut hash_const = INIT_B;
+    let mut words: Vec<u32> = Vec::with_capacity(2 * n_words);
+    for pool_value in pool.iter().cycle().take(2 * n_words) {
+        let mut data_val = *pool_value;
+        data_val ^= hash_const;
+        hash_const = hash_const.wrapping_mul(MULT_B);
+        data_val = data_val.wrapping_mul(hash_const);
+        data_val ^= data_val >> XSHIFT;
+        words.push(data_val);
+    }
+
+    // The 32-bit words are combined into 64-bit words (little endian)
+    words
+        .chunks(2)
+        .map(|chunk| chunk[0] as u64 | ((chunk[1] as u64) << 32))
+        .collect()
+}
+
+/// numpy's `Generator`: the PCG64 bit generator with the ziggurat normal
+/// distribution (`numpy.random.default_rng`).
+#[derive(Debug, Clone)]
+pub struct NumpyGenerator {
+    /// The 128-bit state of the bit generator
+    state: u128,
+    /// The 128-bit increment of the bit generator
+    inc: u128,
+}
+
+impl NumpyGenerator {
+    /// Create a generator with the given seed (numpy's
+    /// `np.random.default_rng(seed)`).
+    pub fn new(seed: u64) -> Self {
+        // The state of the bit generator (numpy's `pcg64_set_seed`): the
+        // first two words are the seed and the last two the increment; the
+        // high halves come first
+        let words = seed_sequence_state(seed, 4);
+        let initstate = ((words[0] as u128) << 64) | words[1] as u128;
+        let initseq = ((words[2] as u128) << 64) | words[3] as u128;
+
+        // The increment (numpy's `pcg_setseq_128_srandom_r`)
+        let inc = (((initseq >> 64) << 1 | (initseq & 0xffff_ffff_ffff_ffff) >> 63) << 64)
+            | ((initseq & 0xffff_ffff_ffff_ffff) << 1 | 1);
+
+        // The state
+        let mut state: u128 = 0;
+        state = state.wrapping_mul(PCG64_MULTIPLIER).wrapping_add(inc);
+        state = state.wrapping_add(initstate);
+        state = state.wrapping_mul(PCG64_MULTIPLIER).wrapping_add(inc);
+
+        Self { state, inc }
+    }
+
+    /// The next 64-bit random number (numpy's `next_uint64`).
+    pub fn next_u64(&mut self) -> u64 {
+        self.state = self
+            .state
+            .wrapping_mul(PCG64_MULTIPLIER)
+            .wrapping_add(self.inc);
+
+        // The output function of the XSL-RR 128/64 generator
+        let hi = (self.state >> 64) as u64;
+        let lo = self.state as u64;
+        let value = hi ^ lo;
+        let rot = ((hi >> 58) & 63) as u32;
+        value.rotate_right(rot)
+    }
+
+    /// A uniformly distributed number in [0, 1) (numpy's `random_double`).
+    pub fn next_double(&mut self) -> Float {
+        (self.next_u64() >> 11) as Float * (1.0 / 9_007_199_254_740_992.0)
+    }
+
+    /// A uniformly distributed number in [0, 1) (numpy's `random`).
+    pub fn random_sample(&mut self) -> Float {
+        self.next_double()
+    }
+
+    /// `n` uniformly distributed numbers in [0, 1).
+    pub fn random_sample_vec(&mut self, n: usize) -> Vec<Float> {
+        (0..n).map(|_| self.random_sample()).collect()
+    }
+
+    /// A normally distributed number (numpy's `standard_normal`: the
+    /// ziggurat method).
+    pub fn standard_normal(&mut self) -> Float {
+        use crate::numpy_ziggurat::{FI, KI, NOR_INV_R, NOR_R, WI};
+
+        loop {
+            let mut r = self.next_u64();
+            let idx = (r & 0xff) as usize;
+            r >>= 8;
+            let rabs = (r >> 1) & 0x000f_ffff_ffff_ffff;
+            let x = rabs as Float * WI[idx] * if r & 1 != 0 { -1.0 } else { 1.0 };
+            if rabs < KI[idx] {
+                // 99.3 % of the time the value is returned here
+                return x;
+            }
+            if idx == 0 {
+                // The tail of the distribution
+                loop {
+                    let xx = -NOR_INV_R * (-self.next_double()).ln_1p();
+                    let yy = -(-self.next_double()).ln_1p();
+                    if yy + yy > xx * xx {
+                        return if (rabs >> 8) & 1 != 0 {
+                            -(NOR_R + xx)
+                        } else {
+                            NOR_R + xx
+                        };
+                    }
+                }
+            } else if (FI[idx - 1] - FI[idx]) * self.next_double() + FI[idx] < (-0.5 * x * x).exp()
+            {
+                return x;
+            }
+        }
+    }
+
+    /// `n` normally distributed numbers (numpy's `standard_normal`).
+    pub fn standard_normal_vec(&mut self, n: usize) -> Vec<Float> {
+        (0..n).map(|_| self.standard_normal()).collect()
+    }
+
+    /// A normally distributed number with the given mean and standard
+    /// deviation (numpy's `normal`).
+    pub fn normal(&mut self, loc: Float, scale: Float) -> Float {
+        loc + scale * self.standard_normal()
+    }
+
+    /// A uniformly distributed number in [low, high) (numpy's `uniform`).
+    pub fn uniform(&mut self, low: Float, high: Float) -> Float {
+        low + (high - low) * self.random_sample()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
-
     // The reference values are from numpy:
     //   np.random.seed(1); np.random.random_sample(5)
     //   np.random.seed(1); np.random.randn(5)
@@ -293,5 +500,80 @@ mod tests {
         let mut rng = NumpyRandomState::new(1);
         let value = rng.choice(&[1.0, 2.0, 3.0], &[0.2, 0.3, 0.5]);
         assert_relative_eq!(value, 2.0, epsilon = 1e-15);
+    }
+
+    // The reference values of numpy's `Generator` are from:
+    //   np.random.default_rng(0).standard_normal(8)
+    //   np.random.default_rng(0).random(8)
+    //   np.random.default_rng(42).standard_normal(4)
+    //   np.random.default_rng(0).normal(0, 0.25, 6)
+    #[test]
+    fn test_generator_standard_normal_matches_numpy() {
+        let mut rng = NumpyGenerator::new(0);
+        let values = rng.standard_normal_vec(8);
+        let expected = [
+            0.1257302210933933,
+            -0.1321048632913019,
+            0.6404226504432821,
+            0.10490011715303971,
+            -0.535669373161111,
+            0.36159505490948474,
+            1.3040000451301372,
+            0.9470809631292422,
+        ];
+        for (value, expected) in values.iter().zip(expected.iter()) {
+            assert_relative_eq!(*value, *expected, epsilon = 1e-15);
+        }
+    }
+
+    #[test]
+    fn test_generator_random_matches_numpy() {
+        let mut rng = NumpyGenerator::new(0);
+        let values = rng.random_sample_vec(8);
+        let expected = [
+            0.6369616873214543,
+            0.2697867137638703,
+            0.04097352393619469,
+            0.016527635528529094,
+            0.8132702392002724,
+            0.9127555772777217,
+            0.6066357757671799,
+            0.7294965609839984,
+        ];
+        for (value, expected) in values.iter().zip(expected.iter()) {
+            assert_relative_eq!(*value, *expected, epsilon = 1e-15);
+        }
+    }
+
+    #[test]
+    fn test_generator_seeded_stream_matches_numpy() {
+        let mut rng = NumpyGenerator::new(42);
+        let values = rng.standard_normal_vec(4);
+        let expected = [
+            0.30471707975443135,
+            -1.0399841062404955,
+            0.7504511958064572,
+            0.9405647163912139,
+        ];
+        for (value, expected) in values.iter().zip(expected.iter()) {
+            assert_relative_eq!(*value, *expected, epsilon = 1e-15);
+        }
+    }
+
+    #[test]
+    fn test_generator_normal_matches_numpy() {
+        let mut rng = NumpyGenerator::new(0);
+        let values: Vec<Float> = (0..6).map(|_| rng.normal(0.0, 0.25)).collect();
+        let expected = [
+            0.031432555273348324,
+            -0.03302621582282547,
+            0.16010566261082051,
+            0.026225029288259927,
+            -0.13391734329027774,
+            0.09039876372737118,
+        ];
+        for (value, expected) in values.iter().zip(expected.iter()) {
+            assert_relative_eq!(*value, *expected, epsilon = 1e-15);
+        }
     }
 }

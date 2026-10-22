@@ -45,6 +45,12 @@ fn optimize(
     fmodel.set_layout(layout_x, layout_y)?;
     fmodel.run()?;
 
+    // The AEP of the initial layout (Python's `describe`)
+    let initial_aep = fmodel.get_expected_farm_power(None, None)? * 8760.0 / 1e9;
+    println!("=====================================");
+    println!("{label}");
+    println!("  Initial AEP = {initial_aep:.3} [GWh]");
+
     let config = LayoutOptimizationConfig {
         boundaries: boundaries.clone(),
         min_dist: Some(MIN_DIST_D * 126.0),
@@ -60,11 +66,13 @@ fn optimize(
         .with_random_seed(1);
     let solution = optimizer.optimize()?;
 
-    println!("=====================================");
-    println!("{label}");
     println!("  x = {:?}", solution.x);
     println!("  y = {:?}", solution.y);
-    println!("  AEP = {:.3} [GWh]", solution.value / 1e9);
+    println!("  Final AEP = {:.3} [GWh]", solution.value / 1e9);
+    println!(
+        "  ({:+.2} %)",
+        100.0 * (solution.value / 1e9 - initial_aep) / initial_aep
+    );
 
     Ok((solution.x, solution.y, solution.value))
 }
@@ -152,18 +160,18 @@ fn main() -> anyhow::Result<()> {
     println!("Initial layout: AEP = {aep_initial:.3} [GWh]");
     println!("  x = {:?}", layout_x);
     println!("  y = {:?}", layout_y);
-    println!(
-        "AEP gains: WRG {:+.2} %, single wind rose {:+.2} %, het {:+.2} %",
-        100.0 * (aep_wrg / 1e9 - aep_initial) / aep_initial,
-        100.0 * (aep_wr / 1e9 - aep_initial) / aep_initial,
-        100.0 * (aep_het / 1e9 - aep_initial) / aep_initial,
-    );
 
     // The optimized layouts
     println!("=====================================");
     println!("x_wrg = {x_wrg:?}, y_wrg = {y_wrg:?}");
     println!("x_wr = {x_wr:?}, y_wr = {y_wr:?}");
     println!("x_het = {x_het:?}, y_het = {y_het:?}");
+    println!(
+        "Final AEPs: WRG {:.3} GWh, single wind rose {:.3} GWh, het {:.3} GWh",
+        aep_wrg / 1e9,
+        aep_wr / 1e9,
+        aep_het / 1e9
+    );
 
     Ok(())
 }
