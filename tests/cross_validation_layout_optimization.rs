@@ -235,12 +235,14 @@ fn test_layout_optimization_with_heterogeneity_matches_python() {
     let config = LayoutOptimizationConfig {
         boundaries: boundaries.clone(),
         min_dist: Some(2.0 * d),
-        max_iterations: 40,
+        // The default (100) is the number of iterations of the Python example
+        // (`optOptions={"maxiter": maxiter}` with maxiter = 100)
         ..Default::default()
     };
     let mut optimizer = LayoutOptimizationScipy::new(&fmodel, boundaries)
         .expect("optimizer")
         .with_config(config);
+
     let solution = optimizer.optimize().expect("optimize");
 
     fmodel.set_layout(&solution.x, &solution.y).expect("layout");

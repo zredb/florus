@@ -14,11 +14,21 @@ use crate::Result;
 
 /// The yaw angles of the geometric yaw optimization for the current layout
 /// (Python's `_get_geoyaw_angles`).
+///
+/// The layout optimization uses the geometric yaw optimizer with the yaw
+/// bounds of -30 and 30 degrees (Python's `layout_optimization_base.py:92-98`).
 pub fn geometric_yaw_angles(fmodel: &mut FlorisModel) -> Result<Array2> {
-    use crate::optimization::yaw_optimization::{YawOptimization, YawOptimizationGeometric};
+    use crate::optimization::yaw_optimization::{
+        YawOptimization, YawOptimizationConfig, YawOptimizationGeometric,
+    };
 
+    let config = YawOptimizationConfig {
+        minimum_yaw_angle: -30.0,
+        maximum_yaw_angle: 30.0,
+        ..Default::default()
+    };
     let mut optimizer = YawOptimizationGeometric::new();
-    let result = optimizer.optimize(fmodel, None)?;
+    let result = optimizer.optimize(fmodel, Some(config))?;
     Ok(result.yaw_angles)
 }
 
@@ -169,8 +179,9 @@ impl LayoutOptimizationScipy {
 /// The gradient of a function by forward differences (scipy's
 /// `approx_derivative` with the '2-point' method and an absolute step).
 ///
-/// The step is reduced (flipped) when the perturbed point would leave the
-/// bounds of the variables, which are the unit interval.
+/// The step is a fixed `+step`: scipy computes the gradient of the objective
+/// WITHOUT the bounds of the variables (`_slsqp_py.py:361`), so the step is
+/// never flipped (the perturbed point may lie outside of the unit interval).
 fn approx_gradient<F>(fun: &mut F, x: &[Float], step: Float) -> Vec<Float>
 where
     F: FnMut(&[Float]) -> Float,
@@ -181,9 +192,8 @@ where
     let mut perturbed = x.to_vec();
 
     for i in 0..n {
-        let h = adjusted_step(x[i], step);
         let original = perturbed[i];
-        perturbed[i] = original + h;
+        perturbed[i] = original + step;
         let f1 = fun(&perturbed);
         let dx = perturbed[i] - original;
         perturbed[i] = original;
@@ -195,6 +205,10 @@ where
 
 /// The Jacobian of a function by forward differences (scipy's
 /// `approx_derivative` with the '2-point' method and an absolute step).
+///
+/// scipy computes the Jacobian of the constraints WITH the bounds of the
+/// variables (`_slsqp_py.py:361`), so the step is adjusted to the bounds with
+/// the '1-sided' scheme (scipy's `_adjust_scheme_to_bounds`).
 fn approx_jacobian<F>(fun: &mut F, x: &[Float], step: Float) -> Vec<Vec<Float>>
 where
     F: FnMut(&[Float]) -> Vec<Float>,
@@ -223,10 +237,22 @@ where
 /// The step of the finite differences of a variable of the unit interval.
 ///
 /// The step is flipped when the perturbed point would leave the interval
-/// (scipy's `_adjust_scheme_to_bounds` with the '1-sided' scheme).
+/// (scipy's `_adjust_scheme_to_bounds` with the '1-sided' scheme). When the
+/// step does not fit in either direction, it is shrunk to the distance to the
+/// closest bound.
 fn adjusted_step(value: Float, step: Float) -> Float {
-    if value + step > 1.0 {
-        -step
+    let lower_dist = value; // the lower bound of the variables is 0
+    let upper_dist = 1.0 - value;
+    if value + step > 1.0 || value + step < 0.0 {
+        // The step leaves the interval: it is flipped when it still fits in
+        // the other direction, and shrunk to the closest bound otherwise.
+        if step.abs() <= lower_dist.max(upper_dist) {
+            -step
+        } else if upper_dist >= lower_dist {
+            upper_dist
+        } else {
+            -lower_dist
+        }
     } else {
         step
     }

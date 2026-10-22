@@ -132,9 +132,17 @@ fn main() -> anyhow::Result<()> {
 
     // Get the resulting improvement in AEP
     println!("... calcuating improvement in AEP");
+
+    // The base AEP is computed with zero yaw angles (Python's example)
+    fmodel.set_yaw_angles(Array2::zeros((n_wds, layout_x.len())))?;
     fmodel.run()?;
     let base_aep = fmodel.get_expected_farm_power(None, None)? * 8760.0 / 1e6;
+
+    // The optimized layout with its geometric yaw angles
     fmodel.set_layout(&solution.x, &solution.y)?;
+    fmodel.run()?;
+    let yaw_angles = geometric_yaw_angles(&mut fmodel)?;
+    fmodel.set_yaw_angles(yaw_angles.clone())?;
     fmodel.run()?;
     let opt_aep = fmodel.get_expected_farm_power(None, None)? * 8760.0 / 1e6;
 
@@ -147,7 +155,6 @@ fn main() -> anyhow::Result<()> {
     );
 
     // The geometric yaw angles of the optimized layout
-    let yaw_angles = geometric_yaw_angles(&mut fmodel)?;
     println!(
         "Turbine geometric yaw angles for wind direction {:.2} and wind speed {:.2} m/s: {:?}",
         wind_directions[1],

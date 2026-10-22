@@ -17,6 +17,14 @@ fn main() -> anyhow::Result<()> {
 
     // The yaw angles of the first three turbines
     let yaw_angles = vec![20.0, 20.0, 10.0, 0.0, 0.0];
+    println!(
+        "Turbine yaw angles (degrees):  [{}]",
+        yaw_angles
+            .iter()
+            .map(|y| format!("{:.0}", y))
+            .collect::<Vec<String>>()
+            .join(" ")
+    );
 
     // The original model
     let mut fmodel = FlorisModel::from_file("examples/inputs/emgauss.yaml")?;
@@ -84,7 +92,7 @@ fn main() -> anyhow::Result<()> {
     } = &mut config.model_strings.deflection_model
     {
         *mixing_gain_deflection = 100.0;
-        *yaw_added_mixing_gain = 100.0;
+        *yaw_added_mixing_gain = 1.0;
     }
     fmodel.set_wake_config(config)?;
     fmodel.run()?;

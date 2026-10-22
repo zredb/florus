@@ -238,9 +238,12 @@ impl EmpiricalGaussVelocityDeficit {
             x_i /= n_pts;
             y_i /= n_pts;
 
-            if x_i < 0.0 {
-                continue;
-            }
+            // NOTE: the source position is NOT filtered on x_i >= 0. The grid
+            // coordinates are rotated relative to west (the rotation is about
+            // the center of the farm), so the most upstream turbines have a
+            // negative x. Python has no such filter either
+            // (wake_velocity/empirical_gauss.py: the deficit is only masked
+            // with the downstream mask `x > x_i + 0.1`).
 
             let yaw_i = yaw_angle[fi];
             let ct_i = thrust_coefficient[fi];

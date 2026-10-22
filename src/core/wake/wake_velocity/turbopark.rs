@@ -394,10 +394,11 @@ impl VelocityModel for TurbOParkVelocityDeficit {
             x_wake_source /= count;
             y_wake_source /= count;
 
-            // Turbine upstream of reference point (x < 0) doesn't generate a wake
-            if x_wake_source < 0.0 {
-                continue;
-            }
+            // NOTE: the source position is NOT filtered on x >= 0. The grid
+            // coordinates are rotated relative to west (the rotation is about
+            // the center of the farm), so the most upstream turbines have a
+            // negative x. Python has no such filter either (the deficit is
+            // only masked with the downstream mask).
 
             let epsilon = calculate_epsilon(thrust_coefficient[[fi, turbine_index]]);
 

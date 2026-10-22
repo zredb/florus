@@ -100,10 +100,10 @@ impl VelocityModel for GaussLegacyVelocityDeficit {
             x_wake_source /= count;
             y_wake_source /= count;
 
-            // Turbine upstream of reference point (x < 0) doesn't generate a wake
-            if x_wake_source < 0.0 {
-                continue;
-            }
+            // NOTE: the source position is NOT filtered on x >= 0. The grid
+            // coordinates are rotated relative to west (the rotation is about
+            // the center of the farm), so the most upstream turbines have a
+            // negative x.
 
             // Apply the wake with per-point deflection
             for ti in 0..n_turbines {
