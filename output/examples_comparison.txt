@@ -5479,6 +5479,11 @@ UNCERTAIN 35 285 ['3.125000', '0.000000', '0.000000'] 5177676.308966 5185583.628
                                               is 14036.9 MWh (Python's SLSQP 13930.0 MWh); the
                                               coupled geometric yaw optimization converges to a
                                               different optimum
+   layout_optimization_003
+                        equivalent             the genetic random search: the random wind resource
+                                              and the initial AEP match Python (56.3 GWh) and the
+                                              final AEP is 59.1 GWh (Python 58.8 GWh; the search
+                                              is time based in Python, so it is not reproducible)
 
  Engine gaps that were fixed in this round:
    1. Heterogeneous inflow was never applied to the velocity field -> now interpolated onto the
@@ -5521,16 +5526,18 @@ UNCERTAIN 35 285 ['3.125000', '0.000000', '0.000000'] 5177676.308966 5185583.628
          distribution), which cannot be reproduced in Rust: the realization of the walk, and
          therefore the expected power, differs from Python's. The run times are not comparable
          either.
-   * layout_optimization_003 / 005 and wind_resource_grid_003
-       - layout_optimization_001 and 002 are 1:1 ports (the random wind resource and the
+   * layout_optimization_005 and wind_resource_grid_003
+       - layout_optimization_001, 002 and 003 are 1:1 ports (the random wind resource and the
          heterogeneous inflow are identical to Python's and the AEP of the initial layout matches
-         to 1e-6), but the optimizer itself differs (Rust: a Hooke-Jeeves pattern search, Python:
+         to 1e-6), but the optimizer differs (Rust: a Hooke-Jeeves pattern search, Python:
          scipy's SLSQP), so the optimal layouts are not identical: the AEP gain of
          layout_optimization_001 is 3.7 % (Python: 4.5 %) and the AVP gain is 19.4 % (Python:
          25.2 %). The SLSQP optimum lies slightly outside the minimum-distance constraint, which
          the Rust optimizer enforces exactly.
-       - layout_optimization_003, layout_optimization_005 and wind_resource_grid_003 still need
-         the genetic random search; in addition the random search of Python is time based (it runs
-         until a wall-clock deadline), so its result is not reproducible even in Python.
-       - wind_resource_grid_003 additionally needs the heterogeneous inflow, which now works.
+       - The genetic random search of Python is time based (it runs until a wall-clock deadline),
+         so its result is not reproducible even in Python; the Rust version runs a fixed number of
+         generations and iterations.
+       - layout_optimization_005 (the random search with a complex boundary) and
+         wind_resource_grid_003 (the random search with the wind resource grid) still need their
+         examples.
 

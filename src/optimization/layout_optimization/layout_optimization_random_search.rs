@@ -7,6 +7,7 @@ use super::layout_optimization_base::{
     Boundary, LayoutOptimizationConfig, LayoutOptimizationResult, LayoutOptimizer,
 };
 use crate::floris_model::FlorisModel;
+use crate::numpy_random::NumpyRandomState;
 use crate::types::{Array1, Float};
 use crate::Result;
 
@@ -102,62 +103,187 @@ impl LayoutOptimizationRandomSearch {
         y
     }
 
-    /// Generate distance-based layout
-    fn generate_distance_based_layout(&self, min_dist: Float) -> Option<(Vec<Float>, Vec<Float>)> {
-        // Greedy algorithm: place each turbine as far as possible from existing ones
-        let mut layout_x: Vec<Float> = Vec::new();
-        let mut layout_y: Vec<Float> = Vec::new();
-        let grid_step = min_dist * 0.5;
+    /// The probability mass function of the step distances (Python's
+    /// `_process_dist_pmf`): a uniform distribution between 0 and 2 D, with
+    /// some extra mass for a large jump.
+    fn distance_pmf(&self) -> (Vec<Float>, Vec<Float>) {
+        let rotor_diameter = self
+            .fmodel
+            .farm()
+            .rotor_diameters
+            .iter()
+            .copied()
+            .fold(0.0, Float::max);
+        let jump_dist = (self.xmax - self.xmin).min(self.ymax - self.ymin) / 2.0;
+        let jump_prob = 0.05;
 
-        for _ in 0..self.n_turbines {
-            let mut best_x = 0.0;
-            let mut best_y = 0.0;
-            let mut max_min_dist = 0.0;
+        // np.append(np.linspace(0.0, 2.0 * D, 99), jump_dist)
+        let mut distances: Vec<Float> = (0..99)
+            .map(|i| 2.0 * rotor_diameter * i as Float / 98.0)
+            .collect();
+        distances.push(jump_dist);
 
-            // Search over a grid
-            for x in (self.xmin as usize..self.xmax as usize)
-                .step_by(grid_step as usize)
-                .map(|v| v as Float)
-            {
-                for y in (self.ymin as usize..self.ymax as usize)
-                    .step_by(grid_step as usize)
-                    .map(|v| v as Float)
-                {
-                    // Check if in boundary
-                    if !self.boundaries().contains(x, y) {
-                        continue;
-                    }
+        // np.append((1 - jump_prob) / len(d) * ones(len(d) - 1), jump_prob)
+        let n = distances.len();
+        let mut probabilities: Vec<Float> =
+            (0..n - 1).map(|_| (1.0 - jump_prob) / n as Float).collect();
+        probabilities.push(jump_prob);
+        let total: Float = probabilities.iter().sum();
+        let probabilities: Vec<Float> = probabilities.iter().map(|p| p / total).collect();
 
-                    // Calculate minimum distance to existing turbines
-                    let mut min_dist_to_existing = Float::INFINITY;
-                    for (ex, ey) in layout_x.iter().zip(layout_y.iter()) {
-                        let dx = x - ex;
-                        let dy = y - ey;
-                        let dist = (dx * dx + dy * dy).sqrt();
-                        if dist < min_dist_to_existing {
-                            min_dist_to_existing = dist;
+        (distances, probabilities)
+    }
+
+    /// The initial layout of an individual: the first turbine is placed at
+    /// random and the remaining ones as far as possible from the others
+    /// (Python's `_gen_dist_based_init`).
+    fn distance_based_init(
+        &self,
+        rng: &mut NumpyRandomState,
+        grid_step: Float,
+    ) -> (Vec<Float>, Vec<Float>) {
+        // The first turbine is placed randomly (and placed again if it is
+        // outside of the boundary)
+        let mut init_x =
+            rng.randint(self.xmin as i64, self.xmax.max(self.xmin + 1.0) as i64) as Float;
+        let mut init_y =
+            rng.randint(self.ymin as i64, self.ymax.max(self.ymin + 1.0) as i64) as Float;
+        let mut attempts = 0;
+        while !self.boundaries().contains(init_x, init_y) && attempts < 1000 {
+            init_x = rng.randint(self.xmin as i64, self.xmax.max(self.xmin + 1.0) as i64) as Float;
+            init_y = rng.randint(self.ymin as i64, self.ymax.max(self.ymin + 1.0) as i64) as Float;
+            attempts += 1;
+        }
+
+        let mut layout_x = vec![init_x];
+        let mut layout_y = vec![init_y];
+
+        // The remaining turbines are placed as far as possible from the others
+        for _ in 1..self.n_turbines {
+            let mut max_dist = 0.0;
+            let mut save_x = 0.0;
+            let mut save_y = 0.0;
+            let mut x = self.xmin;
+            while x < self.xmax {
+                let mut y = self.ymin;
+                while y < self.ymax {
+                    if self.boundaries().contains(x, y) {
+                        // The distance to the closest of the existing turbines
+                        let mut closest = Float::INFINITY;
+                        for (ex, ey) in layout_x.iter().zip(layout_y.iter()) {
+                            let dx = x - ex;
+                            let dy = y - ey;
+                            let dist = (dx * dx + dy * dy).sqrt();
+                            if dist < closest {
+                                closest = dist;
+                            }
+                        }
+                        if closest > max_dist {
+                            max_dist = closest;
+                            save_x = x;
+                            save_y = y;
                         }
                     }
-
-                    if min_dist_to_existing > max_min_dist {
-                        max_min_dist = min_dist_to_existing;
-                        best_x = x;
-                        best_y = y;
-                    }
+                    y += grid_step;
                 }
+                x += grid_step;
+            }
+            layout_x.push(save_x);
+            layout_y.push(save_y);
+        }
+
+        (layout_x, layout_y)
+    }
+
+    /// The optimization of a single individual: the turbines are nudged in
+    /// random directions until the step budget is exhausted (Python's
+    /// `_single_individual_opt`).
+    fn optimize_individual(
+        &self,
+        rng: &mut NumpyRandomState,
+        layout_x: &[Float],
+        layout_y: &[Float],
+        pmf: &(Vec<Float>, Vec<Float>),
+        n_iterations: usize,
+        min_dist: Float,
+    ) -> (Vec<Float>, Vec<Float>, Float) {
+        let mut x = layout_x.to_vec();
+        let mut y = layout_y.to_vec();
+        let mut current_value =
+            self.calculate_objective(&Array1::from_vec(x.clone()), &Array1::from_vec(y.clone()));
+
+        for _ in 0..n_iterations {
+            // Randomly select a turbine to nudge, a direction and a distance
+            let turbine = rng.randint(0, self.n_turbines as i64) as usize;
+            let direction = rng.uniform(0.0, 2.0 * std::f64::consts::PI);
+            let distance = rng.choice(&pmf.0, &pmf.1);
+
+            let test_x = x[turbine] + direction.cos() * distance;
+            let test_y = y[turbine] + direction.sin() * distance;
+
+            // The new turbine has to be inside the boundary
+            if !self.boundaries().contains(test_x, test_y) {
+                continue;
             }
 
-            if max_min_dist > 0.0 {
-                layout_x.push(best_x);
-                layout_y.push(best_y);
+            let original_x = x[turbine];
+            let original_y = y[turbine];
+            x[turbine] = test_x;
+            y[turbine] = test_y;
+
+            // The turbines have to keep their minimum distance
+            let x_array = Array1::from_vec(x.clone());
+            let y_array = Array1::from_vec(y.clone());
+            if self.calculate_min_distance(&x_array, &y_array) < min_dist {
+                x[turbine] = original_x;
+                y[turbine] = original_y;
+                continue;
+            }
+
+            let test_value = self.calculate_objective(&x_array, &y_array);
+            if test_value > current_value {
+                current_value = test_value;
             } else {
-                // Could not find valid position, use random
-                layout_x.push(self.xmin + (self.xmax - self.xmin) * 0.5);
-                layout_y.push(self.ymin + (self.ymax - self.ymin) * 0.5);
+                x[turbine] = original_x;
+                y[turbine] = original_y;
             }
         }
 
-        Some((layout_x, layout_y))
+        (x, y, current_value)
+    }
+    /// Sort the individuals by their objective value (decreasing) and replace
+    /// the worst ones with copies of the best ones (Python's
+    /// `_evaluate_opt_step`).
+    fn evaluate_opt_step(
+        &self,
+        candidates_x: &mut Vec<Vec<Float>>,
+        candidates_y: &mut Vec<Vec<Float>>,
+        candidate_values: &mut Vec<Float>,
+    ) {
+        // Sort the individuals by their objective value (decreasing)
+        let mut order: Vec<usize> = (0..candidates_x.len()).collect();
+        order.sort_by(|&a, &b| {
+            candidate_values[b]
+                .partial_cmp(&candidate_values[a])
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let sorted_x: Vec<Vec<Float>> = order.iter().map(|&i| candidates_x[i].clone()).collect();
+        let sorted_y: Vec<Vec<Float>> = order.iter().map(|&i| candidates_y[i].clone()).collect();
+        let sorted_values: Vec<Float> = order.iter().map(|&i| candidate_values[i]).collect();
+        *candidates_x = sorted_x;
+        *candidates_y = sorted_y;
+        *candidate_values = sorted_values;
+
+        // Replace the worst performing individuals with copies of the best
+        // performing ones (the relegation)
+        let n = candidates_x.len();
+        let relegation = self.config.relegation_number.min(n / 2);
+        for k in 0..relegation {
+            let dst = n - relegation + k;
+            candidates_x[dst] = candidates_x[k].clone();
+            candidates_y[dst] = candidates_y[k].clone();
+            candidate_values[dst] = candidate_values[k];
+        }
     }
 }
 
@@ -198,124 +324,69 @@ impl LayoutOptimizer for LayoutOptimizationRandomSearch {
     fn optimize(&mut self) -> Result<LayoutOptimizationResult> {
         let min_dist = self.min_dist();
 
-        // Get initial layout
+        // The initial layout and its objective
         let initial_x = self.farm_layout_x();
         let initial_y = self.farm_layout_y();
+        self.initial_value = self.calculate_objective(&initial_x, &initial_y);
 
-        // Distance-based step probability mass function
-        let d_max = ((self.xmax - self.xmin).min(self.ymax - self.ymin) / 2.0).min(min_dist * 3.0);
-        let step_distances: Vec<Float> = (0..50)
-            .map(|i| (i as Float + 1.0) * min_dist * 0.1)
-            .filter(|&d| d < d_max)
-            .chain(std::iter::once(d_max))
-            .collect();
+        // The probability mass function of the step distances
+        let pmf = self.distance_pmf();
+        let grid_step = self.config.grid_step_size;
 
-        let jump_prob = 0.05;
-        let base_prob = (1.0 - jump_prob) / (step_distances.len() as Float - 1.0);
-        let _step_probs: Vec<Float> = step_distances[..step_distances.len() - 1]
-            .iter()
-            .map(|_| base_prob)
-            .chain(std::iter::once(jump_prob))
-            .collect();
+        // The seed of the random number generator (Python uses the seeds
+        // 23 + i for the initial layouts and 55 + generation + i for the
+        // optimization of the individuals)
+        let base_seed = self.random_seed.unwrap_or(0) as u32;
 
-        // Initialize candidates with distance-based initialization
+        // The initial layouts of the individuals (Python's
+        // `_generate_initial_layouts`)
         let mut candidates_x: Vec<Vec<Float>> = Vec::new();
         let mut candidates_y: Vec<Vec<Float>> = Vec::new();
         let mut candidate_values: Vec<Float> = Vec::new();
-
-        // First candidate is the initial layout
-        candidates_x.push(initial_x.to_vec());
-        candidates_y.push(initial_y.to_vec());
-        candidate_values.push(self.initial_value);
-
-        // Generate remaining candidates with distance-based initialization
-        for _i in 1..self.n_individuals {
-            if let Some((x, y)) = self.generate_distance_based_layout(min_dist) {
-                candidates_x.push(x.clone());
-                candidates_y.push(y.clone());
-                let val = self.calculate_objective(&Array1::from_vec(x), &Array1::from_vec(y));
-                candidate_values.push(val);
-            } else {
-                // Fallback to initial layout
-                candidates_x.push(initial_x.to_vec());
-                candidates_y.push(initial_y.to_vec());
-                candidate_values.push(self.initial_value);
-            }
+        for i in 0..self.n_individuals {
+            let mut rng = NumpyRandomState::new(base_seed.wrapping_add(23 + i as u32));
+            let (x, y) = self.distance_based_init(&mut rng, grid_step);
+            let value = self
+                .calculate_objective(&Array1::from_vec(x.clone()), &Array1::from_vec(y.clone()));
+            candidates_x.push(x);
+            candidates_y.push(y);
+            candidate_values.push(value);
         }
 
-        // Random search optimization
-        let mut iteration = 0;
-        let max_iter = self.config.max_iterations;
+        // The initial evaluation step (Python's `_evaluate_opt_step` in the
+        // constructor)
+        self.evaluate_opt_step(&mut candidates_x, &mut candidates_y, &mut candidate_values);
 
-        for _ in 0..max_iter {
-            iteration += 1;
-            let mut improved = false;
-
+        // The generations of the genetic algorithm (Python's
+        // `_run_optimization_generation`)
+        let mut iterations = 0;
+        for generation in 0..self.config.n_generations {
             for i in 0..self.n_individuals {
-                // Select a random turbine using deterministic pseudo-random for reproducibility
-                let turbine_idx = if let Some(seed) = self.random_seed {
-                    ((iteration * 12345 + i * 67890 + seed as usize) % self.n_turbines) as usize
-                } else {
-                    (iteration * 12345 + i * 67890) % self.n_turbines
-                };
-
-                // Select random direction
-                let angle = if let Some(seed) = self.random_seed {
-                    ((iteration * 54321 + i * 98765 + seed as usize) % 1000) as Float / 1000.0
-                        * 2.0
-                        * std::f64::consts::PI
-                } else {
-                    ((iteration * 54321 + i * 98765) % 1000) as Float / 1000.0
-                        * 2.0
-                        * std::f64::consts::PI
-                };
-
-                // Select random distance
-                let dist_idx = if let Some(seed) = self.random_seed {
-                    ((iteration * 11111 + i * 22222 + seed as usize) % step_distances.len())
-                        as usize
-                } else {
-                    ((iteration * 11111 + i * 22222) % step_distances.len()) as usize
-                };
-                let dist = step_distances[dist_idx];
-
-                // Create new candidate layout
-                let mut new_x = candidates_x[i].clone();
-                let mut new_y = candidates_y[i].clone();
-
-                new_x[turbine_idx] += angle.cos() * dist;
-                new_y[turbine_idx] += angle.sin() * dist;
-
-                // Check constraints
-                let new_x_arr = Array1::from_vec(new_x.clone());
-                let new_y_arr = Array1::from_vec(new_y.clone());
-
-                if self.check_boundary_constraints(&new_x_arr, &new_y_arr)
-                    && self.calculate_min_distance(&new_x_arr, &new_y_arr) >= min_dist
-                {
-                    let new_value = self.calculate_objective(&new_x_arr, &new_y_arr);
-
-                    if new_value > candidate_values[i] {
-                        candidates_x[i] = new_x;
-                        candidates_y[i] = new_y;
-                        candidate_values[i] = new_value;
-                        improved = true;
-                    }
-                }
+                let mut rng = NumpyRandomState::new(
+                    base_seed.wrapping_add(55 + generation as u32 + i as u32),
+                );
+                let (x, y, value) = self.optimize_individual(
+                    &mut rng,
+                    &candidates_x[i],
+                    &candidates_y[i],
+                    &pmf,
+                    self.config.max_iterations,
+                    min_dist,
+                );
+                iterations += self.config.max_iterations;
+                candidates_x[i] = x;
+                candidates_y[i] = y;
+                candidate_values[i] = value;
             }
 
-            if !improved {
-                break;
-            }
+            // Sort the individuals by their objective value (decreasing) and
+            // replace the worst ones with the best ones (Python's
+            // `_evaluate_opt_step`)
+            self.evaluate_opt_step(&mut candidates_x, &mut candidates_y, &mut candidate_values);
         }
 
-        // Find the best candidate
-        let best_idx = candidate_values
-            .iter()
-            .enumerate()
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-            .map(|(idx, _)| idx)
-            .unwrap_or(0);
+        // The best individual (the first one after the sorting)
+        let best_idx = 0;
 
         let opt_x = Array1::from_vec(candidates_x[best_idx].clone());
         let opt_y = Array1::from_vec(candidates_y[best_idx].clone());
@@ -330,7 +401,7 @@ impl LayoutOptimizer for LayoutOptimizationRandomSearch {
             x: opt_x,
             y: opt_y,
             value: final_value,
-            iterations: iteration,
+            iterations,
             improvement_pct,
         })
     }
@@ -343,6 +414,7 @@ mod tests {
         FarmConfig, FlorisConfig, FlowFieldConfig, SolverConfig, WakeConfig,
     };
     use crate::floris_model::FlorisModel;
+    use crate::numpy_random::NumpyRandomState;
     use crate::types::Array1;
 
     #[test]

@@ -103,11 +103,11 @@
 
 | Rust 文件 | Python 文件 | 状态 | 说明 |
 |-----------|-------------|------|------|
-| `layout_optimization_001_layout_optimization.rs` | `examples_layout_optimization/001_layout_optimization.py` | ⚠️ | 布局优化（占位符） |
-| `layout_optimization_002_layout_optimization_with_wind_rose.rs` | `examples_layout_optimization/002_layout_optimization_with_wind_rose.py` | ⚠️ | 带风玫瑰图的布局优化（占位符） |
-| `layout_optimization_003_layout_optimization_gridded.rs` | `examples_layout_optimization/003_layout_optimization_gridded.py` | ⚠️ | 网格化布局优化（占位符） |
-| `layout_optimization_004_layout_optimization_random_search.rs` | `examples_layout_optimization/004_layout_optimization_random_search.py` | ⚠️ | 随机搜索布局优化（占位符） |
-| `layout_optimization_005_layout_optimization_boundary_grid.rs` | `examples_layout_optimization/005_layout_optimization_boundary_grid.py` | ⚠️ | 边界网格布局优化（占位符） |
+| `layout_optimization_001_layout_optimization.rs` | `examples_layout_optimization/001_optimize_layout.py` | ⚠️ | 布局优化（Hooke-Jeeves 模式搜索，Python 用 SLSQP） |
+| `layout_optimization_002_layout_optimization_with_wind_rose.rs` | `examples_layout_optimization/002_optimize_layout_with_heterogeneity.py` | ⚠️ | 带非均匀来流的布局优化（Hooke-Jeeves 模式搜索，Python 用 SLSQP） |
+| `layout_optimization_003_genetic_random_search.rs` | `examples_layout_optimization/003_genetic_random_search.py` | ✅ | 遗传随机搜索（初始 AEP 与 Python 一致） |
+| `layout_optimization_004_layout_optimization_gridded.rs` | `examples_layout_optimization/004_generate_gridded_layout.py` | ✅ | 网格化布局优化（与 Python 完全一致） |
+| `layout_optimization_005_layout_optimization_boundary_grid.rs` | `examples_layout_optimization/005_layout_optimization_complex_boundary.py` | ⚠️ | 复杂边界布局优化（占位符） |
 
 ---
 

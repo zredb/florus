@@ -146,6 +146,31 @@ fn test_layout_optimization_wind_resource_matches_python() {
     );
 }
 
+/// The genetic random search example
+/// (`examples_layout_optimization/003_genetic_random_search.py`): the random
+/// wind resource and the AEP of the initial layout must match Python.
+#[test]
+fn test_genetic_random_search_matches_python() {
+    let (wind_rose, _) = wind_rose();
+
+    let mut fmodel = FlorisModel::from_file("examples/inputs/gch.yaml").expect("model");
+    fmodel.set_wind_data(&wind_rose).expect("wind data");
+    fmodel
+        .set_layout(
+            &Array1::from_vec(vec![0.0, 0.0, 6.0 * D, 6.0 * D]),
+            &Array1::from_vec(vec![0.0, 4.0 * D, 0.0, 4.0 * D]),
+        )
+        .expect("layout");
+    fmodel.run().expect("run");
+
+    // Python: Initial AEP = 56.3 GWh
+    let aep = fmodel.get_expected_farm_power(None, None).expect("aep") * 8760.0 / 1e9;
+    assert!(
+        (aep - 56.3).abs() < 0.05,
+        "the AEP of the initial layout: {aep} GWh (expected 56.3 GWh)"
+    );
+}
+
 /// The layout optimization with heterogeneous inflow
 /// (`examples_layout_optimization/002_optimize_layout_with_heterogeneity.py`):
 /// the AEP of the initial layout must match Python, and the optimization

@@ -209,6 +209,13 @@ pub struct LayoutOptimizationConfig {
     pub use_value: bool,
     /// Maximum iterations
     pub max_iterations: usize,
+    /// The number of generations of the genetic random search
+    pub n_generations: usize,
+    /// The grid step size of the distance based initialization [m]
+    pub grid_step_size: Float,
+    /// The number of the lowest performing individuals that are replaced with
+    /// copies of the best performing ones (the genetic random search)
+    pub relegation_number: usize,
     /// Optimization tolerance
     pub tolerance: Float,
 }
@@ -222,6 +229,9 @@ impl Default for LayoutOptimizationConfig {
             enable_geometric_yaw: false,
             use_value: false,
             max_iterations: 100,
+            n_generations: 3,
+            grid_step_size: 100.0,
+            relegation_number: 1,
             tolerance: 1e-9,
         }
     }
