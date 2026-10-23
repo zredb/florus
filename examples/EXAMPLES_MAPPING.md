@@ -47,8 +47,8 @@
 | Rust 文件 | Python 文件 | 状态 | 说明 |
 |-----------|-------------|------|------|
 | `visualizations_001_layout_visualizations.rs` | `examples_visualizations/001_layout_visualizations.py` | ⚠️ | 布局可视化（生成 8 个 PNG） |
-| `visualizations_002_visualize_y_cut_plane.rs` | `examples_visualizations/002_visualize_y_cut_plane.py` | ⚠️ | Y 平面可视化（PNG 文件） |
-| `visualizations_003_visualize_cross_plane.rs` | `examples_visualizations/003_visualize_cross_plane.py` | ⚠️ | 横截面可视化（PNG 文件） |
+| `visualizations_002_visualize_y_cut_plane.rs` | `examples_visualizations/002_visualize_y_cut_plane.py` | ✅ | Y 平面可视化（速度范围与 Python 一致，PNG 文件） |
+| `visualizations_003_visualize_cross_plane.rs` | `examples_visualizations/003_visualize_cross_plane.py` | ✅ | 横截面可视化（速度范围与 Python 一致，PNG 文件） |
 | `visualizations_004_visualize_rotor_values.rs` | `examples_visualizations/004_visualize_rotor_values.py` | ⚠️ | 转子值可视化（PNG 文件） |
 | `visualizations_005_visualize_flow_by_sweeping_turbines.rs` | `examples_visualizations/005_visualize_flow_by_sweeping_turbines.py` | ⚠️ | 涡轮机扫描流场（PNG 文件） |
 
@@ -224,7 +224,7 @@
 | 类别 | 文件数 | 一一对应 | 仅部分可比 | Rust 特有 |
 |------|--------|---------|-----------|----------|
 | 基础示例 | 14 | 11 | 1 | 2 |
-| visualizations | 5 | 0 | 5 | 0 |
+| visualizations | 5 | 2 | 3 | 0 |
 | control_optimization | 8 | 8 | 0 | 0 |
 | control_types | 10 | 5 | 0 | 5 |
 | get_flow | 4 | 4 | 0 | 0 |
@@ -240,7 +240,7 @@
 | wind_data | 3 | 3 | 0 | 0 |
 | turbine | 3 | 3 | 0 | 0 |
 | turbopark | 1 | 1 | 0 | 0 |
-| **总计** | **79** | **58** | **9** | **12** |
+| **总计** | **79** | **60** | **7** | **12** |
 
 ---
 
@@ -311,6 +311,6 @@ cargo build --release --examples
 
 ---
 
-**最后更新**: 2026-10-22  
+**最后更新**: 2026-10-23  
 **FLORUS 版本**: v0.1.0  
 **对应 Python FLORIS**: v4.6.4

@@ -1,4 +1,4 @@
-﻿//! Example: Visualize the flow by sweeping the turbines
+//! Example: Visualize the flow by sweeping the turbines
 //!
 //! Some wake models do not have a visualization method included; for these
 //! cases a slower version can be used, which scans a turbine model to produce
@@ -39,7 +39,7 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     // The velocity range of the plane
-    let plane = fmodel.calculate_horizontal_plane(90.0, 100, 50)?;
+    let plane = fmodel.calculate_horizontal_plane(90.0, 100, 50, None, None)?;
     let u = &plane.data.u;
     let min = u.iter().copied().fold(f64::INFINITY, f64::min);
     let max = u.iter().copied().fold(f64::NEG_INFINITY, f64::max);

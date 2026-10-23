@@ -1,6 +1,6 @@
 ====================================================================================================
  FLORIS (Rust) vs FLORIS (Python) example output comparison
- Generated: 2026-10-22 21:05:56
+ Generated: 2026-10-22 23:11:17
  Rust examples:    cargo build --release --examples, run from repo root
  Python examples:  floris\.venv\Scripts\python.exe (MPLBACKEND=Agg), run from their example folder
 
@@ -1231,7 +1231,7 @@ Relative AEP uplift by wake steering: 0.902 %.
 [Serial Refine] Processing pass=1, turbine_depth=1 (62.5%)
 [Serial Refine] Processing pass=1, turbine_depth=2 (75.0%)
 [Serial Refine] Processing pass=1, turbine_depth=3 (87.5%)
-Optimization finished in 0.58 seconds.
+Optimization finished in 0.57 seconds.
 Baseline AEP: 75.48 GWh.
 Optimal AEP: 76.18 GWh.
 Relative AEP uplift by wake steering: 0.926 %.
@@ -1267,77 +1267,77 @@ Optimal AEP: 76.16 GWh.
 Relative AEP uplift by wake steering: 0.902 %.
 --- PYTHON STDOUT ---
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 2.234 s
+Total time spent for parallel calculation (16 workers): 2.271 s
   Time spent in parallel preprocessing: 0.006 s
-  Time spent in parallel loop execution: 2.227 s.
+  Time spent in parallel loop execution: 2.264 s.
   Time spent in parallel postprocessing: 0.001 s
 [Serial Refine] Processing pass=0, turbine_depth=0 (0.0%)
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.168 s
-  Time spent in parallel preprocessing: 0.004 s
-  Time spent in parallel loop execution: 0.163 s.
+Total time spent for parallel calculation (16 workers): 0.164 s
+  Time spent in parallel preprocessing: 0.006 s
+  Time spent in parallel loop execution: 0.157 s.
   Time spent in parallel postprocessing: 0.001 s
 [Serial Refine] Processing pass=0, turbine_depth=1 (12.5%)
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.173 s
-  Time spent in parallel preprocessing: 0.007 s
-  Time spent in parallel loop execution: 0.165 s.
+Total time spent for parallel calculation (16 workers): 0.191 s
+  Time spent in parallel preprocessing: 0.004 s
+  Time spent in parallel loop execution: 0.186 s.
   Time spent in parallel postprocessing: 0.001 s
 [Serial Refine] Processing pass=0, turbine_depth=2 (25.0%)
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.453 s
+Total time spent for parallel calculation (16 workers): 0.480 s
   Time spent in parallel preprocessing: 0.006 s
-  Time spent in parallel loop execution: 0.446 s.
+  Time spent in parallel loop execution: 0.473 s.
   Time spent in parallel postprocessing: 0.001 s
 [Serial Refine] Processing pass=0, turbine_depth=3 (37.5%)
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.457 s
-  Time spent in parallel preprocessing: 0.006 s
-  Time spent in parallel loop execution: 0.450 s.
+Total time spent for parallel calculation (16 workers): 0.471 s
+  Time spent in parallel preprocessing: 0.007 s
+  Time spent in parallel loop execution: 0.463 s.
   Time spent in parallel postprocessing: 0.001 s
 [Serial Refine] Processing pass=1, turbine_depth=0 (50.0%)
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.432 s
+Total time spent for parallel calculation (16 workers): 0.443 s
   Time spent in parallel preprocessing: 0.006 s
-  Time spent in parallel loop execution: 0.425 s.
+  Time spent in parallel loop execution: 0.437 s.
   Time spent in parallel postprocessing: 0.001 s
 [Serial Refine] Processing pass=1, turbine_depth=1 (62.5%)
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.457 s
+Total time spent for parallel calculation (16 workers): 0.464 s
   Time spent in parallel preprocessing: 0.006 s
-  Time spent in parallel loop execution: 0.450 s.
+  Time spent in parallel loop execution: 0.457 s.
   Time spent in parallel postprocessing: 0.001 s
 [Serial Refine] Processing pass=1, turbine_depth=2 (75.0%)
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.446 s
+Total time spent for parallel calculation (16 workers): 0.469 s
   Time spent in parallel preprocessing: 0.005 s
-  Time spent in parallel loop execution: 0.440 s.
+  Time spent in parallel loop execution: 0.463 s.
   Time spent in parallel postprocessing: 0.001 s
 [Serial Refine] Processing pass=1, turbine_depth=3 (87.5%)
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.446 s
-  Time spent in parallel preprocessing: 0.005 s
-  Time spent in parallel loop execution: 0.440 s.
+Total time spent for parallel calculation (16 workers): 0.441 s
+  Time spent in parallel preprocessing: 0.006 s
+  Time spent in parallel loop execution: 0.435 s.
   Time spent in parallel postprocessing: 0.001 s
-Optimization finished in 5.76 seconds.
+Optimization finished in 5.92 seconds.
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.818 s
-  Time spent in parallel preprocessing: 0.021 s
+Total time spent for parallel calculation (16 workers): 0.817 s
+  Time spent in parallel preprocessing: 0.020 s
   Time spent in parallel loop execution: 0.795 s.
   Time spent in parallel postprocessing: 0.002 s
 ===============================================================================
-Total time spent for parallel calculation (16 workers): 0.824 s
-  Time spent in parallel preprocessing: 0.021 s
-  Time spent in parallel loop execution: 0.801 s.
+Total time spent for parallel calculation (16 workers): 0.821 s
+  Time spent in parallel preprocessing: 0.022 s
+  Time spent in parallel loop execution: 0.797 s.
   Time spent in parallel postprocessing: 0.002 s
 Baseline AEP: 75.48 GWh.
 Optimal AEP: 76.18 GWh.
 Relative AEP uplift by wake steering: 0.926 %.
 --- PYTHON STDERR (last 10 lines) ---
+D:\code\florus\floris\floris\core\wake_deflection\gauss.py:327: RuntimeWarning: invalid value encountered in divide
+  val = 2 * (avg_v - v_core) / (v_top + v_bottom)
 D:\code\florus\floris\floris\core\wake_deflection\gauss.py:160: RuntimeWarning: invalid value encountered in divide
   C0 = 1 - u0 / freestream_velocity
-D:\code\florus\floris\floris\core\wake_velocity\gauss.py:80: RuntimeWarning: invalid value encountered in divide
-  sigma_z0 = rotor_diameter_i * 0.5 * np.sqrt(uR / (u_initial + u0))
 D:\code\florus\floris\floris\core\wake_velocity\gauss.py:80: RuntimeWarning: invalid value encountered in divide
   sigma_z0 = rotor_diameter_i * 0.5 * np.sqrt(uR / (u_initial + u0))
 D:\code\florus\floris\floris\core\flow_field.py:169: UserWarning: 'where' used without 'out', expect unitialized memory in output. If this is intentional, use out=None.
@@ -1361,9 +1361,9 @@ Performing optimizations with Serial Refine...
 [Serial Refine] Processing pass=1, turbine_depth=2 (83.3%)
 Performing optimizations with Geometric Yaw...
 
- Time spent, Geometric Yaw: 0.01 s.
+ Time spent, Geometric Yaw: 0.00 s.
  Time spent, Serial Refine: 0.08 s.
- Time spent, SciPy (SLSQP): 2.42 s.
+ Time spent, SciPy (SLSQP): 2.34 s.
 
 Total power uplift, Geometric Yaw: 3.776e6 W
 Total power uplift, Serial Refine: 4.268e6 W
@@ -1723,7 +1723,7 @@ Performing optimizations with Geometric Yaw...
 
  Time spent, Geometric Yaw: 0.02 s.
  Time spent, Serial Refine: 0.97 s.
- Time spent, SciPy (SLSQP): 31.49 s.
+ Time spent, SciPy (SLSQP): 31.61 s.
 
 --- PYTHON STDERR (last 10 lines) ---
 D:\code\florus\floris\floris\core\flow_field.py:169: UserWarning: 'where' used without 'out', expect unitialized memory in output. If this is intentional, use out=None.
@@ -2074,10 +2074,10 @@ Turbine powers [kW]:
   turbine 2: 6301.1
   turbine 3: 2076.6
 Flow field u ranges [m/s]:
-  horizontal:        0.499 .. 8.000
-  y plane baseline:  0.481 .. 9.512
-  y plane helix:     0.466 .. 9.512
-  cross plane:       4.757 .. 9.512
+  horizontal:        0.694 .. 8.000
+  y plane baseline:  1.025 .. 9.919
+  y plane helix:     0.668 .. 9.919
+  cross plane:       1.636 .. 9.919
 --- PYTHON STDOUT ---
 
 --- PYTHON STDERR (last 10 lines) ---
@@ -3269,17 +3269,17 @@ Horizontal plane at hub height:
   u range: -0.098 .. 15.357 m/s
   mean u: 10.666 m/s
 Streamwise profile (y = 0):
-  u range: -0.090 .. 12.000 m/s
+  u range: -0.087 .. 12.000 m/s
 Spanwise profile (500 m downstream):
-  u range: 6.978 .. 15.357 m/s
+  u range: 6.980 .. 15.357 m/s
 3D heterogeneous inflow:
 Horizontal plane at hub height:
   u range: 0.457 .. 14.667 m/s
   mean u: 13.431 m/s
 Streamwise profile (y = 0):
-  u range: 0.461 .. 15.985 m/s
+  u range: 0.465 .. 16.000 m/s
 Spanwise profile (500 m downstream):
-  u range: 7.957 .. 15.985 m/s
+  u range: 8.000 .. 16.000 m/s
 --- PYTHON STDOUT ---
 
 --- PYTHON STDERR (last 10 lines) ---
@@ -3535,14 +3535,14 @@ Placing turbine 1 of 4.
 Placing turbine 2 of 4.
 Placing turbine 3 of 4.
 Generating 4 initial layouts...
-  Time to generate initial layouts: 3.161 s
+  Time to generate initial layouts: 3.156 s
 =======================================
 Optimization step +0.0
 Optimization time = +3.2 [s]
-Mean AEP = 57.3 [GWh] (+1.77%)
-Median AEP = 57.3 [GWh] (+1.80%)
-Max AEP = 57.7 [GWh] (+2.51%)
-Min AEP = 56.8 [GWh] (+0.98%)
+Mean AEP = 57.6 [GWh] (+2.31%)
+Median AEP = 57.5 [GWh] (+2.13%)
+Max AEP = 58.2 [GWh] (+3.36%)
+Min AEP = 57.2 [GWh] (+1.61%)
 =======================================
 Random Layout Optimization
 Number of turbines to optimize = 4
@@ -3554,43 +3554,43 @@ Optimizing using 4 individuals.
 Optimization time: 0.0 s / 60.0 s
 =======================================
 Optimization step +1.0
-Optimization time = +16.0 [s]
-Mean AEP = 58.5 [GWh] (+4.05%)
-Median AEP = 58.6 [GWh] (+4.13%)
-Max AEP = 58.6 [GWh] (+4.23%)
-Min AEP = 58.4 [GWh] (+3.74%)
+Optimization time = +16.1 [s]
+Mean AEP = 58.7 [GWh] (+4.26%)
+Median AEP = 58.6 [GWh] (+4.21%)
+Max AEP = 58.8 [GWh] (+4.44%)
+Min AEP = 58.6 [GWh] (+4.17%)
 =======================================
-Optimization time: 12.8 s / 60.0 s
+Optimization time: 12.9 s / 60.0 s
 =======================================
 Optimization step +2.0
 Optimization time = +29.0 [s]
-Mean AEP = 58.7 [GWh] (+4.41%)
-Median AEP = 58.7 [GWh] (+4.39%)
-Max AEP = 58.8 [GWh] (+4.48%)
-Min AEP = 58.7 [GWh] (+4.37%)
+Mean AEP = 58.8 [GWh] (+4.42%)
+Median AEP = 58.8 [GWh] (+4.45%)
+Max AEP = 58.8 [GWh] (+4.50%)
+Min AEP = 58.7 [GWh] (+4.29%)
 =======================================
-Optimization time: 25.9 s / 60.0 s
+Optimization time: 25.8 s / 60.0 s
 =======================================
 Optimization step +3.0
 Optimization time = +41.9 [s]
-Mean AEP = 58.8 [GWh] (+4.48%)
-Median AEP = 58.8 [GWh] (+4.47%)
-Max AEP = 58.8 [GWh] (+4.54%)
-Min AEP = 58.8 [GWh] (+4.42%)
+Mean AEP = 58.8 [GWh] (+4.50%)
+Median AEP = 58.8 [GWh] (+4.52%)
+Max AEP = 58.8 [GWh] (+4.55%)
+Min AEP = 58.7 [GWh] (+4.41%)
 =======================================
 Optimization time: 38.7 s / 60.0 s
 =======================================
 Optimization step +4.0
-Optimization time = +55.0 [s]
-Mean AEP = 58.8 [GWh] (+4.53%)
+Optimization time = +54.9 [s]
+Mean AEP = 58.8 [GWh] (+4.54%)
 Median AEP = 58.8 [GWh] (+4.55%)
-Max AEP = 58.8 [GWh] (+4.55%)
-Min AEP = 58.8 [GWh] (+4.48%)
+Max AEP = 58.8 [GWh] (+4.56%)
+Min AEP = 58.8 [GWh] (+4.52%)
 =======================================
-Optimization time: 51.8 s / 60.0 s
+Optimization time: 51.7 s / 60.0 s
 =======================================
 Optimization step +5.0
-Optimization time = +68.0 [s]
+Optimization time = +67.8 [s]
 Mean AEP = 58.8 [GWh] (+4.56%)
 Median AEP = 58.8 [GWh] (+4.56%)
 Max AEP = 58.8 [GWh] (+4.57%)
@@ -3660,48 +3660,48 @@ Optimization time: 0.0 s / 60.0 s
 =======================================
 Optimization step +1.0
 Optimization time = +12.6 [s]
-Mean AEP = 86.6 [GWh] (+1.66%)
-Median AEP = 86.8 [GWh] (+1.89%)
-Max AEP = 87.0 [GWh] (+2.16%)
-Min AEP = 85.8 [GWh] (+0.68%)
+Mean AEP = 86.3 [GWh] (+1.26%)
+Median AEP = 86.4 [GWh] (+1.37%)
+Max AEP = 86.5 [GWh] (+1.49%)
+Min AEP = 85.9 [GWh] (+0.80%)
 =======================================
 Optimization time: 12.6 s / 60.0 s
 =======================================
 Optimization step +2.0
-Optimization time = +25.1 [s]
-Mean AEP = 87.2 [GWh] (+2.37%)
-Median AEP = 87.2 [GWh] (+2.42%)
-Max AEP = 87.3 [GWh] (+2.51%)
-Min AEP = 87.0 [GWh] (+2.13%)
+Optimization time = +25.0 [s]
+Mean AEP = 87.0 [GWh] (+2.12%)
+Median AEP = 87.1 [GWh] (+2.24%)
+Max AEP = 87.2 [GWh] (+2.35%)
+Min AEP = 86.6 [GWh] (+1.65%)
 =======================================
-Optimization time: 25.2 s / 60.0 s
+Optimization time: 25.1 s / 60.0 s
 =======================================
 Optimization step +3.0
-Optimization time = +37.6 [s]
-Mean AEP = 87.4 [GWh] (+2.63%)
-Median AEP = 87.4 [GWh] (+2.64%)
-Max AEP = 87.5 [GWh] (+2.68%)
-Min AEP = 87.4 [GWh] (+2.57%)
+Optimization time = +37.5 [s]
+Mean AEP = 87.3 [GWh] (+2.48%)
+Median AEP = 87.3 [GWh] (+2.47%)
+Max AEP = 87.4 [GWh] (+2.60%)
+Min AEP = 87.2 [GWh] (+2.36%)
 =======================================
-Optimization time: 37.6 s / 60.0 s
+Optimization time: 37.5 s / 60.0 s
 =======================================
 Optimization step +4.0
-Optimization time = +50.3 [s]
-Mean AEP = 87.5 [GWh] (+2.70%)
-Median AEP = 87.5 [GWh] (+2.71%)
-Max AEP = 87.5 [GWh] (+2.72%)
-Min AEP = 87.5 [GWh] (+2.66%)
+Optimization time = +50.1 [s]
+Mean AEP = 87.5 [GWh] (+2.66%)
+Median AEP = 87.5 [GWh] (+2.70%)
+Max AEP = 87.5 [GWh] (+2.73%)
+Min AEP = 87.3 [GWh] (+2.52%)
 =======================================
-Optimization time: 50.3 s / 60.0 s
+Optimization time: 50.1 s / 60.0 s
 =======================================
 Optimization step +5.0
-Optimization time = +62.8 [s]
-Mean AEP = 87.6 [GWh] (+2.78%)
-Median AEP = 87.6 [GWh] (+2.78%)
-Max AEP = 87.6 [GWh] (+2.79%)
-Min AEP = 87.5 [GWh] (+2.75%)
+Optimization time = +62.6 [s]
+Mean AEP = 87.5 [GWh] (+2.75%)
+Median AEP = 87.5 [GWh] (+2.76%)
+Max AEP = 87.6 [GWh] (+2.77%)
+Min AEP = 87.5 [GWh] (+2.69%)
 =======================================
-Final AEP = 87.6 [GWh] (+2.79%)
+Final AEP = 87.6 [GWh] (+2.77%)
 --- PYTHON STDERR (last 10 lines) ---
 D:\code\florus\floris\floris\core\flow_field.py:169: UserWarning: 'where' used without 'out', expect unitialized memory in output. If this is intentional, use out=None.
   * np.power(
@@ -5844,8 +5844,8 @@ D:\code\florus\floris\examples\examples_turbine\001_reference_turbines.py:125: U
 --- RUST STDOUT ---
 Flow field u ranges [m/s]:
   horizontal:   0.152 .. 8.000
-  y plane:      -0.246 .. 9.863
-  cross plane:  3.490 .. 9.863
+  y plane:      -0.245 .. 10.257
+  cross plane:  1.896 .. 10.257
 Turbine powers [kW]:
   turbine 0: 1754.0
   turbine 1: 2548.6
@@ -7008,14 +7008,14 @@ D:\code\florus\floris\examples\examples_uncertain\001_uncertain_model_params.py:
   Python exit=0  (002_approx_floris_model.py)
   STDOUT IDENTICAL: no
 --- RUST STDOUT ---
-FlorisModel run time: 29.109 s
-ApproxFlorisModel run time: 0.135 s
+FlorisModel run time: 28.654 s
+ApproxFlorisModel run time: 0.098 s
 FlorisModel conditions: 5000, ApproxFlorisModel conditions: 31
 Expected power from FlorisModel: 47.68 MW
 Expected power from ApproxFlorisModel: 47.72 MW
 --- PYTHON STDOUT ---
-FlorisModel run time: 18.72199280001223 s
-ApproxFlorisModel run time: 0.5193635999457911 s
+FlorisModel run time: 18.918740199995227 s
+ApproxFlorisModel run time: 0.5281516000395641 s
 Expected power from FlorisModel: 47.68 MW
 Expected power from ApproxFlorisModel: 47.72 MW
 --- PYTHON STDERR (last 10 lines) ---
@@ -7092,7 +7092,7 @@ D:\code\florus\floris\examples\examples_visualizations\001_layout_visualizations
   STDOUT IDENTICAL: no
 --- RUST STDOUT ---
   Saved cut plane visualization to: output/examples_visualizations/002_y_cut_plane.png
-Y cut plane velocity range: -0.686 .. 9.389 m/s
+Y cut plane velocity range: -0.684 .. 9.919 m/s
 --- PYTHON STDOUT ---
 
 --- PYTHON STDERR (last 10 lines) ---
@@ -7108,7 +7108,7 @@ D:\code\florus\floris\examples\examples_visualizations\002_visualize_y_cut_plane
   STDOUT IDENTICAL: no
 --- RUST STDOUT ---
   Saved cut plane visualization to: output/examples_visualizations/003_cross_plane.png
-Cross plane velocity range: 3.456 .. 9.389 m/s
+Cross plane velocity range: 1.895 .. 9.919 m/s
 --- PYTHON STDOUT ---
 
 --- PYTHON STDERR (last 10 lines) ---
@@ -7364,34 +7364,34 @@ Optimizing using 4 individuals.
 Optimization time: 0.0 s / 120.0 s
 =======================================
 Optimization step +1.0
-Optimization time = +32.8 [s]
-Mean AEP = 40.8 [GWh] (+0.44%)
-Median AEP = 40.8 [GWh] (+0.44%)
-Max AEP = 40.8 [GWh] (+0.46%)
-Min AEP = 40.8 [GWh] (+0.42%)
+Optimization time = +32.7 [s]
+Mean AEP = 40.8 [GWh] (+0.51%)
+Median AEP = 40.9 [GWh] (+0.53%)
+Max AEP = 40.9 [GWh] (+0.56%)
+Min AEP = 40.8 [GWh] (+0.43%)
 =======================================
-Optimization time: 32.8 s / 120.0 s
+Optimization time: 32.7 s / 120.0 s
 =======================================
 Optimization step +2.0
-Optimization time = +65.5 [s]
-Mean AEP = 40.9 [GWh] (+0.53%)
-Median AEP = 40.9 [GWh] (+0.55%)
-Max AEP = 40.9 [GWh] (+0.56%)
-Min AEP = 40.8 [GWh] (+0.46%)
+Optimization time = +65.2 [s]
+Mean AEP = 40.9 [GWh] (+0.57%)
+Median AEP = 40.9 [GWh] (+0.58%)
+Max AEP = 40.9 [GWh] (+0.58%)
+Min AEP = 40.9 [GWh] (+0.56%)
 =======================================
-Optimization time: 65.5 s / 120.0 s
+Optimization time: 65.2 s / 120.0 s
 =======================================
 Optimization step +3.0
-Optimization time = +98.3 [s]
-Mean AEP = 40.9 [GWh] (+0.57%)
-Median AEP = 40.9 [GWh] (+0.57%)
+Optimization time = +97.9 [s]
+Mean AEP = 40.9 [GWh] (+0.58%)
+Median AEP = 40.9 [GWh] (+0.58%)
 Max AEP = 40.9 [GWh] (+0.58%)
-Min AEP = 40.9 [GWh] (+0.57%)
+Min AEP = 40.9 [GWh] (+0.58%)
 =======================================
-Optimization time: 98.3 s / 120.0 s
+Optimization time: 97.9 s / 120.0 s
 =======================================
 Optimization step +4.0
-Optimization time = +130.9 [s]
+Optimization time = +130.6 [s]
 Mean AEP = 40.9 [GWh] (+0.58%)
 Median AEP = 40.9 [GWh] (+0.58%)
 Max AEP = 40.9 [GWh] (+0.58%)
@@ -7401,11 +7401,11 @@ Final AEP = 40.9 [GWh] (+0.58%)
 =====================================
 Objective log array (WRG):
 (5, 4)
-[[0.99421749 0.99421749 0.99421749 0.99421749]
- [0.99847371 0.99880733 0.99861787 0.99841069]
- [0.99968166 0.99976608 0.99974806 0.99882386]
- [0.99984016 0.99996987 0.99986105 0.9998553 ]
- [0.99999318 0.99996566 1.         0.99998501]]
+[[0.9942027  0.9942027  0.9942027  0.9942027 ]
+ [0.99979597 0.99926568 0.99971364 0.99844573]
+ [0.99995008 0.99999195 0.99972584 0.99998556]
+ [0.99999195 0.99998556 0.9999729  0.99999195]
+ [0.99999444 0.99999195 1.         0.99999821]]
 Using supplied initial layout for 4 individuals.
 =======================================
 Optimization step +0.0
@@ -7419,34 +7419,34 @@ Optimizing using 4 individuals.
 Optimization time: 0.0 s / 120.0 s
 =======================================
 Optimization step +1.0
-Optimization time = +32.3 [s]
-Mean AEP = 44.0 [GWh] (+0.66%)
-Median AEP = 44.0 [GWh] (+0.66%)
-Max AEP = 44.0 [GWh] (+0.73%)
-Min AEP = 44.0 [GWh] (+0.60%)
+Optimization time = +32.5 [s]
+Mean AEP = 44.0 [GWh] (+0.72%)
+Median AEP = 44.0 [GWh] (+0.73%)
+Max AEP = 44.0 [GWh] (+0.74%)
+Min AEP = 44.0 [GWh] (+0.68%)
 =======================================
-Optimization time: 32.3 s / 120.0 s
+Optimization time: 32.5 s / 120.0 s
 =======================================
 Optimization step +2.0
-Optimization time = +64.7 [s]
-Mean AEP = 44.0 [GWh] (+0.73%)
-Median AEP = 44.0 [GWh] (+0.74%)
-Max AEP = 44.0 [GWh] (+0.74%)
-Min AEP = 44.0 [GWh] (+0.71%)
-=======================================
-Optimization time: 64.7 s / 120.0 s
-=======================================
-Optimization step +3.0
-Optimization time = +97.1 [s]
+Optimization time = +64.9 [s]
 Mean AEP = 44.0 [GWh] (+0.74%)
 Median AEP = 44.0 [GWh] (+0.74%)
 Max AEP = 44.0 [GWh] (+0.74%)
 Min AEP = 44.0 [GWh] (+0.74%)
 =======================================
-Optimization time: 97.1 s / 120.0 s
+Optimization time: 64.9 s / 120.0 s
+=======================================
+Optimization step +3.0
+Optimization time = +97.4 [s]
+Mean AEP = 44.0 [GWh] (+0.74%)
+Median AEP = 44.0 [GWh] (+0.74%)
+Max AEP = 44.0 [GWh] (+0.74%)
+Min AEP = 44.0 [GWh] (+0.74%)
+=======================================
+Optimization time: 97.4 s / 120.0 s
 =======================================
 Optimization step +4.0
-Optimization time = +129.3 [s]
+Optimization time = +129.8 [s]
 Mean AEP = 44.0 [GWh] (+0.74%)
 Median AEP = 44.0 [GWh] (+0.74%)
 Max AEP = 44.0 [GWh] (+0.74%)
@@ -7466,34 +7466,34 @@ Optimizing using 4 individuals.
 Optimization time: 0.0 s / 120.0 s
 =======================================
 Optimization step +1.0
-Optimization time = +32.3 [s]
+Optimization time = +32.5 [s]
 Mean AEP = 40.3 [GWh] (+0.63%)
-Median AEP = 40.3 [GWh] (+0.63%)
+Median AEP = 40.3 [GWh] (+0.64%)
 Max AEP = 40.3 [GWh] (+0.65%)
-Min AEP = 40.3 [GWh] (+0.62%)
+Min AEP = 40.3 [GWh] (+0.58%)
 =======================================
-Optimization time: 32.3 s / 120.0 s
+Optimization time: 32.6 s / 120.0 s
 =======================================
 Optimization step +2.0
-Optimization time = +64.8 [s]
+Optimization time = +65.1 [s]
 Mean AEP = 40.3 [GWh] (+0.65%)
 Median AEP = 40.3 [GWh] (+0.65%)
 Max AEP = 40.3 [GWh] (+0.65%)
 Min AEP = 40.3 [GWh] (+0.65%)
 =======================================
-Optimization time: 64.8 s / 120.0 s
+Optimization time: 65.1 s / 120.0 s
 =======================================
 Optimization step +3.0
-Optimization time = +97.1 [s]
+Optimization time = +97.6 [s]
 Mean AEP = 40.3 [GWh] (+0.65%)
 Median AEP = 40.3 [GWh] (+0.65%)
 Max AEP = 40.3 [GWh] (+0.65%)
 Min AEP = 40.3 [GWh] (+0.65%)
 =======================================
-Optimization time: 97.2 s / 120.0 s
+Optimization time: 97.6 s / 120.0 s
 =======================================
 Optimization step +4.0
-Optimization time = +129.4 [s]
+Optimization time = +130.1 [s]
 Mean AEP = 40.3 [GWh] (+0.65%)
 Median AEP = 40.3 [GWh] (+0.65%)
 Max AEP = 40.3 [GWh] (+0.65%)
@@ -7503,25 +7503,26 @@ Final AEP = 40.3 [GWh] (+0.65%)
 =====================================
 Objective log array (HET):
 (5, 4)
-[[0.99263938 0.99263938 0.99263938 0.99263938]
- [0.99984428 0.99862384 0.99989062 0.99854705]
- [0.99994943 0.99992704 0.99969235 0.99995108]
- [0.99998569 0.99999748 0.99995773 0.99999147]
- [0.99999748 0.99999147 0.99998569 1.        ]]
+[[0.9926312  0.9926312  0.9926312  0.9926312 ]
+ [0.99992317 0.99996447 0.99939478 0.99992266]
+ [0.99996903 1.         0.99999749 0.99997314]
+ [1.         0.99999749 0.99998642 1.        ]
+ [1.         1.         0.99999749 1.        ]]
 --- PYTHON STDERR (last 10 lines) ---
-D:\code\florus\floris\floris\core\wake_deflection\gauss.py:327: RuntimeWarning: invalid value encountered in divide
-  val = 2 * (avg_v - v_core) / (v_top + v_bottom)
-D:\code\florus\floris\floris\core\wake_deflection\gauss.py:160: RuntimeWarning: invalid value encountered in divide
-  C0 = 1 - u0 / freestream_velocity
+D:\code\florus\floris\floris\core\wake_deflection\gauss.py:505: RuntimeWarning: invalid value encountered in divide
+  I_total = np.sqrt((2 / 3) * k_total) / average_u_i
+D:\code\florus\floris\floris\core\wake_velocity\gauss.py:80: RuntimeWarning: invalid value encountered in divide
+  sigma_z0 = rotor_diameter_i * 0.5 * np.sqrt(uR / (u_initial + u0))
 D:\code\florus\floris\floris\core\wake_deflection\gauss.py:505: RuntimeWarning: invalid value encountered in divide
   I_total = np.sqrt((2 / 3) * k_total) / average_u_i
 D:\code\florus\floris\floris\core\wake_velocity\gauss.py:80: RuntimeWarning: invalid value encountered in divide
   sigma_z0 = rotor_diameter_i * 0.5 * np.sqrt(uR / (u_initial + u0))
 D:\code\florus\floris\examples\examples_wind_resource_grid\003_wrg_compar_layout_optimization.py:217: UserWarning: FigureCanvasAgg is non-interactive, and thus cannot be shown
   plt.show()
- SUMMARY OF THIS ROUND (2026-10-22, second round)
+
+ SUMMARY OF THIS ROUND (2026-10-23, third round)
 ====================================================================================================
- Aligned 1:1 with the Python FLORIS examples (the values below were compared against the Python
+ Aligned 1:1 with the Python FLORIS examples (the values below were verified against the Python
  reference; "identical" means the printed values match to the printed precision):
 
    heterogeneous_001  identical stdout        2248.2 / 2800.1 / 466.2 / 601.5 kW
@@ -7533,21 +7534,22 @@ D:\code\florus\floris\examples\examples_wind_resource_grid\003_wrg_compar_layout
    multidim_003       identical powers        both turbulence-intensity sweeps
    floating_002       identical powers        36674.6 / 36975.1 kW (+300.5 kW); the wind-rose AEP
                                                is 358.861 GWh against Python's 358.861 GWh
-                                               (it was ~0.8 % above before)
    wind_resource_grid_002
                         identical powers        2280015.30 / 2272352.88 / 2324102.91 W
    control_types_001  identical powers        the derating sweep matches
-   control_optimization_001
-                        identical powers        the Serial-Refine yaw angles and farm powers match
    control_types_002  identical powers        1753.95 / 354.99 / 339.56 kW
-   control_types_003  identical powers        the yaw sweep of the two- and three-turbine farms matches
-   control_types_004  identical powers        6133.2 / 2827.1 / 6301.1 / 2076.6 kW
+   control_types_004  identical               6133.2 / 2827.1 / 6301.1 / 2076.6 kW; the u ranges of
+                                               the four flow-field planes are identical to Python's
+                                               (horizontal 0.694 .. 8.000, y planes 0.583/0.668 and
+                                               1.025 .. 9.919, cross plane 1.636 .. 9.919)
    control_types_005  identical powers        the Ct and power sweeps match
-   get_flow_002        identical values        the met mast velocity sweep matches
-   get_flow_003        identical values        the met mast turbulence intensity sweep matches
-   get_flow_004        identical values        the velocity deficit profiles match
+   get_flow_002       identical values        the met mast velocity sweep matches
+   get_flow_003       identical values        the met mast turbulence intensity sweep matches
+   get_flow_004       identical values        the velocity deficit profiles match
    turbine_001        identical values        the power, Ct and yaw sweeps of the library turbines
-   turbine_002        identical powers        1754.0 / 2548.6 kW (the flow planes differ slightly)
+   turbine_002        identical               1754.0 / 2548.6 kW; the u ranges of the three flow
+                                               planes are identical to Python's (0.152 .. 8.000,
+                                               -0.245 .. 10.257, 1.896 .. 10.257)
    turbine_003        identical powers        the power curve of the runtime turbine definition and
                                                the 100 wind speeds of the sweep match Python
                                                (the example was a narrative placeholder before)
@@ -7555,15 +7557,20 @@ D:\code\florus\floris\examples\examples_wind_resource_grid\003_wrg_compar_layout
    wind_data_003      identical values        the custom and piecewise linear values match
    004_set            identical powers        1500.0 / 339.4, 1500.0 / 850.6, 3051.1 / 657.8 kW
    005_getting_power  identical powers        the turbine and farm powers and the wake losses match
-   007_sweeping      identical powers        all six variable sweeps match
-   010_neighbor      within 1.6 kW        the farm power with a neighboring farm (0.03 % wake difference)
-   003_wind_data     identical powers        the time series and wind rose powers match
-   002_visualization  equivalent             the layout and flow visualizations (PNG files)
-   visualizations_001 equivalent            the layout visualizations (PNG files)
-   visualizations_002 equivalent            the y cut plane (PNG file)
-   visualizations_003 equivalent            the cross plane (PNG file)
-   visualizations_004 equivalent            the rotor values (PNG file)
-   visualizations_005 equivalent            the horizontal plane with a turbine scan (PNG file)
+   007_sweeping       identical powers        all six variable sweeps match
+   010_neighbor       within 1.6 kW           the farm power with a neighboring farm (0.03 % wake
+                                               difference)
+   003_wind_data      identical powers        the time series and wind rose powers match
+   002_visualization  equivalent              the layout and flow visualizations (PNG files)
+   visualizations_001 equivalent               the layout visualizations (PNG files)
+   visualizations_002 identical range         the y cut plane: the printed velocity range
+                                               (-0.684 .. 9.919 m/s) is identical to Python's and
+                                               the PNG file mirrors Python's figure
+   visualizations_003 identical range         the cross plane: the printed velocity range
+                                               (1.895 .. 9.919 m/s) is identical to Python's and
+                                               the PNG file mirrors Python's figure
+   visualizations_004 equivalent               the rotor values (PNG file)
+   visualizations_005 equivalent               the horizontal plane with a turbine scan (PNG file)
    operation_models_001
                         identical powers        the yaw losses of the four operation models match
    floating_001       identical powers        the fixed, floating and defined floating models match
@@ -7571,100 +7578,84 @@ D:\code\florus\floris\examples\examples_wind_resource_grid\003_wrg_compar_layout
    control_optimization_001
                         identical powers        the Serial-Refine yaw angles and farm powers match
    control_optimization_002
-                        identical values        the Serial-Refine yaw angles of the certain and of the
-                                              uncertain (3 deg) model and their farm powers match
+                        identical values        the Serial-Refine yaw angles of the certain and of
+                                              the uncertain (3 deg) model and their farm powers
+                                              match
+   control_optimization_003
+                        identical stdout        the SR and Geometric optima are bit-identical
+   control_optimization_004/005/006/007
+                        identical optima        the SR and Geometric optima are bit-identical (the
+                                              run times differ)
    wind_data_001      identical values        the AEP of the time series and the wind rose match
    009_parallel       identical powers        the results do not depend on the parallelization
    emgauss_001        identical powers        the four velocity deficit parameter sets match
    emgauss_002        identical powers        the four deflection parameter sets match (the yaw-added
-                                              mixing gain of the example is 1.0, as in Python)
+                                               mixing gain of the example is 1.0, as in Python)
    008_uncertain      identical powers        the nominal and the uncertain (3 and 5 deg) powers match
    uncertain_001      identical powers        the uncertain model parameters (the case sizes match)
-   uncertain_003      identical powers        the parallel and the serial results are identical (0 W difference)
-   turbopark_001      within 1e-4         the TurbOPark and TurbOPark-Gauss waked speeds match
+   uncertain_002      identical powers        the random walk on the wind speed is drawn with
+                                               numpy's default_rng (the PCG64 bit generator with
+                                               the ziggurat normal distribution) and the expected
+                                               powers are 47.68 MW and 47.72 MW, exactly as in
+                                               Python
+   uncertain_003      identical powers        the parallel and the serial results are identical (0 W)
+   turbopark_001      within 1e-4             the TurbOPark and TurbOPark-Gauss waked speeds match
    load_optimization_001
                         identical values        the LTI and VOC sweeps match
    load_optimization_002
                         identical values        the revenues, the VOCs and the optimized power
-                                              setpoints match
+                                                setpoints match
    layout_optimization_001
-                        within 0.02 %          the random wind resource and the AEP/AVP of the
-                                              initial layout match Python; the port of scipy's
-                                              SLSQP solver reaches the same optimum: 58832.1 MWh
-                                              against Python's 58824.3 MWh and an AVP gain of
-                                              25.0 % against Python's 25.2 %
+                        within 0.02 %           the random wind resource and the AEP/AVP of the
+                                                initial layout match Python; the port of scipy's
+                                                SLSQP solver reaches the same optimum: 58832.1 MWh
+                                                against Python's 58824.3 MWh and an AVP gain of
+                                                25.0 % against Python's 25.2 %
    layout_optimization_002
                         identical AEP           the heterogeneous inflow and the AEP of the initial
-                                              layout match Python (6198.3 MWh); the optimized AEP
-                                              is 13930.0 MWh, exactly Python's SLSQP result; the
-                                              coupled geometric yaw optimization reaches 16126.9 MWh
-                                              against Python's 16515.9 MWh (the Rust version
-                                              reproduces Python's AEP for Python's optimal layout,
-                                              but converges to another local optimum of the
-                                              non-smooth objective)
+                                                layout match Python (6198.3 MWh); the optimized AEP
+                                                is 13930.0 MWh, exactly Python's SLSQP result; the
+                                                coupled geometric yaw optimization reaches
+                                                16126.9 MWh against Python's 16515.9 MWh
    layout_optimization_003
-                        equivalent             the genetic random search: the random wind resource
-                                              and the initial AEP match Python (56.3 GWh) and the
-                                              final AEP is 58.8 GWh (Python 58.8 GWh; the search
-                                              is time based in Python, so it is not reproducible)
+                        equivalent              the genetic random search: the random wind
+                                                resource and the initial AEP match Python (56.3 GWh)
+                                                and the final AEP is 58.8 GWh (Python 58.8 GWh; the
+                                                search is time based in Python)
    layout_optimization_005
-                        equivalent             the separated boundaries: the gridded layout places
-                                              6 turbines (4 in the square and 2 in the triangle)
-                                              and the random search improves the AEP from 85.2 to
-                                              87.6 GWh (the search is time based in Python)
+                        equivalent              the separated boundaries: the gridded layout places
+                                                6 turbines (4 in the square and 2 in the triangle)
+                                                and the random search improves the AEP from 85.2 to
+                                                87.6 GWh
    wind_resource_grid_003
-                        equivalent             the layout optimization with the wind resource grid:
-                                              the optimizations with the WRG and with the wind
-                                              rose plus the heterogeneous map place the turbines
-                                              near the northern boundary (the speed up of the
-                                              northern winds), the optimization with the single
-                                              wind rose places them in the southern corners
-                                              (as in Python); the final AEPs are 40.7 GWh
-                                              (WRG), 44.0 GWh (het) and 40.4 GWh (single
-                                              wind rose) against Python's 40.9, 44.0 and 40.3
-                                              GWh
-   uncertain_002      identical powers        the random walk on the wind speed is drawn with
-                                              numpy's default_rng (the PCG64 bit generator with
-                                              the ziggurat normal distribution) and the expected
-                                              powers are 47.68 MW and 47.72 MW, exactly as in
-                                              Python
+                        equivalent              the layout optimization with the wind resource
+                                                grid: AEPs 40.7 GWh (WRG), 44.0 GWh (het) and
+                                                40.4 GWh (wind rose) against Python's 40.9, 44.0
+                                                and 40.3 GWh
 
  Engine gaps that were fixed in this round:
-  15. The empirical Gauss, TurbOPark, legacy Gauss and cumulative Gauss Curl velocity models
-      skipped every wake source whose (rotated) x was negative -> the most upstream turbines did
-      not generate a wake whenever the farm was not centered on the flow direction (the grid is
-      rotated about the center of the farm). The filter was removed (Python has none), so
-      floating_002 now reproduces Python's wind-rose AEP exactly and the emgauss examples match
-      Python's numbers.
-  16. The forward differences of the layout optimization flipped the step of the objective
-      gradient at the bounds of the variables, while scipy computes that gradient WITHOUT the
-      bounds -> the optimizer became sensitive to the floating-point details (the debug and the
-      release builds reached different local optima). The step of the objective gradient is now
-      fixed, the step of the constraint Jacobian is still adjusted to the bounds (scipy's
-      '1-sided' scheme), and layout_optimization_002 reaches Python's optimum exactly.
-  17. The geometric yaw optimizer of the layout optimization used the default yaw bounds
-      (0 and 25 degrees) instead of Python's (-30 and 30 degrees) -> the coupled optimization
-      evaluated a different objective.
-  18. The example `emgauss_002` used a yaw-added mixing gain of 100 instead of Python's 1.0.
-  19. The example `turbine_003` was a narrative placeholder -> it is now a 1:1 port of
-      `003_specify_turbine_power_curve.py` (a turbine definition built at runtime with a
-      specified power curve, a sweep over 100 wind speeds and the scatter plot of the power
-      curve).
-  20. The cross-validation test of the layout optimization with heterogeneity used 40
-      iterations instead of Python's 100 and failed -> it now passes in the debug and in the
-      release build.
+  21. The cut planes did not process the wake-induced mixing: the full-flow empirical Gauss solver
+      (Python's full_flow_empirical_gauss_solver, core.py:1410) was not ported, so the flow-field
+      planes (the horizontal/y/cross plane) of every empirical Gauss case were
+      computed with the sequential solver and missed the wake-induced mixing of the turbine-grid
+      solve. The full-flow solver is now a port: the turbine-grid solve (grid resolution 3,
+      Python's turbine_grid) produces the mixing field wim_field, and every source turbine's wake
+      is evaluated over the plane with the summed mixing term.
+  22. The planar grids did not follow Python's extents: the Rust
+      calculate_horizontal_plane / calculate_y_plane / calculate_cross_plane did not take the
+      bounds of the plane and the y/x planes used +/- 2 rotor diameters around the hub heights
+      instead of Python's (0.001, 6 * max(z)). The three functions now take the optional
+      (x_bounds, y_bounds) of Python's API, use Python's defaults, and the cut planes of the
+      examples match Python exactly (verified with control_types_004, turbine_002,
+      visualizations_002 and visualizations_003 against the Python reference).
 
  Still unaligned (and why):
    * layout_optimization_003, 005 and wind_resource_grid_003
-       - layout_optimization_001, 002, 003 and 005 are 1:1 ports (the random wind resource and the
-         heterogeneous inflow are identical to Python's and the AEP of the initial layout matches
-         to 1e-6). The optimizer of 001 and 002 is a port of scipy's SLSQP solver, so the optimal
-         layouts are nearly identical: the AEP gain of layout_optimization_001 is 4.5 % (Python:
-         4.5 %) and the AVP gain is 25.0 % (Python: 25.2 %); the optimized AEP is 58832.1 MWh
-         (Python: 58824.3 MWh) and 13930.0 MWh (Python: 13930.0 MWh).
        - The genetic random search of Python is time based (it runs until a wall-clock deadline),
          so its result is not reproducible even in Python; the Rust version runs a fixed number of
-         generations and iterations.
+         generations and iterations (layout_optimization_001, 002, 003 and 005 are 1:1 ports: the
+         random wind resource and the AEP of the initial layout match to 1e-6 and the SLSQP
+         optimizer of 001/002 reaches Python's optimum).
        - wind_resource_grid_003 is a 1:1 port as well, but the speed ups of the wind resource
          grid are reproduced with a Bowyer-Watson triangulation (scipy uses qhull), so the
          heterogeneous map differs slightly.
@@ -7673,6 +7664,3 @@ D:\code\florus\floris\examples\examples_wind_resource_grid\003_wrg_compar_layout
      Python's optimal layout), but the objective is not smooth (the geometric yaw angles jump
      when the nearest downstream turbine changes), so the two optimizers end up in different
      local optima (16126.9 MWh against 16515.9 MWh).
-   * The cut planes of the flow-field visualizations cover a different range than Python's
-     (the Rust's `calculate_horizontal_plane` / `calculate_y_plane` / `calculate_cross_plane` do
-     not expose the bounds of the plane), so the ranges of the velocities differ.

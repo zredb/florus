@@ -1192,6 +1192,11 @@ impl FlorisModel {
     /// * `height` - Height above ground (m)
     /// * `x_resolution` - Number of grid points in x direction
     /// * `y_resolution` - Number of grid points in y direction
+    /// * `x_bounds` - Limits of the plane in the x direction (m); the default
+    ///   is the extent of the farm plus two rotor diameters upstream and ten
+    ///   rotor diameters downstream (Python's default).
+    /// * `y_bounds` - Limits of the plane in the y direction (m); the default
+    ///   is the extent of the farm plus two rotor diameters (Python's default).
     ///
     /// # Returns
     /// CutPlane containing the horizontal slice of the flow field
@@ -1200,6 +1205,8 @@ impl FlorisModel {
         height: f64,
         x_resolution: usize,
         y_resolution: usize,
+        x_bounds: Option<(f64, f64)>,
+        y_bounds: Option<(f64, f64)>,
     ) -> crate::Result<crate::core::cut_plane::CutPlane> {
         use crate::core::grid::FlowFieldPlanarGrid;
         use ndarray::Array;
@@ -1209,7 +1216,7 @@ impl FlorisModel {
 
         // Get turbine coordinates, diameters, and hub heights
         let n_turbines = fmodel_viz.core.farm.n_turbines();
-        let mut turbine_coords = Array::zeros((n_turbines, 2));
+        let mut turbine_coords = Array::zeros((n_turbines, 3));
         let mut turbine_diams = Array::zeros(n_turbines);
         let mut turbine_hub_heights = Array::zeros(n_turbines);
 
@@ -1218,6 +1225,10 @@ impl FlorisModel {
             turbine_coords[[i, 1]] = fmodel_viz.core.farm.layout_y[i];
             turbine_diams[i] = fmodel_viz.core.farm.turbines[i].turbine_type.rotor_diameter;
             turbine_hub_heights[i] = fmodel_viz.core.farm.turbines[i].turbine_type.hub_height;
+            // The z of the turbine coordinates is the hub height (Python's
+            // `farm.coordinates`), which sets the vertical extent of the
+            // vertical cut planes.
+            turbine_coords[[i, 2]] = turbine_hub_heights[i];
         }
 
         // Get wind directions for first findex only
@@ -1232,8 +1243,8 @@ impl FlorisModel {
             [x_resolution, y_resolution],
             "z".to_string(),
             height,
-            None, // x1_bounds
-            None, // x2_bounds
+            x_bounds,
+            y_bounds,
         )?;
 
         // Set the grid
@@ -1319,11 +1330,18 @@ impl FlorisModel {
     }
 
     /// Calculate a y-plane (vertical plane along wind direction)
+    ///
+    /// The optional bounds are the limits of the plane in the x and the z
+    /// direction (m); the defaults are Python's defaults (the extent of the
+    /// farm plus two rotor diameters upstream and ten rotor diameters
+    /// downstream, and the height from 0.001 m to six times the hub height).
     pub fn calculate_y_plane(
         &self,
         x_resolution: usize,
         z_resolution: usize,
         crossstream_dist: f64,
+        x_bounds: Option<(f64, f64)>,
+        z_bounds: Option<(f64, f64)>,
     ) -> crate::Result<crate::core::cut_plane::CutPlane> {
         use crate::core::grid::FlowFieldPlanarGrid;
         use ndarray::Array;
@@ -1333,7 +1351,7 @@ impl FlorisModel {
 
         // Get turbine coordinates, diameters, and hub heights
         let n_turbines = fmodel_viz.core.farm.n_turbines();
-        let mut turbine_coords = Array::zeros((n_turbines, 2));
+        let mut turbine_coords = Array::zeros((n_turbines, 3));
         let mut turbine_diams = Array::zeros(n_turbines);
         let mut turbine_hub_heights = Array::zeros(n_turbines);
 
@@ -1342,6 +1360,10 @@ impl FlorisModel {
             turbine_coords[[i, 1]] = fmodel_viz.core.farm.layout_y[i];
             turbine_diams[i] = fmodel_viz.core.farm.turbines[i].turbine_type.rotor_diameter;
             turbine_hub_heights[i] = fmodel_viz.core.farm.turbines[i].turbine_type.hub_height;
+            // The z of the turbine coordinates is the hub height (Python's
+            // `farm.coordinates`), which sets the vertical extent of the
+            // vertical cut planes.
+            turbine_coords[[i, 2]] = turbine_hub_heights[i];
         }
 
         // Get wind directions for first findex only
@@ -1356,8 +1378,8 @@ impl FlorisModel {
             [x_resolution, z_resolution],
             "y".to_string(),
             crossstream_dist,
-            None, // x1_bounds
-            None, // x2_bounds
+            x_bounds,
+            z_bounds,
         )?;
 
         // Set the grid
@@ -1443,11 +1465,18 @@ impl FlorisModel {
     }
 
     /// Calculate a cross-plane (vertical plane across wind direction)
+    ///
+    /// The optional bounds are the limits of the plane in the y and the z
+    /// direction (m); the defaults are Python's defaults (the extent of the
+    /// farm plus two rotor diameters, and the height from 0.001 m to six times
+    /// the hub height).
     pub fn calculate_cross_plane(
         &self,
         y_resolution: usize,
         z_resolution: usize,
         downstream_dist: f64,
+        y_bounds: Option<(f64, f64)>,
+        z_bounds: Option<(f64, f64)>,
     ) -> crate::Result<crate::core::cut_plane::CutPlane> {
         use crate::core::grid::FlowFieldPlanarGrid;
         use ndarray::Array;
@@ -1457,7 +1486,7 @@ impl FlorisModel {
 
         // Get turbine coordinates, diameters, and hub heights
         let n_turbines = fmodel_viz.core.farm.n_turbines();
-        let mut turbine_coords = Array::zeros((n_turbines, 2));
+        let mut turbine_coords = Array::zeros((n_turbines, 3));
         let mut turbine_diams = Array::zeros(n_turbines);
         let mut turbine_hub_heights = Array::zeros(n_turbines);
 
@@ -1466,6 +1495,10 @@ impl FlorisModel {
             turbine_coords[[i, 1]] = fmodel_viz.core.farm.layout_y[i];
             turbine_diams[i] = fmodel_viz.core.farm.turbines[i].turbine_type.rotor_diameter;
             turbine_hub_heights[i] = fmodel_viz.core.farm.turbines[i].turbine_type.hub_height;
+            // The z of the turbine coordinates is the hub height (Python's
+            // `farm.coordinates`), which sets the vertical extent of the
+            // vertical cut planes.
+            turbine_coords[[i, 2]] = turbine_hub_heights[i];
         }
 
         // Get wind directions for first findex only
@@ -1480,8 +1513,8 @@ impl FlorisModel {
             [y_resolution, z_resolution],
             "x".to_string(),
             downstream_dist,
-            None, // x1_bounds
-            None, // x2_bounds
+            y_bounds,
+            z_bounds,
         )?;
 
         // Set the grid

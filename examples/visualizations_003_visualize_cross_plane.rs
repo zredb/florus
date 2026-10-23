@@ -1,4 +1,4 @@
-﻿//! Example: Visualize the cross plane
+//! Example: Visualize the cross plane
 //!
 //! This example visualizes the cross plane downstream of a single turbine.
 //!
@@ -22,7 +22,7 @@ fn main() -> anyhow::Result<()> {
     fmodel.run()?;
 
     // The cross plane 500 m downstream of the turbine
-    let cross_plane = fmodel.calculate_cross_plane(100, 100, 500.0)?;
+    let cross_plane = fmodel.calculate_cross_plane(100, 100, 500.0, None, None)?;
 
     let output_dir = "output/examples_visualizations";
     std::fs::create_dir_all(output_dir).ok();

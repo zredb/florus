@@ -41,9 +41,9 @@ fn main() -> anyhow::Result<()> {
     // Run FLORIS and inspect the flow field
     fmodel_2d.run()?;
 
-    let horizontal_plane = fmodel_2d.calculate_horizontal_plane(90.0, 200, 100)?;
-    let y_plane = fmodel_2d.calculate_y_plane(200, 100, 0.0)?;
-    let cross_plane = fmodel_2d.calculate_cross_plane(100, 100, 500.0)?;
+    let horizontal_plane = fmodel_2d.calculate_horizontal_plane(90.0, 200, 100, None, None)?;
+    let y_plane = fmodel_2d.calculate_y_plane(200, 100, 0.0, None, None)?;
+    let cross_plane = fmodel_2d.calculate_cross_plane(100, 100, 500.0, None, None)?;
 
     // Report the heterogeneous inflow effect on the horizontal plane
     let hp = &horizontal_plane.data;
@@ -105,9 +105,9 @@ fn main() -> anyhow::Result<()> {
     })?;
     fmodel_3d.run()?;
 
-    let horizontal_plane_3d = fmodel_3d.calculate_horizontal_plane(90.0, 200, 100)?;
-    let y_plane_3d = fmodel_3d.calculate_y_plane(200, 100, 0.0)?;
-    let cross_plane_3d = fmodel_3d.calculate_cross_plane(100, 100, 500.0)?;
+    let horizontal_plane_3d = fmodel_3d.calculate_horizontal_plane(90.0, 200, 100, None, None)?;
+    let y_plane_3d = fmodel_3d.calculate_y_plane(200, 100, 0.0, None, None)?;
+    let cross_plane_3d = fmodel_3d.calculate_cross_plane(100, 100, 500.0, None, None)?;
 
     let hp3 = &horizontal_plane_3d.data;
     println!("3D heterogeneous inflow:");

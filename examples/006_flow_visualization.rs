@@ -73,7 +73,7 @@ fn visualize_horizontal_plane_with_turbines<P: AsRef<Path>>(
     output_path: P,
 ) -> Result<()> {
     // Calculate horizontal plane
-    let horizontal_plane = fmodel.calculate_horizontal_plane(90.0, 200, 200)?;
+    let horizontal_plane = fmodel.calculate_horizontal_plane(90.0, 200, 200, None, None)?;
 
     // Visualize the cut plane
     flow_visualization::visualize_cut_plane(
@@ -97,7 +97,7 @@ fn visualize_yawed_flow<P: AsRef<Path>>(fmodel: &mut FlorisModel, output_path: P
     fmodel.set_yaw_angles(yaw_angles)?;
 
     // Calculate horizontal plane
-    let horizontal_plane = fmodel.calculate_horizontal_plane(90.0, 200, 200)?;
+    let horizontal_plane = fmodel.calculate_horizontal_plane(90.0, 200, 200, None, None)?;
 
     // Visualize with turbine rotors showing yaw
     flow_visualization::visualize_cut_plane_with_rotors(
@@ -129,7 +129,7 @@ fn visualize_flow_with_rotors_and_labels<P: AsRef<Path>>(
     let turbine_names = vec!["T1", "T2", "T3"];
 
     // Calculate horizontal plane
-    let horizontal_plane = fmodel.calculate_horizontal_plane(90.0, 200, 200)?;
+    let horizontal_plane = fmodel.calculate_horizontal_plane(90.0, 200, 200, None, None)?;
 
     // Visualize with rotors and labels
     flow_visualization::visualize_cut_plane_with_rotors_and_labels(

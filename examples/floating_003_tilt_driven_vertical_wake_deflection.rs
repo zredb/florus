@@ -45,7 +45,7 @@ fn main() -> anyhow::Result<()> {
         );
 
         // The horizontal plane and the cross planes
-        let horizontal_plane = fmodel.calculate_horizontal_plane(90.0, 200, 100)?;
+        let horizontal_plane = fmodel.calculate_horizontal_plane(90.0, 200, 100, None, None)?;
         flow_visualization::visualize_cut_plane(
             &horizontal_plane,
             format!("{output_dir}/003_horizontal_plane_tilt{}.png", tilt as i32),
@@ -57,7 +57,8 @@ fn main() -> anyhow::Result<()> {
         )?;
 
         for downstream_dist in [10.0, 1200.0, 2500.0] {
-            let cross_plane = fmodel.calculate_cross_plane(100, 100, downstream_dist)?;
+            let cross_plane =
+                fmodel.calculate_cross_plane(100, 100, downstream_dist, None, None)?;
             flow_visualization::visualize_cut_plane(
                 &cross_plane,
                 format!(

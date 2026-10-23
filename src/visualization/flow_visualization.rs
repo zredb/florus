@@ -153,7 +153,7 @@ pub fn visualize_horizontal_plane<P: AsRef<Path>>(
     } else {
         fmodel.farm().hub_heights.first().copied().unwrap_or(90.0)
     };
-    let cut_plane = fmodel.calculate_horizontal_plane(hub_height, 200, 100)?;
+    let cut_plane = fmodel.calculate_horizontal_plane(hub_height, 200, 100, None, None)?;
     let layout_x = fmodel.layout_x();
     let layout_y = fmodel.layout_y();
     if layout_x.is_empty() {

@@ -1,12 +1,12 @@
-﻿/// Core class - Top-level FLORIS model
+/// Core class - Top-level FLORIS model
 use crate::core::farm::Farm;
 use crate::core::flow_field::FlowField;
 use crate::core::grid::{
     FlowFieldGrid, FlowFieldPlanarGrid, Grid, PointsGrid, TurbineCubatureGrid, TurbineGrid,
 };
 use crate::core::solver::{
-    cc_solver, empirical_gauss_solver, full_flow_sequential_solver, sequential_solver,
-    turbopark_solver,
+    cc_solver, empirical_gauss_solver, full_flow_empirical_gauss_solver,
+    full_flow_sequential_solver, sequential_solver, turbopark_solver,
 };
 use crate::core::state::State;
 use crate::core::wake::WakeModelManager;
@@ -504,7 +504,30 @@ impl Core {
 
         let grid_ref = self.grid.as_ref().unwrap();
         if let Some(planar_grid) = grid_ref.as_any().downcast_ref::<FlowFieldPlanarGrid>() {
-            full_flow_sequential_solver(&self.farm, &mut self.flow_field, planar_grid, &self.wake)?;
+            // The empirical Gauss model has its own full-flow solver (Python's
+            // `full_flow_empirical_gauss_solver`), which uses the wake-induced
+            // mixing of the turbine-grid solve.
+            if self
+                .wake
+                .velocity_model
+                .as_any()
+                .downcast_ref::<crate::core::wake_velocity::EmpiricalGaussVelocityDeficit>()
+                .is_some()
+            {
+                full_flow_empirical_gauss_solver(
+                    &self.farm,
+                    &mut self.flow_field,
+                    planar_grid,
+                    &self.wake,
+                )?;
+            } else {
+                full_flow_sequential_solver(
+                    &self.farm,
+                    &mut self.flow_field,
+                    planar_grid,
+                    &self.wake,
+                )?;
+            }
         } else {
             anyhow::bail!("solve_for_viz requires a FlowFieldPlanarGrid");
         }

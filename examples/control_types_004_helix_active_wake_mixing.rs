@@ -57,10 +57,10 @@ fn main() -> anyhow::Result<()> {
     }
 
     // The flow fields of the baseline and the helix case
-    let horizontal_plane = fmodel.calculate_horizontal_plane(150.0, 200, 100)?;
-    let y_plane_baseline = fmodel.calculate_y_plane(200, 100, 0.0)?;
-    let y_plane_helix = fmodel.calculate_y_plane(200, 100, -3.0 * d)?;
-    let cross_plane = fmodel.calculate_cross_plane(100, 100, 4.0 * d)?;
+    let horizontal_plane = fmodel.calculate_horizontal_plane(150.0, 200, 100, None, None)?;
+    let y_plane_baseline = fmodel.calculate_y_plane(200, 100, 0.0, None, None)?;
+    let y_plane_helix = fmodel.calculate_y_plane(200, 100, -3.0 * d, None, None)?;
+    let cross_plane = fmodel.calculate_cross_plane(100, 100, 4.0 * d, None, None)?;
 
     let u_range = |plane: &florus::core::cut_plane::CutPlane| {
         let u = &plane.data.u;

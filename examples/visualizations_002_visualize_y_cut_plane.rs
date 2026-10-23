@@ -1,4 +1,4 @@
-﻿//! Example: Visualize the y cut plane
+//! Example: Visualize the y cut plane
 //!
 //! This example visualizes the y cut plane of a three-turbine farm with the
 //! wind direction along the row.
@@ -26,7 +26,7 @@ fn main() -> anyhow::Result<()> {
     fmodel.run()?;
 
     // The y plane
-    let y_plane = fmodel.calculate_y_plane(200, 100, 0.0)?;
+    let y_plane = fmodel.calculate_y_plane(200, 100, 0.0, None, None)?;
 
     let output_dir = "output/examples_visualizations";
     std::fs::create_dir_all(output_dir).ok();

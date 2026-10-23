@@ -1,4 +1,4 @@
-﻿//! Example: Multiple turbine types
+//! Example: Multiple turbine types
 //!
 //! This example runs a farm with two different turbine types and extracts the
 //! flow planes around them.
@@ -13,9 +13,9 @@ fn main() -> anyhow::Result<()> {
     let mut fmodel = FlorisModel::from_file("examples/inputs/gch_multiple_turbine_types.yaml")?;
     fmodel.run()?;
 
-    let horizontal_plane = fmodel.calculate_horizontal_plane(90.0, 200, 100)?;
-    let y_plane = fmodel.calculate_y_plane(200, 100, 0.0)?;
-    let cross_plane = fmodel.calculate_cross_plane(100, 100, 500.0)?;
+    let horizontal_plane = fmodel.calculate_horizontal_plane(90.0, 200, 100, None, None)?;
+    let y_plane = fmodel.calculate_y_plane(200, 100, 0.0, None, None)?;
+    let cross_plane = fmodel.calculate_cross_plane(100, 100, 500.0, None, None)?;
 
     let u_range = |plane: &florus::core::cut_plane::CutPlane| {
         let u = &plane.data.u;

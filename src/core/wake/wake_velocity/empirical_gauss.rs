@@ -221,29 +221,81 @@ impl EmpiricalGaussVelocityDeficit {
         let n_y = shape[2];
         let n_z = shape[3];
 
-        let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
-
+        // Per-findex wake source position: mean of the rotor grid points
+        // (Python: np.mean(grid.x_sorted[:, i:i+1], axis=(2, 3)))
+        let mut x_i = Array1::zeros(n_findex);
+        let mut y_i = Array1::zeros(n_findex);
         for fi in 0..n_findex {
-            // Per-findex wake source position: mean of the rotor grid points
-            // (Python: np.mean(grid.x_sorted[:, i:i+1], axis=(2, 3)))
-            let mut x_i = 0.0;
-            let mut y_i = 0.0;
+            let mut x_sum = 0.0;
+            let mut y_sum = 0.0;
             for iy in 0..n_y {
                 for iz in 0..n_z {
-                    x_i += x[[fi, turbine_index, iy, iz]];
-                    y_i += y[[fi, turbine_index, iy, iz]];
+                    x_sum += x[[fi, turbine_index, iy, iz]];
+                    y_sum += y[[fi, turbine_index, iy, iz]];
                 }
             }
             let n_pts = (n_y * n_z) as Float;
-            x_i /= n_pts;
-            y_i /= n_pts;
+            x_i[fi] = x_sum / n_pts;
+            y_i[fi] = y_sum / n_pts;
+        }
 
+        self.velocity_deficit_emgauss_at(
+            x,
+            y,
+            z,
+            deflection_field_y,
+            deflection_field_z,
+            yaw_angle,
+            tilt_angle,
+            thrust_coefficient,
+            mixing_i,
+            hub_heights,
+            rotor_diameters,
+            &x_i,
+            &y_i,
+            wind_veer,
+        )
+    }
+
+    /// The empirical Gauss deficit of the wake of a source turbine at a given
+    /// position (the full-flow variant, where the source position does not
+    /// follow from the grid).
+    #[allow(clippy::too_many_arguments)]
+    pub fn velocity_deficit_emgauss_at(
+        &self,
+        x: &Array4,
+        y: &Array4,
+        z: &Array4,
+        deflection_field_y: &Array4,
+        deflection_field_z: &Array4,
+        yaw_angle: &Array1,
+        tilt_angle: &Array1,
+        thrust_coefficient: &Array1,
+        mixing_i: &Array1,
+        hub_heights: &Array2,
+        rotor_diameters: &Array2,
+        x_i: &Array1,
+        y_i: &Array1,
+        wind_veer: Float,
+    ) -> Array4 {
+        let shape = x.shape();
+        let n_findex = shape[0];
+        let n_turbines = shape[1];
+        let n_y = shape[2];
+        let n_z = shape[3];
+
+        let mut velocity_deficit = Array::zeros((n_findex, n_turbines, n_y, n_z));
+
+        for fi in 0..n_findex {
             // NOTE: the source position is NOT filtered on x_i >= 0. The grid
             // coordinates are rotated relative to west (the rotation is about
             // the center of the farm), so the most upstream turbines have a
             // negative x. Python has no such filter either
             // (wake_velocity/empirical_gauss.py: the deficit is only masked
             // with the downstream mask `x > x_i + 0.1`).
+
+            let x_i = x_i[fi];
+            let y_i = y_i[fi];
 
             let yaw_i = yaw_angle[fi];
             let ct_i = thrust_coefficient[fi];

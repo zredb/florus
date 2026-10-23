@@ -99,35 +99,15 @@ impl FlowFieldPlanarGrid {
                 }
                 "x" => {
                     // Cross plane: x2 is z-direction
-                    // Use turbine_hub_heights to determine z range
-                    let min_height = turbine_hub_heights
-                        .iter()
-                        .cloned()
-                        .fold(Float::INFINITY, Float::min);
-                    let max_height = turbine_hub_heights
-                        .iter()
-                        .cloned()
-                        .fold(Float::NEG_INFINITY, Float::max);
-                    (
-                        min_height - 2.0 * max_diameter,
-                        max_height + 2.0 * max_diameter,
-                    )
+                    // Python: (0.001, 6 * max(z)) (the z of the turbines)
+                    let max_height = z.iter().cloned().fold(Float::NEG_INFINITY, Float::max);
+                    (0.001, 6.0 * max_height)
                 }
                 "y" => {
                     // Y-plane: x2 is z-direction
-                    // Use turbine_hub_heights to determine z range
-                    let min_height = turbine_hub_heights
-                        .iter()
-                        .cloned()
-                        .fold(Float::INFINITY, Float::min);
-                    let max_height = turbine_hub_heights
-                        .iter()
-                        .cloned()
-                        .fold(Float::NEG_INFINITY, Float::max);
-                    (
-                        min_height - 2.0 * max_diameter,
-                        max_height + 2.0 * max_diameter,
-                    )
+                    // Python: (0.001, 6 * max(z)) (the z of the turbines)
+                    let max_height = z.iter().cloned().fold(Float::NEG_INFINITY, Float::max);
+                    (0.001, 6.0 * max_height)
                 }
                 _ => {
                     return Err(anyhow::anyhow!(

@@ -60,7 +60,7 @@ fn main() -> Result<()> {
 /// Visualize y-plane (vertical plane along wind direction)
 fn visualize_y_plane<P: AsRef<Path>>(fmodel: &FlorisModel, output_path: P) -> Result<()> {
     // Calculate y-plane at crossstream_dist=0.0
-    let y_plane = fmodel.calculate_y_plane(200, 100, 0.0)?;
+    let y_plane = fmodel.calculate_y_plane(200, 100, 0.0, None, None)?;
 
     // Visualize the cut plane
     flow_visualization::visualize_cut_plane(
@@ -80,7 +80,7 @@ fn visualize_y_plane<P: AsRef<Path>>(fmodel: &FlorisModel, output_path: P) -> Re
 /// Visualize cross-plane (vertical plane across wind direction)
 fn visualize_cross_plane<P: AsRef<Path>>(fmodel: &FlorisModel, output_path: P) -> Result<()> {
     // Calculate cross-plane at downstream_dist=500.0
-    let cross_plane = fmodel.calculate_cross_plane(100, 100, 500.0)?;
+    let cross_plane = fmodel.calculate_cross_plane(100, 100, 500.0, None, None)?;
 
     // Visualize the cut plane
     flow_visualization::visualize_cut_plane(

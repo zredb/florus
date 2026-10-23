@@ -63,7 +63,7 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     // The flow field at hub height
-    let horizontal_plane = fmodel.calculate_horizontal_plane(90.0, 200, 100)?;
+    let horizontal_plane = fmodel.calculate_horizontal_plane(90.0, 200, 100, None, None)?;
     flow_visualization::visualize_cut_plane(
         &horizontal_plane,
         format!("{output_dir}/001_horizontal_plane.png"),

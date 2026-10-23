@@ -178,7 +178,9 @@ fn test_heterogeneous_from_input_file_matches_python() {
     fmodel.set_wind_shear(0.0).unwrap();
     fmodel.run().unwrap();
 
-    let plane = fmodel.calculate_horizontal_plane(90.0, 200, 100).unwrap();
+    let plane = fmodel
+        .calculate_horizontal_plane(90.0, 200, 100, None, None)
+        .unwrap();
     let u = &plane.data.u;
     let min = u.iter().copied().fold(f64::INFINITY, f64::min);
     let max = u.iter().copied().fold(f64::NEG_INFINITY, f64::max);
@@ -217,7 +219,9 @@ fn test_heterogeneous_3d_matches_python() {
         .unwrap();
     fmodel.run().unwrap();
 
-    let plane = fmodel.calculate_horizontal_plane(90.0, 200, 100).unwrap();
+    let plane = fmodel
+        .calculate_horizontal_plane(90.0, 200, 100, None, None)
+        .unwrap();
     let u = &plane.data.u;
     let min = u.iter().copied().fold(f64::INFINITY, f64::min);
     let max = u.iter().copied().fold(f64::NEG_INFINITY, f64::max);

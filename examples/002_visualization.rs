@@ -1,4 +1,4 @@
-﻿//! Example: The layout and flow visualizations
+//! Example: The layout and flow visualizations
 //!
 //! FLORIS includes two modules for visualization:
 //!   1) `layout_visualization`: the layout of the wind farm
@@ -60,7 +60,7 @@ fn main() -> anyhow::Result<()> {
     )?;
     fmodel.run()?;
 
-    let horizontal_plane = fmodel.calculate_horizontal_plane(90.0, 200, 100)?;
+    let horizontal_plane = fmodel.calculate_horizontal_plane(90.0, 200, 100, None, None)?;
     flow_visualization::visualize_cut_plane(
         &horizontal_plane,
         format!("{output_dir}/002_horizontal_plane.png"),
