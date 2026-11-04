@@ -2,10 +2,9 @@ use crate::core::turbines::cp_ct_table::TableConditions;
 use crate::core::turbines::operation_models::{
     OperationModels, POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED,
 };
-use crate::core::{Core, Farm, FlowField, State, TurbineGrid};
-use crate::floris_config::{FlorisConfig, SolverConfig};
-use crate::types::{Array1, Array2, Array3, Array4, Float};
-use crate::utilities::{cosd, load_yaml};
+use crate::core::{Core, Farm, FlowField, State};
+use crate::floris_config::FlorisConfig;
+use crate::types::{Array1, Array2, Array3, Float};
 use crate::wind_data::WindData;
 use anyhow::bail;
 use ndarray::Array;
@@ -2835,7 +2834,9 @@ mod tests {
         let wind_directions = vec![270.0; n_findex];
         let turbulence_intensities = vec![0.06; n_findex];
 
-        use crate::floris_config::{FarmConfig, FlowFieldConfig, LoggingConfig, WakeConfig};
+        use crate::floris_config::{
+            FarmConfig, FlowFieldConfig, LoggingConfig, SolverConfig, WakeConfig,
+        };
 
         let config = FlorisConfig {
             name: "test".to_string(),

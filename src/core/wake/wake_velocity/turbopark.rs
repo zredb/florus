@@ -5,7 +5,7 @@
 
 use crate::core::wake::{BaseModel, VelocityModel};
 use crate::core::{FlowField, Grid};
-use crate::types::{Array1, Array2, Array4, Float};
+use crate::types::{Array2, Array4, Float};
 use ndarray::Array;
 use std::collections::HashMap;
 

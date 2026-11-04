@@ -1,5 +1,5 @@
 pub struct NpzDataLoader;
-use crate::types::{Array2, ArrayD};
+use crate::types::ArrayD;
 
 use super::{CpCtError, Dimension, DimensionRange, InterpolationMethod, MultiDimTable};
 use std::{fs::File, io::Read, path::Path};

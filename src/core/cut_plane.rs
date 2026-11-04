@@ -4,7 +4,7 @@
 //! for extracting 2D slices from 3D flow fields.
 //! Corresponds to `floris/cut_plane.py` in Python FLORIS.
 
-use crate::types::{Array1, Array2, Float};
+use crate::types::Array1;
 use ndarray::Array;
 
 /// Represents a 2D slice through a 3D flow field

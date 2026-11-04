@@ -1,14 +1,10 @@
 use crate::core::turbines::operation_models::POWER_SETPOINT_DEFAULT;
 use crate::core::turbines::turbine_type::TurbineType;
 use crate::core::{AveragingMethod, State, Turbine, TurbineGrid};
-use crate::types::{Array1, Array2, Float, NumericDict};
-use crate::utilities::load_yaml;
+use crate::types::{Array1, Array2, Float};
 use crate::Array4;
-use ndarray::{Array, Array2 as NdArray2, Array3 as NdArray3};
-use serde_yaml::Value;
-use std::collections::HashMap;
+use ndarray::{Array, Array2 as NdArray2};
 use std::fmt;
-use std::path::Path;
 use std::sync::Arc;
 
 #[derive(Clone)]

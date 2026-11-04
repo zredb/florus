@@ -8,7 +8,7 @@ pub mod npz_surface;
 pub use csv_loader::CsvDataLoader;
 use std::collections::HashMap;
 
-use crate::types::{Array1, ArrayD, Float};
+use crate::types::{Array1, ArrayD};
 use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

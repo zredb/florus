@@ -4,7 +4,7 @@
 
 use crate::core::wake::{BaseModel, TurbulenceModel};
 use crate::core::{FlowField, Grid};
-use crate::types::{Array1, Array2, Array4, Float};
+use crate::types::{Array1, Array2, Array4};
 use std::collections::HashMap;
 
 /// No additional wake turbulence

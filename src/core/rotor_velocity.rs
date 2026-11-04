@@ -3,7 +3,7 @@
 /// Corresponds to rotor_velocity.py in the Python implementation
 use crate::types::{Array1, Array2, Array3, Array4, ArrayD, Float};
 use crate::utilities::cosd;
-use ndarray::{s, Axis};
+use ndarray::{ Axis};
 use std::fmt;
 
 /// Helper function to convert ArrayD to Array2

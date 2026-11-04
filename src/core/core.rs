@@ -312,12 +312,7 @@ impl Core {
                 )?;
                 self.grid = Some(Box::new(grid));
             }
-            _ => {
-                anyhow::bail!(
-                    "Solver type {:?} not yet fully implemented. Supported types: TurbineGrid, CC, Sequential",
-                    self.solver.solver_type
-                );
-            }
+           
         }
 
         // Mark as uninitialized since grid changed - will be reinitialized on next run()

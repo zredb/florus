@@ -4,9 +4,8 @@
 
 use crate::types::{Array1, Array2, Array4, Float};
 use anyhow::{Context, Result};
-use ndarray::{Array, ArrayView1};
+use ndarray::ArrayView1;
 use serde_yaml::Value;
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;

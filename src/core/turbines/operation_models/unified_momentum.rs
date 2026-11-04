@@ -16,7 +16,7 @@
 
 use crate::core::turbines::operation_models::OperationModel;
 use crate::core::{TurbineContext, TurbineParameters};
-use crate::types::{Array2, Array4, Float};
+use crate::types::{Array2, Float};
 
 /// 统一动量模型
 /// 由麻省理工学院（MIT）开发。基于偏航致动盘动量理论（Heck et al., 2023），通过迭代求解来修正偏航状态下的轴向诱导因子和转子有效风速。它从动量守恒的角度出发，为偏航工况提供了一种不同于经验公式的物理建模路径。

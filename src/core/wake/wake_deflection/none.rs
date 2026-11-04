@@ -3,7 +3,7 @@ use crate::core::{FlowField, Grid};
 /// None wake deflection model
 ///
 /// No wake deflection - wakes propagate straight downstream
-use crate::types::{Array1, Array2, Array4, Float};
+use crate::types::{Array1, Array2, Array4};
 use ndarray::Array;
 use std::collections::HashMap;
 

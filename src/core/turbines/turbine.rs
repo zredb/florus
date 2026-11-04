@@ -3,9 +3,8 @@
 /// Corresponds to core/turbine/ module in Python implementation
 use crate::{
     core::{
-        rotor_effective_velocity,
         turbines::{
-            cp_ct_table::{MultiDimConditionTables, TableConditions},
+            cp_ct_table::MultiDimConditionTables,
             operation_models::{TurbineContext, TurbineParameters},
             turbine_type::TurbineType,
         },

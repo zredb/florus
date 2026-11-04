@@ -15,8 +15,8 @@ fn main() {
     let output_default_input_file = out_dir.join(default_input);
     if !output_default_input_file.exists() {
         fs::copy(default_input, &output_default_input_file)
-            .expect("Failed to copy default_input.yaml");
-        println!("cargo:warning=Copied default_input.yaml to OUT_DIR");
+            .expect("Failed to copy default_inputs.yaml");
+        println!("cargo:warning=Copied default_inputs.yaml to OUT_DIR");
     }
 
     let mat_file = "src/core/wake/wake_velocity/turbopark_lookup_table.mat";

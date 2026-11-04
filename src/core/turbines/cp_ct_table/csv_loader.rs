@@ -5,11 +5,10 @@ use super::{
     MultiDimConditionTables, MultiDimTable,
 };
 use crate::types::Array1;
-use crate::types::Array2;
 use crate::types::ArrayD;
 use csv::Reader;
 use ordered_float::OrderedFloat;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 
 /// The rows of one condition tuple: wind speeds, power and thrust coefficient
