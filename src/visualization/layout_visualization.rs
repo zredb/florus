@@ -75,7 +75,7 @@ pub fn plot_turbine_labels<P: AsRef<Path>>(
     output_path: P,
     turbine_names: Option<&[String]>,
     label_offset: Option<f64>,
-    show_bbox: bool,
+
 ) -> Result<()> {
     let layout_x = fmodel.layout_x();
     let layout_y = fmodel.layout_y();

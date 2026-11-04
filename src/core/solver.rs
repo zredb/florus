@@ -654,7 +654,7 @@ pub fn turbopark_solver(
             .function(&wake_field, &velocity_deficit_absolute)?;
 
         // --- Wake-Added Turbulence (WAT) clamp, matching Python turbopark_solver ---
-        let x_mean = mean_value_4d_slice(&grid.x_sorted().clone())?;
+   
         let y_mean = mean_value_4d_slice(&grid.y_sorted().clone())?;
 
         let ai_all = farm.axial_induction(

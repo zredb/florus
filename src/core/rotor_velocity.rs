@@ -3,7 +3,7 @@
 /// Corresponds to rotor_velocity.py in the Python implementation
 use crate::types::{Array1, Array2, Array3, Array4, ArrayD, Float};
 use crate::utilities::cosd;
-use ndarray::{ Axis};
+use ndarray::Axis;
 use std::fmt;
 
 /// Helper function to convert ArrayD to Array2
@@ -11,7 +11,7 @@ fn convert_to_array2(arr: ArrayD) -> Array2 {
     // Ensure the array is 2D
     assert_eq!(arr.ndim(), 2, "Expected 2D array, got {}D", arr.ndim());
     let shape = arr.shape().to_vec();
-    arr.into_shape((shape[0], shape[1])).unwrap()
+    arr.into_shape_with_order((shape[0], shape[1])).unwrap()
 }
 /// Apply yaw cosine correction to rotor effective velocities
 ///
@@ -259,7 +259,7 @@ pub fn average_velocity(
             let result = cubic_cubature(&filtered, w, &axes);
             Ok(convert_to_array2(result))
         }
-        _ => Err(AvgVelocityError::InvalidMethod(method.to_string())),
+   
     }
 }
 
