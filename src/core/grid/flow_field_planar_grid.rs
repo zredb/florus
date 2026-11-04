@@ -126,7 +126,7 @@ impl FlowFieldPlanarGrid {
         let nx2 = grid_resolution[1];
 
         // Create meshgrid based on normal vector
-        let (mut x_points, mut y_points, mut z_points) = match normal_vector.as_str() {
+        let (x_points, y_points, z_points) = match normal_vector.as_str() {
             "z" => {
                 // Horizontal plane (x-y plane at fixed z)
                 // Python creates 3 z-planes: [planar_coord - 10, planar_coord, planar_coord + 10]

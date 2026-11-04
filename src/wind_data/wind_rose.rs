@@ -137,7 +137,7 @@ impl WindRose {
     fn get_freq_flat(&self) -> Array1 {
         self.freq_table.flatten().to_owned()
     }
-    fn get_value_flat(&self) -> Option<Array1> {
+    pub fn get_value_flat(&self) -> Option<Array1> {
         self.value_table.as_ref().map(|v| v.flatten().to_owned())
     }
 

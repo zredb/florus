@@ -135,11 +135,11 @@ impl VelocityModel for GaussVelocity {
             // Calculate initial wake parameters
             // uR and u0 are used to determine initial wake width
             let u_initial = 1.0; // Normalized
-            let uR = u_initial * ct / (2.0 * (1.0 - sqrt_one_minus_ct));
+            let u_r = u_initial * ct / (2.0 * (1.0 - sqrt_one_minus_ct));
             let u0 = u_initial * sqrt_one_minus_ct;
 
             // Initial wake width (sigma at x0)
-            let sigma_z0 = rotor_diameter * 0.5 * (uR / (u_initial + u0)).sqrt();
+            let sigma_z0 = rotor_diameter * 0.5 * (u_r / (u_initial + u0)).sqrt();
             let sigma_y0 = sigma_z0 * cosd(yaw) * cosd(wind_veer); // Apply wind veer correction
 
             for ti_grid in 0..n_turbines {
@@ -202,7 +202,6 @@ impl VelocityModel for GaussVelocity {
                         let dz = z_point - hub_height;
 
                         // Elliptic Gaussian profile with wind veer consideration
-                        let wind_veer_rad = wind_veer.to_radians();
                         let cos_veer_sq = cosd(wind_veer).powi(2);
                         let sin_veer_sq = sind(wind_veer).powi(2);
                         let sin_2veer = sind(2.0 * wind_veer);

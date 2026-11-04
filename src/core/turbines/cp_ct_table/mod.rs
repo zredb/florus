@@ -2,7 +2,7 @@
 // 统一的Cp/Ct表枚举实现
 
 mod csv_loader;
-mod npz_loader;
+pub mod npz_loader;
 pub mod npz_surface;
 
 pub use csv_loader::CsvDataLoader;
@@ -702,26 +702,6 @@ impl MultiDimTable {
         )))
     }
 
-    fn calculate_weight(&self, point: &[f64], indices: &[usize]) -> f64 {
-        let mut weight = 1.0;
-
-        for i in 0..self.dimensions.len() {
-            let dim = &self.dimensions[i];
-            let idx = indices[i];
-
-            if idx >= dim.values.len() {
-                return 0.0;
-            }
-
-            let value = dim.values[idx];
-            let distance = (point[i] - value).abs();
-
-            // 使用距离的倒数作为权重（简化实现）
-            // 实际应该使用更复杂的权重函数
-            weight *= 1.0 / (1.0 + distance);
-        }
-        weight
-    }
 }
 
 /// 维度范围
@@ -829,5 +809,3 @@ impl Default for TableConditions {
         }
     }
 }
-
-struct Neighbor;

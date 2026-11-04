@@ -723,7 +723,7 @@ impl FlorisModel {
         };
 
         // Calculate the weighted farm power for every findex
-        let farm_power = self.get_farm_power()?;
+        let farm_power = self.get_farm_power_weighted(turbine_weights.as_ref())?;
 
         // Multiply the power with the values (and the frequencies) and sum
         let mut expected_value = 0.0;

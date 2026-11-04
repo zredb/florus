@@ -301,10 +301,6 @@ impl TurbineType {
         }
         Ok(turbine_type)
     }
-    fn load_turbine_type_from_str(content: &str) -> Result<TurbineType, TurbineError> {
-        let turbine_type: TurbineType = serde_yaml::from_str(content)?;
-        Ok(turbine_type)
-    }
 }
 
 impl<'de> Deserialize<'de> for TurbineType {
@@ -345,13 +341,13 @@ impl<'de> Deserialize<'de> for TurbineType {
             #[serde(rename = "correct_cp_ct_for_tilt")]
             correct_cp_ct_for_tilt: Option<bool>,
             #[serde(rename = "multi_dimensional_cp_ct")]
-            multi_dimensional_cp_ct: Option<bool>,
+            _multi_dimensional_cp_ct: Option<bool>,
             #[serde(rename = "turbine_type")]
             turbine_type: String,
             #[serde(rename = "operation_model")]
             operation_model: Option<String>,
             #[serde(rename = "power_thrust_data_file")]
-            power_thrust_data_file: Option<String>,
+            _power_thrust_data_file: Option<String>,
         }
         let helper = Helper::deserialize(deserializer)?;
         let operation_model = helper
@@ -363,7 +359,7 @@ impl<'de> Deserialize<'de> for TurbineType {
                     Box::new(operation_models::simple::SimpleTurbine);
                 simple_turbine
             }
-            "cosine-loss" | _ => Box::new(operation_models::cosine_loss::CosineLossTurbine)
+            "cosine-loss" => Box::new(operation_models::cosine_loss::CosineLossTurbine)
                 as Box<dyn OperationModel>,
             "simple-derating" => Box::new(operation_models::simple_derating::SimpleDeratingTurbine)
                 as Box<dyn OperationModel>,
@@ -495,9 +491,6 @@ impl<'de> Deserialize<'de> for PowerTrustParams {
                 let mut wind_speed: Option<Vec<Float>> = None;
                 let mut power: Option<Vec<Float>> = None;
                 let mut thrust_coefficient: Option<Vec<Float>> = None;
-                let mut multi_dimensional_cp_ct: Option<bool> = None;
-                let mut external_conditions: Option<Vec<Vec<Float>>> = None;
-
                 // Helix 相关字段
                 let mut helix_a: Option<f64> = None;
                 let mut helix_power_b: Option<f64> = None;

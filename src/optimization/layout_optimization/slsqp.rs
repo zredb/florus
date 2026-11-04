@@ -116,7 +116,6 @@ struct SlsqpVars {
     mode: i32,
     meq: usize,
     m: usize,
-    n: usize,
     reset: i32,
 }
 
@@ -166,7 +165,6 @@ pub fn minimize_slsqp(
         mode: 0,
         meq,
         m,
-        n,
         reset: 0,
     };
 
@@ -721,7 +719,7 @@ fn lsei(
     }
 
     // The modified right hand side (the equality part is empty)
-    let mut wb = b.to_vec();
+    let wb = b.to_vec();
 
     // The transformed A2 and G2
     let mut a2 = vec![0.0; ma * nvars];
@@ -824,7 +822,7 @@ fn ldp(
     g: &[Float],
     h: &[Float],
     x: &mut [Float],
-    indices: &mut [i32],
+    _indices: &mut [i32],
     multipliers: &mut [Float],
 ) -> i32 {
     if n == 0 {

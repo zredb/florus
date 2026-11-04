@@ -217,7 +217,6 @@ impl EmpiricalGaussVelocityDeficit {
     ) -> Array4 {
         let shape = x.shape();
         let n_findex = shape[0];
-        let n_turbines = shape[1];
         let n_y = shape[2];
         let n_z = shape[3];
 

@@ -172,7 +172,7 @@ impl Core {
         let turbulence_intensities =
             Array1::from_vec(config.flow_field.turbulence_intensities.clone());
 
-        let mut flow_field = FlowField::new(
+        let flow_field = FlowField::new(
             wind_speeds,
             wind_directions,
             config.flow_field.wind_veer,
@@ -312,7 +312,6 @@ impl Core {
                 )?;
                 self.grid = Some(Box::new(grid));
             }
-           
         }
 
         // Mark as uninitialized since grid changed - will be reinitialized on next run()

@@ -48,7 +48,7 @@ pub fn rotor_velocity_tilt_cosine_correction(
     ref_tilt: &Array2,
     cosine_loss_exponent_tilt: Float,
     // tilt_interp: NDArrayObject, 暂时没有用到, 先省略
-    correct_cp_ct_for_tilt: &ndarray::Array2<bool>,
+    _correct_cp_ct_for_tilt: &ndarray::Array2<bool>,
     rotor_effective_velocities: &Array2,
 ) -> Array2 {
     // 已验证 2026-05-13
@@ -173,7 +173,7 @@ fn prepare_cubature_weights(array: &ArrayD, weights: &Array1) -> ArrayD {
     // 广播至 Axis(2)，对应 Python 的 weights[None, None, :, None]
     let mut bcast_shape = vec![1; ndim];
     bcast_shape[2] = w.len();
-    w.into_shape(bcast_shape)
+    w.into_shape_with_order(bcast_shape)
         .unwrap()
         .broadcast(array.dim())
         .unwrap()
@@ -259,7 +259,6 @@ pub fn average_velocity(
             let result = cubic_cubature(&filtered, w, &axes);
             Ok(convert_to_array2(result))
         }
-   
     }
 }
 

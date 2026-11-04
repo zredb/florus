@@ -398,13 +398,8 @@ pub fn optimize_power_setpoints(
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("Grid not initialized"))?;
 
-    // Clone all data needed from grid BEFORE releasing the borrow
+    // Clone the sorted indices before mutating the model.
     let sorted_indices = grid.sorted_indices().clone();
-    let x_sorted = grid.x_sorted().clone();
-    let y_sorted = grid.y_sorted().clone();
-
-    drop(grid);
-    drop(grid_option);
 
     // The setpoints are set through the model so that the state is invalidated
     // and the sorted setpoints are recomputed on the next run.

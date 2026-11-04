@@ -48,7 +48,7 @@ impl WakeInducedMixing {
         HashMap::new()
     }
 
-    fn function(&self, axial_induction_i: &Array4, downstream_distance_d_i: &Array4) -> Array4 {
+    pub fn function(&self, axial_induction_i: &Array4, downstream_distance_d_i: &Array4) -> Array4 {
         let shape = axial_induction_i.shape();
         let n_findex = shape[0];
         let n_turbines = shape[1];

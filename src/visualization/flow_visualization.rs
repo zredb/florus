@@ -352,14 +352,6 @@ fn clip_wake_cell_below_level(corners: &[(f64, f64, f64); 3], level: f64) -> Vec
     clipped
 }
 
-fn wake_jet_color(value: f64) -> RGBColor {
-    let t = value.clamp(0.0, 1.0);
-    let r = ((1.5 - 4.0 * (t - 0.75).abs()).clamp(0.0, 1.0) * 255.0) as u8;
-    let g = ((1.5 - 4.0 * (t - 0.5).abs()).clamp(0.0, 1.0) * 255.0) as u8;
-    let b = ((1.5 - 4.0 * (t - 0.25).abs()).clamp(0.0, 1.0) * 255.0) as u8;
-    RGBColor(r, g, b)
-}
-
 /// Get a colormap function by name
 ///
 /// Returns a closure that maps a value in [0, 1] to an RGBAColor.
