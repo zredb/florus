@@ -4,7 +4,8 @@ use crate::types::{Array1, Array2, Array4, Float};
 use crate::utilities::{reverse_rotate_coordinates_rel_west, rotate_coordinates_rel_west};
 use ndarray::Array;
 use std::f64::consts::FRAC_1_SQRT_2;
-
+///与 TurbineGrid 并列的一种转子采样网格，其核心区别在于：它采用数值积分（cubature） 的方式，在转子圆面上布置非均匀的点并赋予不同权重，旨在更精确地估算转子上的平均入流风速，而非简单的矩形网格采样。
+/// 它根据 cubature 积分规则，在圆面上布置特定位置的点，每个点有对应的积分权重，从而更好地逼近真实的转子平均风速。
 #[derive(Debug, Clone)]
 pub struct TurbineCubatureGrid {
     pub turbine_coordinates: Array2,

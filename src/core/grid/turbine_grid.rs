@@ -3,7 +3,11 @@ use super::*;
 use crate::types::{Array1, Array2, Array4, Float};
 use crate::utilities::{reverse_rotate_coordinates_rel_west, rotate_coordinates_rel_west};
 use ndarray::Array;
+///FLORIS 中默认使用的转子采样网格。它的作用是在每台风机的转子平面上，生成一个均匀的矩形网格点阵，用于计算该风机处的来流风速。
+/// 关键参数：turbine_grid_points。这个整数代表每个轴向上的点数。例如，默认值 3 意味着在每个转子上生成一个 3×3 = 9 个点的网格。
+/// 空间分布：这些点并非布满整个转子圆面，而是集中在一个以轮毂为中心、宽度和高度为转子直径一半（radius_ratio = 0.5）的方形区域内。FLORIS 会在该方形区域内均匀布点，以估算转子平均风速。
 
+///数组形状：所有流场量（如风速）都遵循统一形状 (n_findex, n_turbines, n_grid, n_grid)。对于 TurbineGrid，这里的 n_grid 就等于你设置的 turbine_grid_points 值。
 #[derive(Debug, Clone)]
 pub struct TurbineGrid {
     pub turbine_coordinates: Array2, // (n_turbines, 3)

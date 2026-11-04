@@ -8,7 +8,8 @@ use crate::core::TurbineContext;
 use crate::core::TurbineParameters;
 use crate::types::Array2;
 use crate::types::Float;
-
+///简单模型
+/// 最基础的基准模型。它完全依据风机自带的功率曲线和推力系数曲线来计算输出，不响应偏航、降额等任何控制指令。通常用于获取未受控制干预时的“自然”发电量，作为对比基准。
 #[derive(Debug, Clone, Default)]
 pub struct SimpleTurbine;
 

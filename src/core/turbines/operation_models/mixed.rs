@@ -13,7 +13,8 @@ use crate::core::turbines::operation_models::OperationModel;
 use crate::core::turbines::{POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED};
 use crate::core::{TurbineContext, TurbineParameters};
 use crate::types::Array2;
-
+///混合模型
+/// 一种管理性模型，允许你在同一个风电场内混合使用 cosine-loss（处理偏航）和 simple-derating（处理降额）。但要注意，它不能对同一台风机在同一时刻同时应用这两种控制。
 #[derive(Debug, Clone, Default)]
 pub struct MixedOperationTurbine;
 

@@ -11,11 +11,11 @@ use crate::core::turbines::operation_models::simple::SimpleTurbine;
 use crate::core::turbines::operation_models::OperationModel;
 use crate::core::{TurbineContext, TurbineParameters};
 use crate::types::{Array2, Float};
-
+///主动尾流控制模型
+/// 目前主要实现了 “helix”策略。通过让上游风机执行特定的独立变桨动作，人为增强尾流中的混合，从而加速尾流恢复、减少对下游风机的遮挡影响。使用时需要设置 awc_modes 和 awc_amplitudes。
 #[derive(Debug, Clone, Default)]
 pub struct AWCTurbine;
 
-/// Python AWCTurbine.AWC_model (operation_models.py:522-523)
 #[inline]
 fn awc_model(a: Float, b: Float, c: Float, base_value: Float, awc_amplitude: Float) -> Float {
     base_value * (1.0 - (b + c * base_value) * awc_amplitude.powf(a))

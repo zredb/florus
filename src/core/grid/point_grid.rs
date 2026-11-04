@@ -5,7 +5,7 @@ use crate::utilities::{
     reverse_rotate_coordinates_rel_west, rotate_coordinates_rel_west_with_centers,
 };
 use ndarray::Array;
-
+///PointsGrid 是 FLORIS 中一种用于在用户任意指定的离散坐标点上计算流场风况的网格类型。它不像 FlowFieldGrid 或 FlowFieldPlanarGrid 那样生成规则的结构化网格，而是直接使用你提供的一系列(x,y,z) 坐标来定义计算位置。
 #[derive(Debug, Clone)]
 pub struct PointsGrid {
     pub points_x: Array1,

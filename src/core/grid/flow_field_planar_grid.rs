@@ -4,7 +4,11 @@ use crate::types::{Array1, Array2, Array4, Float};
 use crate::utilities::{reverse_rotate_coordinates_rel_west, rotate_coordinates_rel_west};
 use ndarray::Array;
 use std::any::Any;
-
+///二维平面网格
+///它创建一个二维平面网格，用于提取流场中某个特定切面上的数据。
+///用途：常用于生成我们常见的尾流切片图（例如水平面或垂直面上的风速云图）。
+///分辨率：grid_resolution 只需要 2 个分量，对应平面内的两个方向。另一个方向（垂直于平面）被固定为 3 层，分别位于指定坐标的 -10.0、0.0 和 +10.0 处。
+///定位参数：需要指定 normal_vector（平面法向量方向，如 “z” 表示水平面）和 planar_coordinate（该平面在法向量方向上的具体坐标位置）。
 #[derive(Debug, Clone)]
 pub struct FlowFieldPlanarGrid {
     pub turbine_coordinates: Array2,

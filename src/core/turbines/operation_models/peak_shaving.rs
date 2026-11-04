@@ -7,7 +7,8 @@ use crate::core::turbines::operation_models::simple::SimpleTurbine;
 use crate::core::turbines::operation_models::OperationModel;
 use crate::core::{TurbineContext, TurbineParameters};
 use crate::types::{Array2, Float};
-
+///削峰模型
+/// 由慕尼黑工业大学（TUM）开发。它不再简单套用余弦公式，而是引入了桨距角、叶尖速比、叶片扭角、阻力系数等更细致的参数，并模拟风机控制器在 Region 2 / Region 3 的调节轨迹，来计算偏航和倾斜下的性能。精度更高，但需要更详细的叶片与控制器参数。
 #[derive(Debug, Clone, Default)]
 pub struct PeakShavingTurbine;
 

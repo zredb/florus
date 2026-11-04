@@ -13,7 +13,8 @@ use crate::{
     types::Array2,
 };
 
-/// Simple derating: limit power to specified setpoint
+/// 简单降额模型
+/// 允许你为每台风机指定一个功率设定点（power_setpoints），风机的实际输出会被限制在该值以内。它不涉及复杂的控制器逻辑，只是简单地“压低”功率和相应的推力。
 #[derive(Debug, Clone, Default)]
 pub struct SimpleDeratingTurbine;
 

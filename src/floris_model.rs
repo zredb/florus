@@ -1,5 +1,7 @@
 use crate::core::turbines::cp_ct_table::TableConditions;
-use crate::core::turbines::operation_models::{POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED};
+use crate::core::turbines::operation_models::{
+    OperationModels, POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED,
+};
 use crate::core::{Core, Farm, FlowField, State, TurbineGrid};
 use crate::floris_config::{FlorisConfig, SolverConfig};
 use crate::types::{Array1, Array2, Array3, Array4, Float};
@@ -15,26 +17,43 @@ use std::path::Path;
 /// Operation model specification for turbines
 pub enum OperationModelSpec {
     /// Single operation model applied to all turbines
-    Single(String),
+    Single(OperationModels),
     /// Different operation models per turbine
-    Multiple(Vec<String>),
+    Multiple(Vec<OperationModels>),
+}
+
+impl From<OperationModels> for OperationModelSpec {
+    fn from(model: OperationModels) -> Self {
+        OperationModelSpec::Single(model)
+    }
+}
+
+impl From<Vec<OperationModels>> for OperationModelSpec {
+    fn from(models: Vec<OperationModels>) -> Self {
+        OperationModelSpec::Multiple(models)
+    }
 }
 
 impl From<String> for OperationModelSpec {
     fn from(model: String) -> Self {
-        OperationModelSpec::Single(model)
+        OperationModelSpec::Single(OperationModels::from_name(&model))
     }
 }
 
 impl From<&str> for OperationModelSpec {
     fn from(model: &str) -> Self {
-        OperationModelSpec::Single(model.to_string())
+        OperationModelSpec::Single(OperationModels::from_name(model))
     }
 }
 
 impl From<Vec<String>> for OperationModelSpec {
     fn from(models: Vec<String>) -> Self {
-        OperationModelSpec::Multiple(models)
+        OperationModelSpec::Multiple(
+            models
+                .iter()
+                .map(|model| OperationModels::from_name(model))
+                .collect(),
+        )
     }
 }
 
@@ -961,22 +980,29 @@ impl FlorisModel {
     /// Common models include "simple", "cosine-loss", etc.
     ///
     /// # Arguments
-    /// * `operation_model` - Either a single string applied to all turbines, or a vector
-    ///   of strings (one per turbine).
+    /// * `operation_model` - A single operation model applied to all turbines, or a
+    ///   list of models (one per turbine). Accepted values are the
+    ///   [`OperationModels`] variants, their names (`&str`/`String`) or vectors
+    ///   of either.
     ///
     /// # Examples
     /// ```no_run
     /// # use anyhow::Error;
     /// # fn main() -> Result<(), Error> {
+    /// use florus::core::turbines::operation_models::OperationModels;
     /// use florus::FlorisModel;
     ///
     /// let mut model = FlorisModel::from_file("default_inputs.yaml")?;
     ///
     /// // Set same operation model for all turbines
     /// model.set_operation_model("simple")?;
+    /// model.set_operation_model(OperationModels::Simple)?;
     ///
     /// // Or set different models per turbine
-    /// model.set_operation_model(vec!["simple".to_string(), "cosine".to_string()])?;
+    /// model.set_operation_model(vec![
+    ///     OperationModels::Simple,
+    ///     OperationModels::CosineLoss,
+    /// ])?;
     /// # Ok(())
     /// # }
     /// ```
@@ -996,7 +1022,7 @@ impl FlorisModel {
                 );
                 // Update the operation model on each turbine's TurbineType
                 for turbine in self.core.farm.turbines.iter_mut() {
-                    let new_tt = turbine.turbine_type.with_operation_model(&model);
+                    let new_tt = turbine.turbine_type.with_operation_model(model.as_str());
                     turbine.turbine_type = std::sync::Arc::new(new_tt);
                 }
                 self.core.state.initialized = false;
@@ -1015,7 +1041,7 @@ impl FlorisModel {
                     models
                 );
                 for (turbine, model) in self.core.farm.turbines.iter_mut().zip(models.iter()) {
-                    let new_tt = turbine.turbine_type.with_operation_model(model);
+                    let new_tt = turbine.turbine_type.with_operation_model(model.as_str());
                     turbine.turbine_type = std::sync::Arc::new(new_tt);
                 }
                 self.core.state.initialized = false;
@@ -3426,6 +3452,17 @@ mod tests {
         // Test validation: wrong number of models
         let wrong_models = vec!["simple".to_string()]; // Only 1 for 2 turbines
         assert!(model.set_operation_model(wrong_models).is_err());
+
+        // Test the typed specification (OperationModels instead of strings)
+        assert!(model
+            .set_operation_model(OperationModels::PeakShaving)
+            .is_ok());
+        assert!(model
+            .set_operation_model(vec![OperationModels::Simple, OperationModels::Mixed])
+            .is_ok());
+        assert!(model
+            .set_operation_model(vec![OperationModels::Simple]) // Only 1 for 2 turbines
+            .is_err());
     }
 
     #[test]

@@ -3,7 +3,12 @@ use super::*;
 use crate::utilities::{reverse_rotate_coordinates_rel_west, rotate_coordinates_rel_west};
 use ndarray::Array;
 use std::any::Any;
-
+///三维体网格
+/// 它创建一个覆盖整个风电场的结构化三维网格。
+///用途：用于获取整个计算域内三维空间的风速分布，适合做体渲染或分析整体尾流结构。
+///分辨率：通过 grid_resolution 参数指定，需要提供 x、y、z 三个方向的网格点数。
+///特点：计算量最大，因为它离散了风电场及周边的一大片三维空间。
+/// 
 #[derive(Debug, Clone)]
 pub struct FlowFieldGrid {
     pub turbine_coordinates: crate::Array2,

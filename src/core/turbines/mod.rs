@@ -4,7 +4,6 @@ pub mod cp_ct_table;
 /// Corresponds to turbine/ module in Python implementation
 pub mod operation_models;
 pub mod turbine;
-pub mod turbine_calculations;
 // pub mod turbine_library;  // Module does not exist
 pub mod turbine_type;
 
@@ -40,8 +39,7 @@ pub enum TurbineTypeError {
 
 pub use operation_models::{
     AWCTurbine, ControllerDependentTurbine, CosineLossTurbine, MixedOperationTurbine,
-    PeakShavingTurbine, SimpleDeratingTurbine, SimpleTurbine, TurbineContext, TurbineParameters,
-    UnifiedMomentumTurbine, POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED,
+    OperationModels, PeakShavingTurbine, SimpleDeratingTurbine, SimpleTurbine, TurbineContext,
+    TurbineParameters, UnifiedMomentumTurbine, POWER_SETPOINT_DEFAULT, POWER_SETPOINT_DISABLED,
 };
 pub use turbine::Turbine;
-pub use turbine_calculations::*;

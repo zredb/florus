@@ -10,7 +10,8 @@ use crate::{
     },
     types::Array2,
 };
-
+///余弦损失模型
+/// FLORIS 的默认模型。它用余弦函数来近似偏航或倾斜带来的气动损失：推力按 cos γ 衰减，功率按 (cos γ)^p 衰减（p 为可配置的损失指数）。这是进行常规尾流转向优化时最常用的模型。
 #[derive(Debug, Clone, Default)]
 pub struct CosineLossTurbine;
 

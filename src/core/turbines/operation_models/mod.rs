@@ -1,5 +1,5 @@
 /// Turbine operation models
-///
+///“操作模型”（Operation Model）指的是用来描述风电机组如何根据控制指令（如偏航角、功率设定值）或特定运行策略来改变其功率和推力输出的数学模型。它决定了在给定的来流条件下，风机最终“表现”出怎样的发电性能和尾流特征。
 /// Modular turbine operation models organized by functionality:
 /// - base.rs: Base types and trait definitions
 /// - helpers.rs: Shared utility functions
@@ -306,4 +306,75 @@ pub fn check_smooth_power_curve(power: &[f64], tolerance: f64) -> bool {
     // 4. 判断是否平滑
     // 注意：由于浮点数运算，这里直接比较即可，因为 dir_changes 通常是整数 (0, 1, 2, 4...)
     dir_changes <= expected_changes
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum OperationModels {
+    Simple,
+    CosineLoss,
+    SimpleDerating,
+    Mixed,
+    Awc,
+    PeakShaving,
+    ControllerDependent,
+    UnifiedMomentum,
+}
+
+impl OperationModels {
+    /// Name of the model as written in the input files and accepted by
+    /// `FlorisModel::set_operation_model` (same strings as
+    /// `OperationModel::model_name`).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OperationModels::Simple => "simple",
+            OperationModels::CosineLoss => "cosine-loss",
+            OperationModels::SimpleDerating => "simple-derating",
+            OperationModels::Mixed => "mixed",
+            OperationModels::Awc => "awc",
+            OperationModels::PeakShaving => "peak-shaving",
+            OperationModels::ControllerDependent => "controller-dependent",
+            OperationModels::UnifiedMomentum => "unified-momentum",
+        }
+    }
+
+    /// Parse a model name. Unknown names warn and fall back to
+    /// [`OperationModels::CosineLoss`], the same default as
+    /// `TurbineType::with_operation_model`.
+    pub fn from_name(name: &str) -> Self {
+        match name {
+            "simple" => OperationModels::Simple,
+            "cosine-loss" => OperationModels::CosineLoss,
+            "simple-derating" => OperationModels::SimpleDerating,
+            "mixed" => OperationModels::Mixed,
+            "awc" => OperationModels::Awc,
+            "peak-shaving" => OperationModels::PeakShaving,
+            "controller-dependent" => OperationModels::ControllerDependent,
+            "unified-momentum" => OperationModels::UnifiedMomentum,
+            _ => {
+                log::warn!(
+                    "Unknown operation model '{}', defaulting to cosine-loss",
+                    name
+                );
+                OperationModels::CosineLoss
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for OperationModels {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl From<&str> for OperationModels {
+    fn from(name: &str) -> Self {
+        OperationModels::from_name(name)
+    }
+}
+
+impl From<String> for OperationModels {
+    fn from(name: String) -> Self {
+        OperationModels::from_name(&name)
+    }
 }
