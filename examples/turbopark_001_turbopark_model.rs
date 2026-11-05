@@ -15,7 +15,7 @@ use florus::wind_data::TimeSeries;
 fn main() -> anyhow::Result<()> {
     // A constant thrust coefficient turbine (not realistic, but the power is
     // not used here)
-    let const_ct_turbine = TurbineType::build_cosine_loss(
+    let const_ct_turbine = TurbineType::build(
         "ConstantCT",
         &[0.0, 30.0],
         Some(&[0.0, 1.0]),

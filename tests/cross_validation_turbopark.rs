@@ -12,7 +12,7 @@ use florus::wind_data::TimeSeries;
 /// A constant thrust coefficient turbine (Python
 /// `build_cosine_loss_turbine_dict`).
 fn constant_ct_turbine() -> TurbineType {
-    TurbineType::build_cosine_loss(
+    TurbineType::build(
         "ConstantCT",
         &[0.0, 30.0],
         Some(&[0.0, 1.0]),

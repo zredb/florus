@@ -80,7 +80,7 @@ impl TurbineType {
     /// coefficient is converted to power with the generator efficiency, and the
     /// thrust (in kN) to a thrust coefficient.
     #[allow(clippy::too_many_arguments)]
-    pub fn build_cosine_loss(
+    pub fn build(
         name: &str,
         wind_speed: &[f64],
         power: Option<&[f64]>,

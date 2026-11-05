@@ -41,7 +41,7 @@ fn main() -> anyhow::Result<()> {
         .collect();
     let thrust_coefficients: [f64; 11] = [0.0, 0.9, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.25, 0.2];
 
-    let turbine = TurbineType::build_cosine_loss(
+    let turbine = TurbineType::build(
         "example_turbine",
         &wind_speeds,
         None,
