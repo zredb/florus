@@ -130,8 +130,39 @@ impl FlorisModel {
         Self::from_file("default_inputs.yaml") // Fixed: added 's' to match actual filename
     }
 
+    /// Create a new FlorisModel from a configuration file and a turbine type
+    /// that was built at runtime.
+    ///
+    /// The turbine names in the file (`farm.turbine_type`) are ignored, so no
+    /// turbine library file has to exist next to the working directory.
+    pub fn from_file_with_turbine<P: AsRef<Path>>(
+        path: P,
+        turbine: crate::core::turbines::turbine_type::TurbineType,
+    ) -> crate::Result<Self> {
+        let config_value = crate::utilities::load_yaml(path)?;
+        let config: FlorisConfig = serde_yaml::from_value(config_value)
+            .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))?;
+        Self::from_config_with_turbine(config, turbine)
+    }
+
     /// Create from configuration structure
     pub fn from_config(config: FlorisConfig) -> crate::Result<Self> {
+        Self::build(config, None)
+    }
+
+    /// Create from configuration structure and a turbine type that was built
+    /// at runtime, bypassing the turbine library lookup.
+    pub fn from_config_with_turbine(
+        config: FlorisConfig,
+        turbine: crate::core::turbines::turbine_type::TurbineType,
+    ) -> crate::Result<Self> {
+        Self::build(config, Some(turbine))
+    }
+
+    fn build(
+        config: FlorisConfig,
+        turbine: Option<crate::core::turbines::turbine_type::TurbineType>,
+    ) -> crate::Result<Self> {
         // Heterogeneous inflow from the input file (Python
         // flow_field.heterogeneous_inflow_config)
         let het_config = config
@@ -160,7 +191,10 @@ impl FlorisModel {
                 }
             });
 
-        let mut core = Core::from_config(config)?;
+        let mut core = match turbine {
+            Some(turbine) => Core::from_config_with_turbine(config, turbine)?,
+            None => Core::from_config(config)?,
+        };
         if let Some(cfg) = het_config {
             core.flow_field.heterogeneous_inflow_config = Some(cfg);
         }

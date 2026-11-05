@@ -83,11 +83,44 @@ fn turbine_library_path(turbine_type: &str) -> String {
         format!("turbine_library/{turbine_type}.yaml")
     }
 }
+
+/// Load turbine definitions from the turbine library
+/// (`turbine_library/<name>.yaml`, resolved against the process working
+/// directory).
+///
+/// A single entry is shared by every turbine; a full list keeps one entry per
+/// turbine.
+fn load_turbine_types(turbine_types: &[String]) -> crate::Result<Vec<Arc<TurbineType>>> {
+    if turbine_types.len() == 1 {
+        // Single turbine type for all turbines - share the same Arc instance
+        let turbine_path = turbine_library_path(&turbine_types[0]);
+        let turbine_type = TurbineType::load_turbine_type(&turbine_path).map_err(|e| {
+            anyhow::anyhow!("Failed to load turbine type '{}': {}", turbine_types[0], e)
+        })?;
+        return Ok(vec![Arc::new(turbine_type)]);
+    }
+    // Multiple turbine types, one per turbine
+    turbine_types
+        .iter()
+        .map(|t| {
+            let turbine_path = turbine_library_path(t);
+            let turbine_type = TurbineType::load_turbine_type(&turbine_path)
+                .map_err(|e| anyhow::anyhow!("Failed to load turbine type '{}': {}", t, e))?;
+            Ok(Arc::new(turbine_type))
+        })
+        .collect()
+}
+
 impl Farm {
+    /// Create a farm, loading the turbine types from the turbine library.
+    ///
+    /// The library is read through a path relative to the process working
+    /// directory; use [`Farm::from_turbine_types`] when the turbine
+    /// definitions are already available at runtime.
     pub fn new(
         layout_x: Array1,
         layout_y: Array1,
-        turbine_types: &Vec<String>,
+        turbine_types: &[String],
     ) -> crate::Result<Self> {
         let n_turbines = layout_x.len();
 
@@ -102,31 +135,42 @@ impl Farm {
             );
         }
 
-        // 加载TurbineType
-        let mut turbines = Vec::new();
-        if turbine_types.len() == 1 {
-            // Single turbine type for all turbines - share the same Arc instance
-            let turbine_path = turbine_library_path(&turbine_types[0]);
-            let turbine_type = TurbineType::load_turbine_type(&turbine_path).map_err(|e| {
-                anyhow::anyhow!("Failed to load turbine type '{}': {}", turbine_types[0], e)
-            })?;
-            let turbine_type_arc = Arc::new(turbine_type);
-            turbines = (0..n_turbines)
-                .map(|_| Turbine {
-                    turbine_type: Arc::clone(&turbine_type_arc),
-                })
-                .collect();
-        } else {
-            // Multiple turbine types, one per turbine
-            for t in turbine_types {
-                let turbine_path = turbine_library_path(t);
-                let turbine_type = TurbineType::load_turbine_type(&turbine_path)
-                    .map_err(|e| anyhow::anyhow!("Failed to load turbine type '{}': {}", t, e))?;
-                turbines.push(Turbine {
-                    turbine_type: Arc::new(turbine_type),
-                });
-            }
+        let turbines = load_turbine_types(turbine_types)?;
+        Self::from_turbine_types(layout_x, layout_y, turbines)
+    }
+
+    /// Create a farm from turbine definitions built at runtime.
+    ///
+    /// No turbine library file is read, so this works independently of the
+    /// process working directory. A single entry is shared by every turbine;
+    /// otherwise one entry per layout position is required.
+    pub fn from_turbine_types(
+        layout_x: Array1,
+        layout_y: Array1,
+        turbines: Vec<Arc<TurbineType>>,
+    ) -> crate::Result<Self> {
+        let n_turbines = layout_x.len();
+
+        if layout_x.len() != layout_y.len() {
+            anyhow::bail!("layout_x and layout_y must have the same number of entries");
         }
+
+        if turbines.len() != 1 && turbines.len() != n_turbines {
+            anyhow::bail!(
+                "turbine_type must have the same number of entries as layout_x/layout_y or have \
+                a single turbine_type value"
+            );
+        }
+
+        let turbines = if turbines.len() == 1 {
+            vec![Arc::clone(&turbines[0]); n_turbines]
+        } else {
+            turbines
+        };
+        let turbines = turbines
+            .into_iter()
+            .map(|turbine_type| Turbine { turbine_type })
+            .collect();
 
         let mut farm = Self {
             layout_x,

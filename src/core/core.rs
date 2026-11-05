@@ -9,6 +9,7 @@ use crate::core::solver::{
     full_flow_sequential_solver, sequential_solver, turbopark_solver,
 };
 use crate::core::state::State;
+use crate::core::turbines::turbine_type::TurbineType;
 use crate::core::wake::WakeModelManager;
 use crate::floris_config::{FlorisConfig, LoggingConfig, SolverConfig, SolverType};
 use crate::types::{Array1, Array2, Float};
@@ -16,6 +17,7 @@ use crate::utilities::load_yaml;
 use crate::wind_data::traits::WindData;
 use std::fmt;
 use std::path::Path;
+use std::sync::Arc;
 
 /// Core struct - Top-level class that describes a Floris model and initializes the simulation
 pub struct Core {
@@ -166,6 +168,23 @@ impl Core {
     ///
     /// This method performs all initialization steps equivalent to Python's __attrs_post_init__
     pub fn from_config(config: FlorisConfig) -> crate::Result<Self> {
+        Self::build(config, None)
+    }
+
+    /// Create a Core instance from a FlorisConfig structure and a turbine type
+    /// that was built at runtime.
+    ///
+    /// The turbine definitions in `config.farm.turbine_type` are ignored: no
+    /// turbine library file is read, so the result does not depend on the
+    /// process working directory.
+    pub fn from_config_with_turbine(
+        config: FlorisConfig,
+        turbine: TurbineType,
+    ) -> crate::Result<Self> {
+        Self::build(config, Some(turbine))
+    }
+
+    fn build(config: FlorisConfig, turbine: Option<TurbineType>) -> crate::Result<Self> {
         // Create flow field
         let wind_speeds = Array1::from_vec(config.flow_field.wind_speeds.clone());
         let wind_directions = Array1::from_vec(config.flow_field.wind_directions.clone());
@@ -185,7 +204,10 @@ impl Core {
         // Create farm
         let layout_x = Array1::from_vec(config.farm.layout_x.clone());
         let layout_y = Array1::from_vec(config.farm.layout_y.clone());
-        let mut farm = Farm::new(layout_x, layout_y, &config.farm.turbine_type)?;
+        let mut farm = match turbine {
+            Some(turbine) => Farm::from_turbine_types(layout_x, layout_y, vec![Arc::new(turbine)])?,
+            None => Farm::new(layout_x, layout_y, &config.farm.turbine_type)?,
+        };
 
         // Initialize control arrays
         farm.initialize_control_arrays(flow_field.n_findex);
