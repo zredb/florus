@@ -151,11 +151,36 @@ impl WindRoseWRG {
         wind_speeds: Option<Array1>,
         ti_table: Option<Array2>,
     ) -> Result<Self> {
-        let filename = filename.as_ref();
+        let wrg_data = read_wrg_file(filename.as_ref())?;
+        Self::from_wrg_data(wrg_data, wd_step, wind_speeds, ti_table)
+    }
 
-        // Read and parse WRG file
-        let wrg_data = read_wrg_file(filename)?;
+    /// Create a new WindRoseWRG from in-memory WRG bytes
+    ///
+    /// Parses the content directly without writing a temporary file.
+    /// Equivalent to [`WindRoseWRG::new`] with default options.
+    ///
+    /// # Arguments
+    /// * `bytes` - Raw content of a WRG file
+    ///
+    /// # Returns
+    /// WindRoseWRG with WRG data parsed from `bytes`
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        let text = std::str::from_utf8(bytes)
+            .map_err(|error| anyhow::anyhow!("WRG data is not valid UTF-8: {error}"))?;
+        let lines: Vec<String> = text.lines().map(str::to_owned).collect();
+        let wrg_data = parse_wrg_lines(&lines, "<bytes>")?;
+        Self::from_wrg_data(wrg_data, None, None, None)
+    }
 
+    /// Build a WindRoseWRG from parsed grid data, deriving default wind
+    /// speeds, TI table and wind directions when not provided.
+    fn from_wrg_data(
+        wrg_data: WRGData,
+        wd_step: Option<Float>,
+        wind_speeds: Option<Array1>,
+        ti_table: Option<Array2>,
+    ) -> Result<Self> {
         // Set default wind speeds if not provided
         let wind_speeds =
             wind_speeds.unwrap_or_else(|| Array1::from_iter((0..26).map(|i| i as Float)));
@@ -1473,8 +1498,15 @@ fn read_wrg_file(filename: &std::path::Path) -> Result<WRGData> {
         lines.push(line?);
     }
 
+    parse_wrg_lines(&lines, &filename.display().to_string())
+}
+
+/// Parse WRG text lines into grid data.
+///
+/// `origin` identifies the data source in error messages (file path or `<bytes>`).
+fn parse_wrg_lines(lines: &[String], origin: &str) -> Result<WRGData> {
     if lines.is_empty() {
-        anyhow::bail!("WRG file is empty: {}", filename.display());
+        anyhow::bail!("WRG data is empty: {origin}");
     }
 
     // Parse header line: nx ny xmin ymin grid_size
@@ -1491,17 +1523,11 @@ fn read_wrg_file(filename: &std::path::Path) -> Result<WRGData> {
 
     // Number of sectors is embedded in the first data line (chars 69..72),
     // matching the Python FLORIS reader (data[1][70:72])
-    let first_data_line = lines.get(1).ok_or_else(|| {
-        anyhow::anyhow!(
-            "WRG file has no data lines after header: {}",
-            filename.display()
-        )
-    })?;
+    let first_data_line = lines
+        .get(1)
+        .ok_or_else(|| anyhow::anyhow!("WRG data has no lines after header: {origin}"))?;
     let n_sectors_str = first_data_line.get(69..72).ok_or_else(|| {
-        anyhow::anyhow!(
-            "WRG data line too short to contain sector count: {}",
-            filename.display()
-        )
+        anyhow::anyhow!("WRG data line too short to contain sector count: {origin}")
     })?;
     let n_sectors: usize = n_sectors_str.trim().parse()?;
 
@@ -1509,7 +1535,7 @@ fn read_wrg_file(filename: &std::path::Path) -> Result<WRGData> {
     let expected_lines = 1 + nx * ny;
     if lines.len() < expected_lines {
         anyhow::bail!(
-            "WRG file has {} lines but expected at least {} for {} grid points",
+            "WRG data has {} lines but expected at least {} for {} grid points: {origin}",
             lines.len(),
             expected_lines,
             nx * ny
@@ -1711,6 +1737,46 @@ mod tests {
     fn test_wind_rose_wrg_invalid_file() {
         let result = WindRoseWRG::new("/nonexistent/path/file.wrg", None, None, None);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_wind_rose_wrg_from_bytes_matches_from_file() {
+        let file_path = create_test_wrg_file(2, 2, 4).expect("Failed to create test file");
+        let bytes = std::fs::read(&file_path).expect("Failed to read test file");
+
+        let from_file = WindRoseWRG::new(&file_path, None, None, None);
+        let from_bytes = WindRoseWRG::from_bytes(&bytes);
+
+        // Clean up after test
+        let _ = std::fs::remove_file(&file_path);
+
+        assert!(from_file.is_ok(), "Failed: {:?}", from_file.err());
+        assert!(from_bytes.is_ok(), "Failed: {:?}", from_bytes.err());
+        let from_file = from_file.unwrap();
+        let from_bytes = from_bytes.unwrap();
+
+        assert_eq!(from_bytes.wrg_data.nx, from_file.wrg_data.nx);
+        assert_eq!(from_bytes.wrg_data.ny, from_file.wrg_data.ny);
+        assert_eq!(from_bytes.wrg_data.n_sectors, from_file.wrg_data.n_sectors);
+        assert_eq!(from_bytes.wrg_data.x_array, from_file.wrg_data.x_array);
+        assert_eq!(from_bytes.wrg_data.y_array, from_file.wrg_data.y_array);
+        assert_eq!(
+            from_bytes.wrg_data.sector_freq,
+            from_file.wrg_data.sector_freq
+        );
+        assert_eq!(from_bytes.wrg_data.weibull_a, from_file.wrg_data.weibull_a);
+        assert_eq!(from_bytes.wrg_data.weibull_k, from_file.wrg_data.weibull_k);
+        assert_eq!(from_bytes.wind_directions, from_file.wind_directions);
+        assert_eq!(from_bytes.wind_speeds, from_file.wind_speeds);
+        assert_eq!(from_bytes.wd_step, from_file.wd_step);
+        assert_eq!(from_bytes.ti_table, from_file.ti_table);
+    }
+
+    #[test]
+    fn test_wind_rose_wrg_from_bytes_rejects_empty_input() {
+        let result = WindRoseWRG::from_bytes(b"");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("is empty"));
     }
 
     #[test]
