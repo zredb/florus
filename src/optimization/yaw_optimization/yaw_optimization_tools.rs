@@ -169,8 +169,7 @@ pub fn golden_section_search_yaw<F>(
 where
     F: Fn(Float) -> Float,
 {
-    let golden_ratio = 1.618033988749895;
-    let inv_golden_ratio = 1.0 / golden_ratio;
+    let inv_golden_ratio = 1.0 /  std::f64::consts::GOLDEN_RATIO;
 
     let mut c = b - inv_golden_ratio * (b - a);
     let mut d = a + inv_golden_ratio * (b - a);
